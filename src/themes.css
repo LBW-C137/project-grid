@@ -13,7 +13,7 @@
   --glass: rgba(9, 35, 46, .32);
   --glass-strong: rgba(15, 39, 52, .72);
   --glass-solid: #173847;
-  --glass-border: #d8f4f28c;
+  --glass-border: #d8f4f257;
   --theme-accent: #b1dedc;
   --theme-ink: #f7ffff;
   --theme-muted: #e1f2fa;
@@ -33,7 +33,7 @@
   --glass: rgba(40, 21, 32, .32);
   --glass-strong: rgba(43, 24, 37, .74);
   --glass-solid: #3a2634;
-  --glass-border: #ffe9df8a;
+  --glass-border: #ffe9df57;
   --theme-accent: #e6b2a8;
   --theme-ink: #fff9f5;
   --theme-muted: #fae9e6;
@@ -57,14 +57,14 @@
 
 /* Palette changes affect materials, never terminal ANSI colors or task signals. */
 :root:not([data-theme="forest"]) :is(.titlebar, .workspace-statusbar) { background: var(--glass-sheen), var(--theme-chrome); border-color: var(--theme-line); }
-:root:not([data-theme="forest"]) .focus-sidebar { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--theme-line); }
+:root:not([data-theme="forest"]) .focus-sidebar { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--glass-hairline); }
 :root:not([data-theme="forest"]) :is(.settings-dialog, .dropdown) { background: var(--glass-sheen), var(--glass-strong); border-color: var(--theme-line); color: var(--theme-ink); }
-:root:not([data-theme="forest"]) .file-preview { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--theme-line); }
+:root:not([data-theme="forest"]) .file-preview { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--glass-hairline); }
 :root:not([data-theme="forest"]) .panel-terminal-area { background: var(--theme-pane); }
 :root:not([data-theme="forest"]) .terminal-grid.has-splits { background: var(--theme-line); }
 :root:not([data-theme="forest"]) .has-splits .terminal-split { background: var(--theme-pane); }
-:root:not([data-theme="forest"]) .panel-header { background: linear-gradient(#ffffff09, #ffffff02), var(--theme-pane); border-color: var(--theme-line); }
-:root:not([data-theme="forest"]) .panel-footer { background: var(--glass-sheen), var(--theme-pane); border-color: var(--theme-line); }
+:root:not([data-theme="forest"]) .panel-header { background: transparent; border-color: var(--theme-line); }
+:root:not([data-theme="forest"]) .panel-footer { background: transparent; border-color: var(--theme-line); }
 :root:not([data-theme="forest"]) :is(.search-input, .setting-row select, .explorer-back, .button.secondary, .file-name-label input, .voice-device select, .ssh-field input, .titlebar-tools > .icon-button) { background: var(--glass-sheen), var(--theme-control); border-color: var(--theme-line); color: var(--theme-ink); }
 :root:not([data-theme="forest"]) .button.primary { background: linear-gradient(160deg, #fff7f160, #ffffff00), var(--theme-button); color: var(--theme-button-ink); border-color: #fff7f1a3; }
 :root:not([data-theme="forest"]) .button.primary:hover { filter: brightness(1.07); }

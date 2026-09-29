@@ -5,13 +5,21 @@
   --glass: rgba(9, 24, 34, .38);
   --glass-strong: rgba(15, 31, 42, .72);
   --glass-solid: #1b303d;
-  --glass-border: rgba(237, 250, 255, .52);
+  --glass-border: rgba(240, 250, 255, .34);
   --glass-highlight: rgba(250, 254, 255, .62);
-  --glass-sheen: linear-gradient(155deg, #ffffff24 0%, #ffffff03 23%, #ffffff00 60%, #c2edff0c 88%, #ffffff20 100%);
-  --glass-shadow: inset 0 1px 0 #ffffff9c, inset 1px 0 0 #f1fbff48, inset -1px -1px 0 #d4edff42, inset 0 -2px 5px #04121c3d, 0 5px 18px #02131e24;
+  /* One soft light from the upper left; no second glare band at the opposite corner. */
+  --glass-sheen: linear-gradient(160deg, rgba(255, 255, 255, .15) 0%, rgba(255, 255, 255, .04) 28%, rgba(255, 255, 255, 0) 58%, rgba(255, 255, 255, .03) 100%);
+  /* A crisp specular top edge, faint rim light on the other sides, a whisper of inner glow,
+     and a tight cast shadow that lifts the pane without muddying the gap between panes. */
+  --glass-hairline: rgba(255, 255, 255, .13);
+  /* Edge light for large panes: bright where the light lands (upper left), a faint return at the
+     lower right, almost nothing in between. The angle scales with the pane, so any aspect ratio works. */
+  --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, .42) 9%, rgba(255, 255, 255, .12) 26%, rgba(255, 255, 255, .05) 50%, rgba(255, 255, 255, .12) 74%, rgba(255, 255, 255, .46) 91%, rgba(255, 255, 255, .82) 100%);
+  --glass-lift: inset 2px 2px 6px -3px rgba(255, 255, 255, .34), inset -2px -2px 6px -3px rgba(255, 255, 255, .16), inset 0 0 22px rgba(255, 255, 255, .045), 0 8px 24px -8px rgba(2, 14, 26, .34), 0 1px 3px rgba(2, 14, 26, .14);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .62), inset 1px 0 0 rgba(255, 255, 255, .22), inset -1px 0 0 rgba(255, 255, 255, .1), inset 0 -1px 0 rgba(255, 255, 255, .16), inset 0 0 26px rgba(255, 255, 255, .045), 0 8px 24px -8px rgba(2, 14, 26, .34), 0 1px 3px rgba(2, 14, 26, .14);
   --glass-radius: 14px;
   --layout-gap: 6px; /* one gap between panels and between panels and the top/bottom bars */
-  --text-shadow: 0 1px 1px #00101be6;
+  --text-shadow: 0 1px 2px rgba(0, 16, 28, .5);
   --border: var(--glass-border); --muted: #e7f1fa;
 }
 .liquid-glass-definitions { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
@@ -22,7 +30,7 @@
     url('./assets/macos-high-sierra.webp') center / cover no-repeat;
 }
 .titlebar, .workspace-statusbar, .focus-sidebar, .project-panel, .settings-dialog, .file-preview {
-  backdrop-filter: var(--liquid-backdrop, blur(1.5px) saturate(135%));
+  backdrop-filter: var(--liquid-backdrop, blur(6px) saturate(165%));
 }
 .titlebar { height: 48px; flex-basis: 48px; margin: 0; border: 0; border-bottom: 1px solid var(--glass-border); border-radius: 0; background: var(--glass-sheen), rgba(9, 24, 34, .38); box-shadow: var(--glass-shadow); overflow: hidden; text-shadow: var(--text-shadow); }
 .titlebar-brand { padding-left: 22px; gap: 11px; color: #e3ebf5; }
@@ -55,8 +63,13 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-slot:has(> .focus-motion-panel) { z-index: 50; }
 .project-slot > .project-panel.focus-motion-panel { position: fixed; left: 0; top: 0; width: var(--focus-width); height: var(--focus-height); margin: 0; transform-origin: 0 0; will-change: transform; animation: none; transition: none; }
 .project-slot.drag-placeholder::before { content: ''; position: absolute; inset: 0; border: 1px dashed #d3ecff85; border-radius: var(--glass-radius); background: #b6ddff12; box-shadow: inset 0 0 24px #b6ddff0c; pointer-events: none; }
-.project-panel { background: var(--glass-sheen), var(--glass); border-color: var(--glass-border); border-radius: var(--glass-radius); box-shadow: var(--glass-shadow); }
-.project-panel:hover { border-color: #effbff9c; }
+.project-panel { background: var(--glass-sheen), var(--glass); border-color: var(--glass-hairline); border-radius: var(--glass-radius); box-shadow: var(--glass-lift); }
+.project-panel:hover { border-color: rgba(255, 255, 255, .38); }
+.focus-sidebar { position: relative; }
+.project-panel::after, .focus-sidebar::after, .file-preview::after {
+  content: ''; position: absolute; inset: 0; z-index: 2; padding: 1.25px; pointer-events: none; border-radius: calc(var(--glass-radius) - 1px);
+  background: var(--glass-rim); mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+}
 .panel-terminal-area { background: rgba(3, 14, 23, .18); }
 .terminal-grid { display: grid; grid-template-columns: repeat(var(--terminal-columns), minmax(0, 1fr)); grid-template-rows: repeat(var(--terminal-rows), minmax(0, 1fr)); }
 .terminal-grid.has-splits { gap: 1px; padding: 1px; overflow: auto; grid-template-rows: repeat(var(--terminal-rows), minmax(170px, 1fr)); background: #dceeff1c; }
@@ -80,12 +93,12 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-grid.is-reordering .project-panel.drop-target { animation: none; border-color: #b6ddff; outline: 2px solid #b6ddffb0; outline-offset: 1px; box-shadow: inset 0 0 0 2px #b6ddff70, 0 0 0 2px #b6ddff80; }
 .reorder-hint { position: fixed; z-index: 110; top: 60px; left: 50%; transform: translateX(-50%); padding: 10px 16px; max-width: calc(100vw - 40px); border: 1px solid #d4e8ff65; border-radius: 999px; color: #f0f7ff; background: var(--glass-sheen), #233746e8; backdrop-filter: blur(24px) saturate(140%); box-shadow: var(--glass-shadow); pointer-events: none; font-size: 12px; }
 .reorder-hint span { margin-left: 16px; color: #bdd1e1; font-size: 10px; }
-.project-panel:focus-within:not(.has-unread):not(.round-complete) { border-color: #d4edff99; box-shadow: var(--glass-shadow), 0 0 0 1px #cbe9ff30; }
-.panel-header { background: linear-gradient(180deg, #f2fbff10, #ffffff00), #0c1c2626; border-radius: calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px) 0 0; border-color: #eaf7ff26; height: 44px; flex-basis: 44px; text-shadow: var(--text-shadow); }
+.project-panel:focus-within:not(.has-unread):not(.round-complete) { border-color: rgba(255, 255, 255, .34); box-shadow: var(--glass-lift), 0 0 0 1px #cbe9ff30; }
+.panel-header { background: transparent; border-radius: calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px) 0 0; border-color: rgba(255, 255, 255, .14); height: 44px; flex-basis: 44px; text-shadow: var(--text-shadow); }
 .panel-name { color: #f1f6fc; }.panel-name small { color: #c3d3e2; }.panel-index { color: #bdcfdf; }
 .status-badge { color: #a1b2c7; }.status-badge.blue { color: #a3cbed; }.status-badge.green { color: #a2d8b8; }.status-badge.red { color: #ffb1bb; }
 .panel-header .icon-button { color: #a5b7cb; }
-.panel-footer { background: linear-gradient(180deg, #ffffff00, #ffffff12), #10233026; border-color: #def0ff30; border-radius: 0 0 calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px); text-shadow: var(--text-shadow); }
+.panel-footer { background: transparent; border-color: rgba(255, 255, 255, .14); border-radius: 0 0 calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px); text-shadow: var(--text-shadow); }
 .panel-meta { color: #96abc5; }.text-button { color: #c2d5ec; }.session-label { color: #aac7e7; }
 .terminal-host .xterm-viewport { background-color: transparent !important; }
 .terminal-host .xterm-rows { text-shadow: var(--text-shadow); }
@@ -176,7 +189,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 1.5px; color: #e7f1fa; }
 
 /* A project gets its own explorer only while focused. */
-.focus-sidebar { display: flex; flex-direction: column; width: 284px; flex: 0 0 284px; min-height: 0; margin: var(--layout-gap) 0 var(--layout-gap) var(--layout-gap); border-radius: 18px; background: var(--glass-sheen), rgba(9, 29, 37, .4); border: 1px solid #e3f1ff73; box-shadow: var(--glass-shadow); text-shadow: 0 1px 2px #00101bb3; transition: width .18s ease, flex-basis .18s ease; }
+.focus-sidebar { display: flex; flex-direction: column; width: 284px; flex: 0 0 284px; min-height: 0; margin: var(--layout-gap) 0 var(--layout-gap) var(--layout-gap); border-radius: var(--glass-radius); background: var(--glass-sheen), rgba(9, 29, 37, .4); border: 1px solid var(--glass-hairline); box-shadow: var(--glass-lift); text-shadow: 0 1px 2px #00101bb3; transition: width .18s ease, flex-basis .18s ease; }
 .explorer-navigation { display: flex; align-items: center; gap: 8px; margin: 16px 13px 0; }
 .explorer-back { display: flex; flex: 1; align-items: center; gap: 10px; height: 35px; border: 1px solid #e0efff45; border-radius: 999px; padding: 0 12px; color: #e9f4fd; background: var(--glass-sheen), #14303c55; box-shadow: inset 0 1px 0 #ffffff30, 0 3px 12px #06182720; font-size: 12px; white-space: nowrap; }
 .explorer-back:hover { border-color: #e0efff45; background: #dcefff14; }
@@ -232,14 +245,14 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .is-collapsed .explorer-actions { padding: 10px 7px; gap: 8px; }
 .is-collapsed .explorer-action { width: 35px; height: 35px; padding: 0; justify-content: center; }.is-collapsed .explorer-action > span, .is-collapsed .explorer-action kbd { display: none; }
 .focus-mode .project-grid { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }
-.focus-mode .project-panel { border-color: #d4e8ff30; }
+.focus-mode .project-panel { border-color: var(--glass-hairline); }
 .focus-mode .project-panel.round-complete { border-color: #8cc9a778; }
 .focus-mode .terminal-host { inset: 17px 12px 10px 18px; }
 .focus-mode .panel-header { padding: 0 14px 0 17px; }.focus-mode .panel-footer { padding: 0 17px; }
 
 /* File previews share the same surface; terminals keep their original session. */
 .file-preview { position: absolute; inset: 0; z-index: 5; }
-.file-preview { display: flex; flex: 1; min-height: 0; min-width: 0; flex-direction: column; margin: var(--layout-gap); background: var(--glass-sheen), rgba(10, 26, 38, .4); border: 1px solid #deedff78; border-radius: var(--glass-radius); box-shadow: var(--glass-shadow); overflow: hidden; }
+.file-preview { display: flex; flex: 1; min-height: 0; min-width: 0; flex-direction: column; margin: var(--layout-gap); background: var(--glass-sheen), rgba(10, 26, 38, .4); border: 1px solid var(--glass-hairline); border-radius: var(--glass-radius); box-shadow: var(--glass-lift); overflow: hidden; }
 .file-tabs { display: flex; height: 39px; flex-shrink: 0; border-bottom: 1px solid #e4f0ff1b; background: #d1e5ff06; }
 .terminal-tab { display: flex; gap: 8px; align-items: center; padding: 0 16px; border: 0; border-right: 1px solid #dcefff17; background: transparent; color: #acbfd7; font-size: 11px; }
 .terminal-tab:hover { background: #e0f0ff0b; color: #edf6ff; }

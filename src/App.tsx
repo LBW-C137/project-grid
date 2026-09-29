@@ -284,7 +284,7 @@ export function App() {
   const focus = projects.find(p => p.id === focusedId);
   const setPreference = (patch: Partial<Settings>) => { perform(api.settings(patch)); };
 
-  return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''}`} style={{ '--liquid-backdrop': 'url("#project-grid-refraction") blur(1.5px) saturate(135%)' } as CSSProperties}>
+  return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''}`} style={{ '--liquid-backdrop': 'url("#project-grid-refraction") blur(6px) saturate(165%)' } as CSSProperties}>
     <div className="titlebar">
       <div className="titlebar-brand"><span className="brand-mark"><i /><i /><i /><i /></span><span>Project Grid</span><span className="titlebar-divider" /> <span className="titlebar-subtitle">项目矩阵</span></div>
       <div className="titlebar-space" />
