@@ -17,6 +17,22 @@ const packaged = process.argv.includes('--packaged'); let app, page;
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value;
 async function waitFor(check, name) { const until = Date.now() + 25000; while (Date.now() < until) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 80)); } throw new Error(`Timed out: ${name}`); }
 const errors = [], performanceSamples = [], materials = [], typography = [], edges = [];
+const layoutGap = 6;
+// Every panel keeps the same gap to its neighbours and to the top and bottom bars.
+async function checkGaps(mode) {
+  const gaps = await page.evaluate(() => {
+    const rect = selector => document.querySelector(selector)?.getBoundingClientRect();
+    const slots = [...document.querySelectorAll('.project-slot')].filter(node => node.offsetParent).map(node => node.getBoundingClientRect());
+    const bar = rect('.titlebar'), foot = rect('.workspace-statusbar'), side = rect('.focus-sidebar');
+    const left = Math.min(...slots.map(box => box.left));
+    const measured = { top: Math.min(...slots.map(box => box.top)) - bar.bottom, bottom: foot.top - Math.max(...slots.map(box => box.bottom)), right: innerWidth - Math.max(...slots.map(box => box.right)) };
+    if (side) Object.assign(measured, { sideLeft: side.left, sideTop: side.top - bar.bottom, sideBottom: foot.top - side.bottom, sideToPanel: left - side.right });
+    else measured.left = left;
+    return measured;
+  });
+  for (const [name, value] of Object.entries(gaps)) assert.ok(Math.abs(value - layoutGap) <= 1, `${mode}: ${name} gap is ${value}px, expected ${layoutGap}px`);
+  edges.push({ mode, gaps });
+}
 async function checkEdges(mode) {
   const rects = await page.evaluate(() => {
     const bounds = selector => { const box = document.querySelector(selector).getBoundingClientRect(); return { left: box.left, top: box.top, right: box.right, bottom: box.bottom }; };
@@ -46,8 +62,9 @@ try {
   await page.waitForSelector('.project-panel');
   const search = page.getByRole('textbox', { name: '搜索项目', exact: true }); await search.fill('运行样例');
   await checkEdges('overview');
+  await checkGaps('overview');
   const geometry = await page.locator('.project-grid').evaluate(grid => ({ gap: getComputedStyle(grid).gap, radius: getComputedStyle(grid.querySelector('.project-panel')).borderTopLeftRadius, header: getComputedStyle(grid.querySelector('.panel-header')).borderTopLeftRadius }));
-  assert.deepEqual(geometry, { gap: '8px', radius: '14px', header: '13px' });
+  assert.deepEqual(geometry, { gap: `${layoutGap}px`, radius: '14px', header: '13px' });
   for (const project of projects.slice(0, 6)) await page.evaluate(id => window.projectGrid.startTerminal(id), project.id);
   await waitFor(async () => (await state()).projects.slice(0, 6).every(project => project.shellReady), 'six real shells ready');
   const lens = await page.locator('.app-shell').evaluate(node => node.style.getPropertyValue('--liquid-backdrop'));
@@ -76,6 +93,7 @@ try {
   await first.getByRole('button', { name: `全屏查看 ${projects[0].name}`, exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));
   await checkEdges('focused');
+  await checkGaps('focused');
   await first.getByRole('button', { name: `新增终端 ${projects[0].name}`, exact: true }).click();
   await waitFor(async () => (await state()).projects[0].terminals.length === 2 && (await state()).projects[0].terminals.every(terminal => terminal.shellReady), 'split terminals ready');
   const sample = 'PLAIN  中文字体更亮更清晰\r\n\x1b[1mBOLD   重点文字\x1b[0m\r\n\x1b[2mDIM_DEFAULT  Working / background task\x1b[0m\r\n\x1b[2;31mDIM_RED\x1b[0m\r\n\x1b[2;32mDIM_GREEN\x1b[0m\r\n\x1b[2;38;5;45mDIM_256\x1b[0m\r\n\x1b[2;38;2;130;180;220mDIM_RGB\x1b[0m\r\n\x1b[7mINVERSE\x1b[0m\r\n\x1b[2;7mDIM_INVERSE\x1b[0m\r\n';
