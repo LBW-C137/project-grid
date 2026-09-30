@@ -73,6 +73,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
   background: var(--glass-rim); mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
 }
 .panel-terminal-area { background: rgba(3, 14, 23, .18); }
+.project-panel > :last-child { border-radius: 0 0 calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px); }
 .terminal-grid { display: grid; grid-template-columns: repeat(var(--terminal-columns), minmax(0, 1fr)); grid-template-rows: repeat(var(--terminal-rows), minmax(0, 1fr)); }
 .terminal-grid.has-splits { gap: 1px; padding: 1px; overflow: auto; grid-template-rows: repeat(var(--terminal-rows), minmax(170px, 1fr)); background: #dceeff1c; }
 .terminal-split { min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; background: #071b2633; }

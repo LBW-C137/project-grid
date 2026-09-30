@@ -68,6 +68,8 @@ kbd { font: 600 9px 'Segoe UI', sans-serif; border: 1px solid #303743; border-ra
 .panel-header .icon-button { width: 24px; height: 27px; color: #768599; }
 .panel-header .icon-button:hover { color: #e2e7ee; }
 .panel-terminal-area { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* The card has no footer: whatever sits at its bottom (terminals, or an error line) carries the rounded corners. */
+.project-panel > :last-child { border-radius: 0 0 6px 6px; }
 .terminal-host { position: absolute; inset: 10px 7px 5px 11px; overflow: hidden; }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-viewport { background-color: #12151a !important; overflow-x: hidden !important; }
