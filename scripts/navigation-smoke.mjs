@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { _electron as electron } from 'playwright';
-import { waitFor } from './wait.mjs';
+import { waitFor, terminalsSettled } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
@@ -88,6 +88,7 @@ try {
     await page.evaluate(({ id, target }) => window.projectGrid.writeTerminal(id, `\x1b[2J\x1b[H\x1b]8;;${target}\x07REMOTE_DOCS_LINK\x1b]8;;\x07\r\n`), { id: remote.id, target });
     const link = second.locator('.xterm-rows').getByText('REMOTE_DOCS_LINK', { exact: true });
     await link.waitFor();
+    await terminalsSettled(page);
     const box = await link.boundingBox(), screen = second.locator('.xterm-screen'), screenBox = await screen.boundingBox();
     const position = { x: box.x - screenBox.x + 20, y: box.y - screenBox.y + box.height / 2 };
     await screen.hover({ position: { x: position.x + 30, y: position.y + 25 } });

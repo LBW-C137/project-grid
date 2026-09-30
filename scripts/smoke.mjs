@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import net from 'node:net';
 import { _electron as electron } from 'playwright';
 import { runDesktopTask } from '../tests/helpers/desktop-task-fixture.mjs';
-import { waitFor } from './wait.mjs';
+import { waitFor, terminalsSettled } from './wait.mjs';
 
 const require = createRequire(import.meta.url);
 const exec = promisify(execFile);
@@ -353,6 +353,7 @@ try {
     // the next line. Locate and measure again until both steps see the same text.
     const row = panel.locator('.xterm-rows > div').filter({ hasText: text }).last();
     let position = null;
+    await terminalsSettled(page);
     await waitFor(async () => {
       await row.waitFor();
       position = await row.evaluate((element, needle) => {

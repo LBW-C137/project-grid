@@ -148,12 +148,20 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
         try { fitAddon.fit(); } catch { /* A hidden panel will be fitted when shown. */ }
       }
     };
-    const observer = new ResizeObserver(resize);
+    // Transitions change the size every frame. xterm and ConPTY each reflow long lines on resize, and
+    // a shrink-then-grow that nets out to the same size leaves ConPTY untouched while xterm has
+    // reflowed twice; later output then lands beside stale characters. Both sides therefore reflow
+    // once, at the settled size. data-fit-pending marks the short window before that happens.
+    let settle = 0;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(settle); host.current?.setAttribute('data-fit-pending', '');
+      settle = window.setTimeout(() => { host.current?.removeAttribute('data-fit-pending'); resize(); }, 80);
+    });
     observer.observe(host.current);
     const frame = requestAnimationFrame(resize);
     return () => {
       disposed = true; queued = [];
-      unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); observer.disconnect(); cancelAnimationFrame(frame);
+      unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(settle);
       terminal.textarea?.removeEventListener('focus', focusIn); terminal.textarea?.removeEventListener('blur', focusOut); focusOut();
       terminal.dispose(); term.current = null; fit.current = null;
     };
