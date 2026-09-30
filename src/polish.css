@@ -1,0 +1,51 @@
+/* Finishing layer: proportions, small details and interaction feel. Loaded last, so it refines the
+   glass and theme layers without restating them. The app's motion setting (glass.css) still silences
+   every transition and animation here. */
+
+/* A slimmer title bar leaves more room for the work. */
+.titlebar { height: 38px; flex-basis: 38px; }
+.titlebar-brand { padding-left: 16px; gap: 9px; font-size: 13.5px; }
+.titlebar .brand-mark { grid-template-columns: repeat(2, 6px); gap: 2px; }
+.titlebar .brand-mark i { width: 6px; height: 6px; }
+.titlebar .workspace-summary { font-size: 12px; margin-left: 14px; }
+.titlebar-tools { gap: 6px; margin-right: 8px; }
+.titlebar-tools .search-input, .titlebar-tools .button { height: 26px; }
+.titlebar-tools > .icon-button, .titlebar-tools > .search-toggle { width: 26px; height: 26px; }
+.window-actions .icon-button { width: 42px; transition: background .16s ease, color .16s ease; }
+
+/* Scrollbars float as soft translucent pills. */
+::-webkit-scrollbar-thumb { background: #ffffff30; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #ffffff5c; }
+::-webkit-scrollbar-corner { background: transparent; }
+/* Chromium does not clip a scroller's own scrollbar to its rounded corners. Keep the track on the
+   straight edge of the dialog and inset the thumb from the border. */
+.settings-dialog::-webkit-scrollbar { width: 12px; }
+.settings-dialog::-webkit-scrollbar-track { margin-block: 22px; }
+.settings-dialog::-webkit-scrollbar-thumb { border: 4px solid transparent; background-clip: padding-box; }
+
+/* Branch and host chips end with an ellipsis instead of a hard cut. */
+.panel-name small { display: block; min-width: 0; text-overflow: ellipsis; padding: 1px 7px; border-radius: 99px; background: #ffffff0f; box-shadow: inset 0 0 0 1px #ffffff14; line-height: 17px; }
+.panel-name small svg { vertical-align: -1px; margin-right: 3px; }
+
+/* Keyboard focus is a clear, theme-tinted ring. */
+:is(button, select, input, textarea, [role="menuitem"], [role="treeitem"]):focus-visible { outline: 2px solid var(--theme-accent, #b9e6d5); outline-offset: 2px; }
+
+/* Controls answer the pointer: a gentle lift on hover, a settle on press. */
+.button:hover:not(:disabled) { transform: translateY(-1px); }
+.button:active:not(:disabled) { transform: translateY(0) scale(.97); transition-duration: .08s; }
+.icon-button:not(.window-actions .icon-button):hover { transform: translateY(-.5px); }
+.icon-button:not(.window-actions .icon-button):active { transform: scale(.9); transition-duration: .08s; }
+
+/* Menus unfold from the button that opened them. */
+.dropdown { transform-origin: top right; animation: polish-menu-in .18s cubic-bezier(.2, .8, .2, 1); }
+.dropdown button { transition: background .14s ease, box-shadow .14s ease, padding-left .18s cubic-bezier(.2, .8, .2, 1); }
+.dropdown button:hover { padding-left: 11px; }
+@keyframes polish-menu-in { from { opacity: 0; transform: translateY(-4px) scale(.96); } to { opacity: 1; transform: none; } }
+
+/* In the overview, a card header lights softly under the pointer, inviting a click to expand. */
+.panel-header { transition: background .22s ease; }
+.app-shell:not(.focus-mode) .project-panel:not(.has-unread, .round-complete) .panel-header:hover { background: linear-gradient(180deg, #ffffff12, #ffffff05); }
+.panel-name > span { transition: text-shadow .22s ease; }
+.app-shell:not(.focus-mode) .panel-header:hover .panel-name > span { text-shadow: var(--text-shadow, none), 0 0 14px #ffffff40; }
+.panel-name small { max-width: 140px; }
+.focus-mode .panel-name small { max-width: 280px; }
