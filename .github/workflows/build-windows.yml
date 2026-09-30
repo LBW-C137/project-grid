@@ -252,6 +252,8 @@ jobs:
           Install Codex CLI on the computer or Linux SSH host where your project runs.
 
           - Multiple project terminals with completion alerts.
+          - Cleaner Apple-style glass: the backdrop is softly blurred and more saturated, and cards, the sidebar and file preview get a gradient edge light, bright at the upper left and faint at the lower right, instead of a uniform outline. Panel headers and footers no longer add their own dark bands.
+          - Panel spacing is uniform: the same 6px gap sits between cards, beside the sidebar and against the top and bottom bars, in both the overview and the expanded project view.
           - The expanded project's sidebar replaces Settings with Git History. Switch between the file tree and staged, working-tree and conflict changes; browse committed history with merge graphs and changed-file lists for local and Linux SSH projects. File badges refresh automatically while the sidebar is visible, without altering the index or running terminals. Settings remains in the top bar.
           - New and restarted local terminals pick up newly installed tools from Windows PATH without restarting Project Grid. Existing injected toolchain paths keep their priority; other terminals remain untouched.
           - Clear liquid-glass title/status bars, sidebar and terminal shells reveal the background with thin optical rims and real SVG backdrop refraction. Text and ANSI colors remain separate from the lens.
@@ -262,7 +264,7 @@ jobs:
           - Borders and status dots visibly fade dark to bright to dark together over 2 seconds, including while hovering or typing. Completion breathes three times, then stays quiet; viewed automatic round completion stays steady green.
           - Brighter, bolder interface and terminal text, readable faint ANSI output and selected inverse text across all three transparent themes. Custom terminal font sizes and color hues are preserved.
           - Codex's dark input and matching history surfaces are transparent, with fully bright faint text. Each split keeps its own styling; ordinary shells, colored diff backgrounds, selection and block cursors remain distinct. Verified in a real offline Codex TUI with Chinese multiline input, copy/paste and preserved drafts.
-          - Title and status bars meet the window edges, including beside the explorer. Project cards use tighter 8px spacing and smaller 14px corners.
+          - Title and status bars meet the window edges, including beside the explorer. Project cards, the sidebar and the top and bottom bars are separated by one uniform 6px gap, with 14px corners.
           - Smaller Windows x64 packages exclude source maps, native build sources, duplicate/other-platform PTY binaries and Python caches; required local/SSH runtimes are verified before release.
           - Choose Forest Light, Mountain Blue or Wild Red in Settings; themes apply immediately and persist without restarting terminals.
           - High Sierra, Big Sur coast and Sierra landscape wallpapers are bundled at 3840-pixel width. Local WebP assets keep wallpaper previews and backgrounds available offline, with proportional cropping and clear terminal text.
