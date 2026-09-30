@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { motionReduced } from './motion';
 
 type Drag = { id: string; targetId: string | null };
 type Rect = { left: number; top: number };
@@ -21,7 +22,7 @@ export function useProjectReorder(enabled: boolean, context: string, ids: string
   useLayoutEffect(() => {
     animations.current.forEach(animation => animation.cancel()); animations.current = [];
     const grid = gridRef.current;
-    if (!grid || matchMedia('(prefers-reduced-motion: reduce)').matches) { before.current.clear(); return; }
+    if (!grid || motionReduced()) { before.current.clear(); return; }
     for (const slot of grid.querySelectorAll<HTMLElement>(':scope > [data-project-slot]')) {
       const previous = before.current.get(slot.dataset.projectSlot!);
       if (!previous || slot.dataset.projectSlot === drag?.id || !slot.getClientRects().length) continue;
@@ -122,7 +123,7 @@ export function useProjectReorder(enabled: boolean, context: string, ids: string
         const slot = slots().find(slot => slot.dataset.projectSlot === sourceId);
         if (!slot) { clear(); return; }
         const target = slot.getBoundingClientRect();
-        const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const reduced = motionReduced();
         landing = panel.animate([{ transform: getComputedStyle(panel).transform }, { transform: `translate3d(${target.left - origin.left}px, ${target.top - origin.top}px, 0) scale(1)` }], { duration: reduced ? 0 : 170, easing: 'cubic-bezier(.2,.85,.25,1)', fill: 'forwards' });
         Promise.all([landing.finished.catch(() => {}), persist ? commit.current(draft) : Promise.resolve()]).finally(() => { if (!ended) clear(); });
       });

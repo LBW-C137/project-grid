@@ -315,4 +315,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
   .settings-dialog::backdrop { background: #07111fc9; backdrop-filter: none; }
   .app-shell::before { backdrop-filter: none; }
 }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* Motion follows the app setting (src/motion.ts): "off" always stops it, "system" follows Windows. */
+:root[data-motion="off"] :is(*, *::before, *::after) { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] :is(*, *::before, *::after) { animation: none !important; transition: none !important; } }

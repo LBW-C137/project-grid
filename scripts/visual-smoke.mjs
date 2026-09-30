@@ -162,9 +162,21 @@ try {
   assert.equal(await page.locator('.focus-mode').count(), 0, 'automatic green does not expand on terminal clicks');
   await fs.appendFile(transcript, record('task_started', 'next-turn'));
   await waitFor(async () => panel(0).getAttribute('data-status').then(status => status === 'working'), 'new submitted turn resumes breathing');
+  const setMotion = async mode => { await page.evaluate(mode => window.projectGrid.settings({ focusAnimation: mode }), mode); await page.waitForFunction(mode => document.documentElement.dataset.motion === mode, mode); };
+  // Windows reports reduced motion whenever its "Animation effects" switch is off. The default
+  // setting keeps the lights breathing; only "follow system" or "off" stops them.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  assert.equal(await breathing(0), 0, 'system reduced motion disables decorative breathing');
+  await setMotion('smooth');
+  assert.ok(await breathing(0) > 0, 'default animation setting keeps breathing when Windows animation effects are off');
+  await page.screenshot({ path: path.join(output, 'reduced-motion-default.png') });
+  await setMotion('system');
+  await waitFor(async () => await breathing(0) === 0, 'follow-system stops decorative breathing under reduced motion');
   await page.screenshot({ path: path.join(output, 'reduced-motion.png') });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await setMotion('off');
+  await waitFor(async () => await breathing(0) === 0, 'turning animation off stops breathing even without a system preference');
+  await setMotion('smooth');
+  await waitFor(async () => await breathing(0) > 0, 'turning animation back on resumes breathing');
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, timings, lens, liveSamples, compact, compactEdges, errors }, null, 2));
   console.log(`PASS: live 2-second synchronized lights, finite completion, quiet idle, all themes, high DPI, compact controls, explorer and preserved small-card input. Screenshots: ${output}`);

@@ -166,9 +166,9 @@ try {
   console.log('PASS: default smooth zoom remains enabled when Windows reduces system animations');
 
   await page.getByRole('button', { name: '工作台设置', exact: true }).click();
-  await page.getByLabel('窗口放大动画', { exact: true }).scrollIntoViewIfNeeded();
+  await page.getByLabel('界面动画', { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(output, 'motion-settings.png') });
-  await page.getByLabel('窗口放大动画', { exact: true }).selectOption('system');
+  await page.getByLabel('界面动画', { exact: true }).selectOption('system');
   await page.getByRole('button', { name: '关闭设置', exact: true }).click();
   await panel.locator('.panel-name').click(); await settled(true);
   assert.equal(await page.locator('.focus-motion-panel').count(), 0);
@@ -177,7 +177,7 @@ try {
   console.log('PASS: choosing follow-system respects reduced motion');
 
   await page.getByRole('button', { name: '工作台设置', exact: true }).click();
-  await page.getByLabel('窗口放大动画', { exact: true }).selectOption('off');
+  await page.getByLabel('界面动画', { exact: true }).selectOption('off');
   await page.getByRole('button', { name: '关闭设置', exact: true }).click();
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await panel.locator('.panel-name').click(); await settled(true);
