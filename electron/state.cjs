@@ -128,15 +128,6 @@ class WorkspaceStore {
     else { found.project.terminals = found.project.terminals.filter(item => item.id !== id); this.save(); }
   }
 
-  swapProjects(sourceId, targetId) {
-    const source = this.projects.findIndex(project => project.id === sourceId);
-    const target = this.projects.findIndex(project => project.id === targetId);
-    if (source < 0 || target < 0) throw new Error('项目不存在，请刷新工作区后重试。');
-    if (source === target) return;
-    [this.projects[source], this.projects[target]] = [this.projects[target], this.projects[source]];
-    this.save();
-  }
-
   reorderProjects(ids) {
     if (!Array.isArray(ids) || ids.length !== this.projects.length || new Set(ids).size !== ids.length || ids.some(id => typeof id !== 'string' || !this.projects.some(project => project.id === id))) throw new Error('项目列表已变化，请重新拖动排序。');
     const records = new Map(this.projects.map(project => [project.id, project]));

@@ -45,10 +45,8 @@ export type Bridge = {
   answerSSHAuth(id: string, answer: string | null): Promise<Result<void>>;
   onSSHAuth(callback: (prompts: SSHAuthPrompt[]) => void): () => void;
   removeProject(id: string): Promise<Result<boolean>>;
-  swapProjects(source: string, target: string): Promise<Result<void>>;
   reorderProjects(ids: string[]): Promise<Result<void>>;
   acknowledge(id: string): Promise<Result<void>>;
-  acknowledgeAll(): Promise<Result<void>>;
   settings(patch: Partial<Settings>): Promise<Result<void>>;
   listDirectory(id: string, relativePath?: string, offset?: number): Promise<Result<DirectoryListing>>;
   gitStatus(id: string): Promise<Result<GitStatus>>;
@@ -66,7 +64,6 @@ export type Bridge = {
   cancelFileOperation(): Promise<Result<void>>;
   getVoiceState(): Promise<Result<VoiceState>>;
   prepareVoice(): Promise<Result<VoiceState>>;
-  cancelVoice(mode?: 'download' | 'recognition'): Promise<Result<void>>;
   transcribe(audio: ArrayBuffer): Promise<Result<string>>;
   onVoiceState(callback: (state: VoiceState) => void): () => void;
   pasteTerminal(id: string, text: string, sessionId: string): Promise<Result<void>>;

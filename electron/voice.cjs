@@ -116,11 +116,6 @@ class VoiceManager {
     })();
     return this.preparing;
   }
-  cancel(mode = 'all') {
-    if (mode !== 'recognition') this.controller?.abort();
-    if (mode !== 'download') for (const { reject } of this.requests.values()) reject(new Error('识别已取消。'));
-    if (mode !== 'download') this.requests.clear();
-  }
   engine() {
     if (this.worker) return this.worker;
     const threads = Math.min(4, Math.max(1, os.availableParallelism() - 2));
@@ -157,6 +152,12 @@ class VoiceManager {
       this.update({ phase: 'ready' }); return text;
     } catch (error) { this.update({ phase: 'ready', error: error.message }); throw error; }
   }
-  close() { this.cancel(); const worker = this.worker; this.worker = null; void worker?.terminate(); }
+  // Shutdown: stop any download and fail pending recognitions before the worker goes away.
+  close() {
+    this.controller?.abort();
+    for (const { reject } of this.requests.values()) reject(new Error('识别已取消。'));
+    this.requests.clear();
+    const worker = this.worker; this.worker = null; void worker?.terminate();
+  }
 }
 module.exports = { VoiceManager, MODEL_DIRECTORY, MODEL_FILES, DOWNLOAD_BYTES, digest, downloadAsset, validateAudio, samplesFromWav };

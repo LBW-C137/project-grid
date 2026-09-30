@@ -134,6 +134,8 @@ class FileOperations {
           if (entry.kind === 'link') throw new Error('文件夹内含有符号链接，请单独复制实际文件。');
           await this.download(connection, entry.path, path.join(destination, entry.name), update, check);
         }
+        // Pages must move forward; a repeated or malformed offset would download the same files forever.
+        if (listing.nextOffset !== null && !(Number.isInteger(listing.nextOffset) && listing.nextOffset > offset)) throw new Error('远程目录列表异常，已停止下载。');
         offset = listing.nextOffset;
       } while (offset !== null);
     } else if (meta.file) {

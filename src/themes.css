@@ -65,7 +65,7 @@
 :root:not([data-theme="forest"]) .has-splits .terminal-split { background: var(--theme-pane); }
 :root:not([data-theme="forest"]) .panel-header { background: transparent; border-color: var(--theme-line); }
 :root:not([data-theme="forest"]) .panel-footer { background: transparent; border-color: var(--theme-line); }
-:root:not([data-theme="forest"]) :is(.search-input, .setting-row select, .explorer-back, .button.secondary, .file-name-label input, .ssh-field input, .titlebar-tools > .icon-button) { background: var(--glass-sheen), var(--theme-control); border-color: var(--theme-line); color: var(--theme-ink); }
+:root:not([data-theme="forest"]) :is(.search-input, .setting-row select, .explorer-back, .button.secondary, .file-name-label input, .titlebar-tools > .icon-button) { background: var(--glass-sheen), var(--theme-control); border-color: var(--theme-line); color: var(--theme-ink); }
 :root:not([data-theme="forest"]) .button.primary { background: linear-gradient(160deg, #fff7f160, #ffffff00), var(--theme-button); color: var(--theme-button-ink); border-color: #fff7f1a3; }
 :root:not([data-theme="forest"]) .button.primary:hover { filter: brightness(1.07); }
 :root:not([data-theme="forest"]) :is(.panel-name, .tree-row, .titlebar-brand, .titlebar-subtitle, .terminal-split-header > span:first-child, .file-tabs, .preview-option, .text-button:not(.danger-text)) { color: var(--theme-ink); }

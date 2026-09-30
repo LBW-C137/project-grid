@@ -249,10 +249,18 @@ function remoteFor(id) {
   return session.terminal;
 }
 
+// Same label as project:git-status ("HEAD 1a2b3c4d" when detached), so the two sources never flip
+// the header back and forth; broadcast only when the label actually changes.
+function setBranch(id, branch) {
+  if (!store.projects.some(item => item.id === id) || branches.get(id) === branch) return;
+  branches.set(id, branch); broadcast();
+}
 function captureBranch(project) {
   if (project.kind === 'ssh') return;
-  execFile('git', ['-C', project.path, 'branch', '--show-current'], { windowsHide: true, timeout: 3000 }, (error, stdout) => {
-    if (!error && store.projects.some(p => p.id === project.id)) { branches.set(project.id, stdout.trim()); broadcast(); }
+  const git = (args, done) => execFile('git', ['-C', project.path, ...args], { windowsHide: true, timeout: 3000 }, (error, stdout) => done(error ? '' : stdout.trim()));
+  git(['symbolic-ref', '--short', '-q', 'HEAD'], branch => {
+    if (branch) setBranch(project.id, branch);
+    else git(['rev-parse', 'HEAD'], head => setBranch(project.id, head ? `HEAD ${head.slice(0, 8)}` : ''));
   });
 }
 
@@ -461,9 +469,7 @@ function registerIpc() {
     disposeProjectTerminals(findProject(id)); previewResources.closeProject(id); store.remove(id); branches.delete(id); broadcast(); return true;
   });
   handle('workspace:acknowledge', id => { findProject(id); store.acknowledge(id); broadcast(); });
-  handle('workspace:swap', (source, target) => { findProject(source); findProject(target); store.swapProjects(source, target); broadcast(); });
   handle('workspace:reorder', ids => { store.reorderProjects(ids); broadcast(); });
-  handle('workspace:acknowledge-all', () => { for (const p of store.projects) p.unread = 0; store.save(); broadcast(); });
   handle('workspace:settings', patch => {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('无效的设置。');
     store.updateSettings(patch); broadcast();
@@ -473,7 +479,7 @@ function registerIpc() {
   handle('project:git-status', async id => {
     const project = findProject(id), status = await projectGit.read(project, 'status');
     const branch = status.repository ? status.detached ? `HEAD ${status.head.slice(0, 8)}` : status.branch : '';
-    if (store.projects.some(item => item.id === id) && branches.get(id) !== branch) { branches.set(id, branch); broadcast(); }
+    setBranch(id, branch);
     return status;
   });
   handle('project:git-history', (id, offset = 0) => projectGit.read(findProject(id), 'history', offset));
@@ -502,7 +508,6 @@ function registerIpc() {
   handle('files:cancel', () => fileOperations.cancel());
   handle('voice:state', () => voiceManager.getState());
   handle('voice:prepare', () => voiceManager.prepare());
-  handle('voice:cancel', mode => { if (!['download', 'recognition'].includes(mode)) throw new Error('无效的语音操作。'); voiceManager.cancel(mode); });
   handle('voice:transcribe', audio => voiceManager.transcribe(audio));
   listen('files:focus', (id, focused) => { if (focused) { findProject(id); activeFileTree = id; activeTerminal = null; } else if (activeFileTree === id) activeFileTree = null; });
   handle('project:file', async (id, relativePath, pageIndex) => {
