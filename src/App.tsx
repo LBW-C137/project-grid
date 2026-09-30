@@ -15,7 +15,7 @@ import { useProjectFocusMotion } from './useProjectFocusMotion';
 import { applyTheme, themes } from './themes';
 import { applyMotion } from './motion';
 import { LiquidGlass } from './LiquidGlass';
-import { VoiceButton, VoiceModelStatus } from './VoiceButton';
+import { VoiceButton, VoiceModelStatus, VoiceOverlay } from './VoiceButton';
 const FilePreview = lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
 
 const api = window.projectGrid;
@@ -151,7 +151,7 @@ function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onD
       <label className="setting-row"><span><TerminalIcon size={19} /><span><b>终端字号</b><small>全屏与网格共用字号</small></span></span><select aria-label="终端字号" value={settings.fontSize} onChange={e => update({ fontSize: Number(e.target.value) })}>{[10, 11, 12, 13, 14, 16, 18, 20].map(n => <option key={n} value={n}>{n} px</option>)}</select></label>
       <label className="setting-row"><span><ArrowsOutSimple size={19} /><span><b>界面动画</b><small>窗口平滑放大与呼吸灯；默认不受 Windows“动画效果”开关影响</small></span></span><select aria-label="界面动画" value={settings.focusAnimation} onChange={e => update({ focusAnimation: e.target.value as Settings['focusAnimation'] })}><option value="smooth">开启</option><option value="system">跟随系统</option><option value="off">关闭</option></select></label>
       <label className="setting-row"><span><ArrowCounterClockwise size={19} /><span><b>启动时恢复工作</b><small>恢复最近会话，被中断的任务自动发送“继续”</small></span></span><input type="checkbox" checked={settings.restoreSessions} onChange={event => update({ restoreSessions: event.target.checked })} /></label>
-      <div className="setting-row"><span><Microphone size={19} /><span><b>本地语音输入</b><small>点击终端底部麦克风说话，文字插入输入框，按回车发送</small></span></span><VoiceModelStatus /></div>
+      <div className="setting-row"><span><Microphone size={19} /><span><b>本地语音输入</b><small>按 Ctrl+T 或点击终端上的麦克风说话，按回车识别并发送，Esc 取消</small></span></span><VoiceModelStatus /></div>
       {updates && <section className="update-section" aria-label="应用更新">
         <div className="update-heading"><b>应用更新</b><span>当前版本 v{updates.currentVersion}</span></div>
         <p role="status">{updates.status === 'unavailable' ? '当前为便携版或开发版。安装 Windows 版后，即可自动检查和下载更新。'
@@ -331,6 +331,7 @@ export function App() {
     {settingsOpen && <SettingsDialog settings={settings} updates={updates} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => setSettingsOpen(false)} update={setPreference} quit={() => perform(api.quit())} />}
     {addOpen && <AddProjectDialog onClose={() => setAddOpen(false)} onAdded={() => setQuery('')} onError={reportError} />}
     {sshAuth[0] && <SSHAuthDialog key={sshAuth[0].id} request={sshAuth[0]} />}
+    <VoiceOverlay onError={reportError} />
     <LiquidGlass />
   </div>;
 }

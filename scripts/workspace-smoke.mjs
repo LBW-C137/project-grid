@@ -165,6 +165,28 @@ try {
   await microphone.click(); await page.keyboard.press('Escape');
   await waitFor(async () => !/is-recording/.test(await microphone.getAttribute('class')), 'Escape cancels a recording without inserting');
   console.log(`PASS: blue connected microphone, click to talk and click again to insert ${assets ? 'real SenseVoice recognition' : 'stubbed recognition'} into the terminal without submitting; Escape cancels`);
+  // Ctrl+T: a microphone appears in the middle of the window; Enter inserts the text and then sends it.
+  await page.locator('.project-panel.is-focused .xterm-helper-textarea').first().focus();
+  await application.evaluate(() => { globalThis.voicePastes = []; });
+  await page.keyboard.press('Control+t');
+  const overlay = page.locator('.voice-overlay');
+  await overlay.waitFor();
+  await waitFor(async () => /is-recording/.test(await microphone.getAttribute('class')), 'Ctrl+T records the focused terminal');
+  await overlay.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+  const box = await overlay.boundingBox(), viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+  assert.ok(Math.abs(box.x + box.width / 2 - viewport.width / 2) < 2 && Math.abs(box.y + box.height / 2 - viewport.height / 2) < 2, `the microphone sits in the middle of the window ${JSON.stringify({ box, viewport })}`);
+  assert.equal(await application.evaluate(() => globalThis.voicePastes.some(item => item.data === '\x14')), false, 'Ctrl+T never reaches the terminal');
+  await page.waitForTimeout(5500);
+  await page.screenshot({ path: path.join(output, 'voice-shortcut.png') });
+  await page.keyboard.press('Enter');
+  await waitFor(async () => application.evaluate(() => { const pasted = globalThis.voicePastes.findIndex(item => /project folder/i.test(item.data)); return pasted >= 0 && globalThis.voicePastes.findIndex(item => item.data === '\r') > pasted; }), 'Enter inserts the text, then submits it', 60000);
+  assert.equal(await application.evaluate(() => globalThis.voicePastes.filter(item => item.data === '\r').length), 1, 'the Enter that stops recording is not also typed into the terminal');
+  await overlay.waitFor({ state: 'detached' });
+  await application.evaluate(() => { globalThis.voicePastes = []; });
+  await page.keyboard.press('Control+t'); await overlay.waitFor(); await page.keyboard.press('Escape'); await overlay.waitFor({ state: 'detached' });
+  await page.waitForTimeout(500);
+  assert.equal(await application.evaluate(() => globalThis.voicePastes.some(item => item.data === '\r' || item.data === '\x1b' || /project folder/i.test(item.data))), false, 'Escape cancels without inserting, submitting or reaching the terminal');
+  console.log('PASS: Ctrl+T shows a centred microphone; Enter inserts and sends, Escape cancels');
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   console.error(error); process.exitCode = 1;
