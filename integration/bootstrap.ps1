@@ -18,6 +18,13 @@ if ($global:ProjectGridCodexCommand -and [IO.Path]::GetExtension($global:Project
     }
 }
 
+$global:ProjectGridClaudeCommand = Get-Command claude -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
+$global:ProjectGridClaudeExecutable = $global:ProjectGridClaudeCommand
+if ($global:ProjectGridClaudeCommand -and [IO.Path]::GetExtension($global:ProjectGridClaudeCommand) -in @('.ps1', '.cmd', '')) {
+    $nativeClaude = Join-Path (Split-Path $global:ProjectGridClaudeCommand -Parent) 'node_modules\@anthropic-ai\claude-code\bin\claude.exe'
+    if (Test-Path -LiteralPath $nativeClaude) { $global:ProjectGridClaudeExecutable = $nativeClaude }
+}
+
 # Windows PowerShell 5 strips embedded quotes when forwarding native arguments.
 # Build the standard Windows argv representation explicitly so notify's TOML
 # array, Chinese paths, quotes and trailing backslashes reach Codex intact.
@@ -42,7 +49,7 @@ function global:ConvertTo-ProjectGridArgument {
 }
 
 function global:Send-ProjectGridEvent {
-    param([string]$Type, [int]$ExitCode = 0)
+    param([string]$Type, [int]$ExitCode = 0, [string]$Agent = 'codex')
     $global:ProjectGridEventSequence++
     try {
         $eventData = @{
@@ -51,6 +58,7 @@ function global:Send-ProjectGridEvent {
             type = $Type
             sequence = $global:ProjectGridEventSequence
             exitCode = $ExitCode
+            agent = $Agent
             codexAvailable = [bool]$global:ProjectGridCodexCommand
             codexHome = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.codex' })
             cwd = (Get-Location).Path
@@ -99,6 +107,47 @@ function global:codex {
     } finally {
         Send-ProjectGridEvent 'codex-exited' $codexExit
         $global:LASTEXITCODE = $codexExit
+    }
+}
+
+# Claude Code reports each turn through hooks injected with --settings, which merge with the
+# user's own settings instead of replacing them. Depending on the installation Claude runs hook
+# commands through PowerShell or Git Bash, so the command must mean the same in both: the
+# executable path has no spaces and stays unquoted (a quoted first word is only a string in
+# PowerShell), arguments are quoted, and every path uses forward slashes.
+function global:claude {
+    if (-not $global:ProjectGridClaudeExecutable -or [IO.Path]::GetExtension($global:ProjectGridClaudeExecutable) -ne '.exe') {
+        if ($global:ProjectGridClaudeCommand) { & $global:ProjectGridClaudeCommand @args; return }
+        Write-Host 'Claude Code was not found in PATH. Install it, then restart this terminal.' -ForegroundColor Yellow
+        return
+    }
+    $hookCommand = @(
+        ($global:ProjectGridSession.powershellPath -replace '\\', '/'),
+        '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', ('"' + ($global:ProjectGridSession.claudeHookPath -replace '\\', '/') + '"'),
+        '-PipeName', $global:ProjectGridSession.pipeName,
+        '-ProjectId', $global:ProjectGridSession.projectId,
+        '-SessionKey', $global:ProjectGridSession.sessionKey
+    ) -join ' '
+    $hook = { param($kind) @{ hooks = @(@{ type = 'command'; command = ($hookCommand + ' -Kind ' + $kind); timeout = 10 }) } }
+    $settings = @{ hooks = @{ UserPromptSubmit = @(& $hook 'start'); Stop = @(& $hook 'stop') } } | ConvertTo-Json -Depth 6 -Compress
+    Send-ProjectGridEvent 'codex-started' -Agent 'claude'
+    $claudeExit = 0
+    try {
+        $startInfo = [Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $global:ProjectGridClaudeExecutable
+        $startInfo.Arguments = ((@('--settings', $settings) + @($args)) | ForEach-Object { ConvertTo-ProjectGridArgument ([string]$_) }) -join ' '
+        $startInfo.UseShellExecute = $false
+        $startInfo.WorkingDirectory = (Get-Location).Path
+        $claudeProcess = [Diagnostics.Process]::Start($startInfo)
+        try { $claudeProcess.WaitForExit(); $claudeExit = $claudeProcess.ExitCode }
+        finally { $claudeProcess.Dispose() }
+    } catch {
+        Write-Error $_
+        $claudeExit = 1
+    } finally {
+        Send-ProjectGridEvent 'codex-exited' $claudeExit -Agent 'claude'
+        $global:LASTEXITCODE = $claudeExit
     }
 }
 

@@ -6,7 +6,7 @@ import type { Project, ProjectTerminal, Result } from './types';
 
 function label(terminal: ProjectTerminal) {
   if (terminal.error) return '需要检查';
-  if (terminal.codexActive) return terminal.codexActivity === 'working' ? '正在处理' : terminal.codexActivity === 'complete' ? '本轮已完成' : terminal.codexActivity === 'interrupted' ? '已中断' : 'Codex 会话中';
+  if (terminal.codexActive) return terminal.codexActivity === 'working' ? '正在处理' : terminal.codexActivity === 'complete' ? '本轮已完成' : terminal.codexActivity === 'interrupted' ? '已中断' : `${terminal.agent === 'claude' ? 'Claude' : 'Codex'} 会话中`;
   return terminal.status === 'starting' ? '正在启动' : terminal.status === 'shell' ? '终端就绪' : terminal.status === 'exited' ? '已退出' : '尚未启动';
 }
 
@@ -44,7 +44,7 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
           <VoiceButton terminalId={terminal.id} sessionId={terminal.sessionId} name={name} size={13} onError={onError} />
           {stopped && terminal.sessionId && <button className="text-button" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}>重新启动</button>}
           {!stopped && !terminal.codexActive && terminal.status !== 'starting' && <button className="text-button" disabled={!terminal.shellReady} onClick={() => void onAction(window.projectGrid.launchCodex(terminal.id))}><Play size={12} />启动 Codex</button>}
-          {terminal.codexActive && <span className="session-label">CODEX</span>}
+          {terminal.codexActive && <span className="session-label">{terminal.agent === 'claude' ? 'CLAUDE' : 'CODEX'}</span>}
         </div></footer>}
       </section>;
     })}

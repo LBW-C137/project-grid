@@ -73,7 +73,7 @@ function publicState() {
     projects: store.projects.map(p => {
       const terminals = terminalIds(p).map((id, index) => {
         const s = sessions.get(id);
-        return { id, title: `终端 ${index + 1}`, sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false,
+        return { id, title: `终端 ${index + 1}`, sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
           codexActivity: s?.codexActivity || 'unknown', shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null };
       });
@@ -86,7 +86,7 @@ function publicState() {
         kind: p.kind || 'local', ssh: p.ssh || null,
         branch: branches.get(p.id) || '',
         terminals, sessionId: first.sessionId, status,
-        codexActive: activeCodex.length > 0, codexActivity: activity,
+        codexActive: activeCodex.length > 0, codexActivity: activity, agent: activeCodex[0]?.agent || null,
         shellReady: first.shellReady, codexAvailable: first.codexAvailable,
         lastActivityAt: first.lastActivityAt, error: terminals.find(item => item.error)?.error || null,
       };
@@ -153,11 +153,38 @@ function notifyCompletion(project) {
   }
 }
 
+// One place turns an agent's turn state into lights and completion alerts, for Codex and Claude alike.
+function applyActivity(project, s, snapshot) {
+  if (sessions.get(s.terminalId) !== s || !s.codexActive) return;
+  // Resumed history and a slow response from before a new submission
+  // must not make newly running work look complete.
+  if (snapshot.updatedAt < Math.max(s.activitySince, s.activityInputAt)) return;
+  s.rootThreadId = snapshot.threadId; s.activeTurnId = snapshot.turnId;
+  if (s.agent === 'codex') store.setRestore(s.terminalId, { threadId: snapshot.threadId });
+  s.codexActivity = snapshot.state;
+  if (snapshot.state === 'working') store.expectCompletion(project.id);
+  else if (snapshot.state === 'complete' && snapshot.turnId) {
+    s.lastCompletedAt = snapshot.updatedAt;
+    if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
+    if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project);
+  } else if (snapshot.state === 'interrupted') store.expectCompletion(project.id, false);
+  broadcast();
+}
+
+// Claude Code hooks: UserPromptSubmit -> working, Stop -> complete (integration/claude-hook.ps1).
+function claudeActivity(project, s, event) {
+  if (!s.codexActive || s.agent !== 'claude' || !['working', 'complete'].includes(event.state)) return;
+  if (typeof event.sessionId !== 'string' || !/^[\w-]{1,100}$/.test(event.sessionId) || typeof event.eventId !== 'string' || event.eventId.length > 200) return;
+  const turnId = event.eventId.slice(event.sessionId.length + 1);
+  applyActivity(project, s, { threadId: event.sessionId, turnId: event.state === 'complete' ? turnId : null, state: event.state, updatedAt: Date.now() });
+}
+
 function onEvent(event) {
   const s = sessions.get(event.projectId);
   if (!s || event.sessionKey !== s.sessionKey) return;
   const project = store.projects.find(p => p.id === s.projectId);
   if (!project) return;
+  if (event.type === 'agent-activity') { claudeActivity(project, s, event); return; }
   if (event.type !== 'turn-complete' && !acceptShellEvent(s, event)) return;
   if (event.type === 'shell-ready' || event.type === 'shell-prompt') {
     s.activityMonitor?.stop(); s.activityMonitor = null;
@@ -175,27 +202,21 @@ function onEvent(event) {
     s.error = null;
     s.submissions.reset();
     s.codexActivity = 'unknown'; s.activitySince = Date.now(); s.activityInputAt = 0;
+    s.agent = event.agent === 'claude' ? 'claude' : 'codex';
+    s.activityMonitor?.stop(); s.activityMonitor = null;
+    if (s.agent === 'claude') {
+      // Claude reports turns through its hooks; restore stays with Codex, which it cannot resume.
+      store.setRestore(s.terminalId, { terminal: true, cwd: event.cwd });
+      broadcast(); return;
+    }
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
     const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0 });
     s.activityMonitor = monitorActivity(
       () => reader ? reader.read() : project.terminals?.length && !s.reportedThreadId ? Promise.resolve(null) : s.terminal.request('codex-status', { since: remoteSince, threadId: s.reportedThreadId }),
       snapshot => {
-        if (sessions.get(s.terminalId) !== s || !s.codexActive) return;
         if (!reader) snapshot = { ...snapshot, updatedAt: snapshot.updatedAt + s.activitySince - remoteSince };
-        // Resumed history and a slow response from before a new submission
-        // must not make newly running work look complete.
-        if (snapshot.updatedAt < Math.max(s.activitySince, s.activityInputAt)) return;
-        s.rootThreadId = snapshot.threadId; s.activeTurnId = snapshot.turnId;
-        store.setRestore(s.terminalId, { threadId: snapshot.threadId });
-        s.codexActivity = snapshot.state;
-        if (snapshot.state === 'working') store.expectCompletion(project.id);
-        else if (snapshot.state === 'complete' && snapshot.turnId) {
-          s.lastCompletedAt = snapshot.updatedAt;
-          if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
-          if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project);
-        } else if (snapshot.state === 'interrupted') store.expectCompletion(project.id, false);
-        broadcast();
+        applyActivity(project, s, snapshot);
       },
     );
     store.setRestore(s.terminalId, { terminal: true, codex: true, cwd: event.cwd });
@@ -208,7 +229,7 @@ function onEvent(event) {
     s.reportedThreadId = null;
     if (!quitting) store.setRestore(s.terminalId, { codex: false });
     const code = Number(event.exitCode);
-    if (code && code !== 130 && code !== -1073741510) s.error = `Codex 已退出（代码 ${code}），请查看终端输出。`;
+    if (code && code !== 130 && code !== -1073741510) s.error = `${s.agent === 'claude' ? 'Claude Code' : 'Codex'} 已退出（代码 ${code}），请查看终端输出。`;
   } else if (event.type === 'turn-complete') {
     // notify is inherited by child agents. It only requests a refresh; the
     // interactive parent's task lifecycle is the authority for completion.
@@ -277,7 +298,7 @@ function startTerminal(id) {
   const bootstrapFile = project.kind === 'ssh' ? null : path.join(runtimeDir, `${sessionId}.json`);
   if (bootstrapFile) fs.writeFileSync(bootstrapFile, JSON.stringify({
     projectId: id, projectPath: startPath, sessionKey, pipeName: eventServer.name,
-    powershellPath, notifyPath: path.join(integrationDir, 'notify.ps1'),
+    powershellPath, notifyPath: path.join(integrationDir, 'notify.ps1'), claudeHookPath: path.join(integrationDir, 'claude-hook.ps1'),
   }), { mode: 0o600 });
   const env = createTerminalEnvironment(process.env, bootstrapFile || '');
   if (project.kind === 'ssh' && !sshAskpassPath) {
