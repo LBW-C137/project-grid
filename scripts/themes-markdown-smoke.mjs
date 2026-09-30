@@ -50,8 +50,8 @@ async function chooseTheme(id, name) {
   }, id);
   assert.equal(wallpaper.url, wallpaper.preview, 'settings preview reuses the actual wallpaper');
   assert.ok(!/^https?:/.test(wallpaper.url), 'wallpaper is a packaged local asset');
-  assert.equal(wallpaper.width, 3840, 'wallpaper retains 4K width');
-  assert.ok(wallpaper.height >= 2160 && wallpaper.fit.includes('cover'), 'wallpaper fills without stretching');
+  assert.equal(wallpaper.width, 2560, 'wallpaper is 2560px: the background is softened, so larger images only add size');
+  assert.ok(wallpaper.height >= 1440 && wallpaper.fit.includes('cover'), 'wallpaper fills without stretching');
   assert.equal(wallpaper.position.split(',').at(-1).trim(), wallpaper.previewPosition, 'preview and workspace crop match');
   wallpaperChecks.push(wallpaper);
   await page.screenshot({ path: path.join(output, `${id}-settings.png`) });
@@ -91,11 +91,10 @@ try {
   const editor = page.getByRole('textbox', { name: '文件编辑器', exact: true });
   await editor.waitFor(); assert.equal(await editor.inputValue(), content);
   const previewGeometry = await page.locator('.file-preview').evaluate(node => {
-    const box = node.getBoundingClientRect(), footer = document.querySelector('.workspace-statusbar').getBoundingClientRect();
-    return { gap: footer.top - box.bottom, margin: parseFloat(getComputedStyle(node).marginBottom), footerLeft: footer.left, footerRight: footer.right, width: innerWidth };
+    const box = node.getBoundingClientRect();
+    return { gap: innerHeight - box.bottom, margin: parseFloat(getComputedStyle(node).marginBottom), width: innerWidth };
   });
-  assert.ok(Math.abs(previewGeometry.gap - previewGeometry.margin) <= 1, 'preview has no obsolete extra footer gap');
-  assert.ok(Math.abs(previewGeometry.footerLeft) < 1 && Math.abs(previewGeometry.footerRight - previewGeometry.width) < 1, `footer spans explorer and preview within DPI rounding: ${JSON.stringify(previewGeometry)}`);
+  assert.ok(Math.abs(previewGeometry.gap - previewGeometry.margin) <= 1, 'preview keeps one layout gap above the window bottom');
   assert.equal(await editor.evaluate(node => getComputedStyle(node).fontWeight), '600');
   await page.getByRole('button', { name: '预览', exact: true }).click();
   const markdown = page.getByRole('article', { name: 'Markdown 预览', exact: true });

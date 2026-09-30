@@ -254,12 +254,16 @@ jobs:
           Install Codex CLI on the computer or Linux SSH host where your project runs.
 
           - Multiple project terminals with completion alerts.
+          - Claude Code is recognised like Codex: type `claude` in a project terminal and each turn shows as working, then lights the card when it finishes. Status comes from Claude Code hooks passed at launch, without editing your Claude settings; your own hooks still run. Local projects only for now.
+          - Breathing lights work when Windows "Animation effects" is off. All motion follows the new "界面动画" setting (on by default, follow system, or off).
+          - Collapsing the sidebar or resizing the window while Codex, Claude Code or another full-screen program runs no longer leaves stray characters after it exits: the terminal and ConPTY reflow once, at the settled size.
+          - Smaller download: only Chinese and English Electron language packs are bundled, wallpapers are 2560 px, and the installer uses maximum compression.
           - Voice input uses SenseVoice Small offline: accurate Mandarin, English and Cantonese in simplified Chinese with punctuation. The 239 MB model downloads in the background after the first launch, from Hugging Face or the hf-mirror.com fallback, with resume and SHA-256 checks.
           - Click the microphone once to talk and again to insert the text into that terminal's input without sending it; Esc cancels. The microphone is blue when a device is connected and red when none is.
-          - Calm seams between panes: the gaps show a softened wallpaper instead of a sharp, noisy strip, edges are a thin even highlight, and shadows no longer darken the neighbouring pane.
+          - Calm seams between panes: the gaps show a softened wallpaper, idle panes have no outline or silver ring, and only a soft highlight marks the top edge. Status colours still ring working, waiting and finished panes.
           - Cleaner Apple-style glass: the backdrop is softly blurred and more saturated, and cards, the sidebar and file preview get a gradient edge light, bright at the upper left and faint at the lower right, instead of a uniform outline. Panel headers and footers no longer add their own dark bands.
           - Panel spacing is uniform: the same 6px gap sits between cards, beside the sidebar and against the top and bottom bars, in both the overview and the expanded project view.
-          - The expanded project's sidebar replaces Settings with Git History. Switch between the file tree and staged, working-tree and conflict changes; browse committed history with merge graphs and changed-file lists for local and Linux SSH projects. File badges refresh automatically while the sidebar is visible, without altering the index or running terminals. Settings remains in the top bar.
+          - A redesigned project sidebar: the project name and path as its title, a Files | Git switch with a change count, a lighter file tree with single-colour icons, and a compact icon rail when collapsed. Browse staged, working-tree and conflict changes and committed history with merge graphs, for local and SSH projects.
           - New and restarted local terminals pick up newly installed tools from Windows PATH without restarting Project Grid. Existing injected toolchain paths keep their priority; other terminals remain untouched.
           - Clear liquid-glass title/status bars, sidebar and terminal shells reveal the background with thin optical rims and real SVG backdrop refraction. Text and ANSI colors remain separate from the lens.
           - All themes include an opaque Reduced Transparency fallback. Packaged tests compare refraction pixels and exercise 6/16 cards with six streaming terminals.
@@ -269,10 +273,10 @@ jobs:
           - Borders and status dots visibly fade dark to bright to dark together over 2 seconds, including while hovering or typing. Completion breathes three times, then stays quiet; viewed automatic round completion stays steady green.
           - Brighter, bolder interface and terminal text, readable faint ANSI output and selected inverse text across all three transparent themes. Custom terminal font sizes and color hues are preserved.
           - Codex's dark input and matching history surfaces are transparent, with fully bright faint text. Each split keeps its own styling; ordinary shells, colored diff backgrounds, selection and block cursors remain distinct. Verified in a real offline Codex TUI with Chinese multiline input, copy/paste and preserved drafts.
-          - Title and status bars meet the window edges, including beside the explorer. Project cards, the sidebar and the top and bottom bars are separated by one uniform 6px gap, with 14px corners.
+          - More room for terminals: the card footer is gone (microphone, Codex and restart controls sit in the card title), and the bottom status bar is merged into the title bar. With three or fewer projects the search box is an icon; Ctrl+K opens it. Panes are separated by one uniform 6px gap with 14px corners.
           - Smaller Windows x64 packages exclude source maps, native build sources, duplicate/other-platform PTY binaries and Python caches; required local/SSH runtimes are verified before release.
           - Choose Forest Light, Mountain Blue or Wild Red in Settings; themes apply immediately and persist without restarting terminals.
-          - High Sierra, Big Sur coast and Sierra landscape wallpapers are bundled at 3840-pixel width. Local WebP assets keep wallpaper previews and backgrounds available offline, with proportional cropping and clear terminal text.
+          - High Sierra, Big Sur coast and Sierra landscape wallpapers are bundled offline at 2560-pixel width; the background is softened, so larger images added size without visible detail.
           - Text/code files open directly in edit mode. Markdown previews render headings, tables, code, task lists, local/SSH images and links, including unsaved drafts.
           - Add independent terminals inside each project with automatic split layout, separate Codex identities and individual session recovery.
           - Edit text and HTML source, save with Ctrl+S, preserve encoding and untouched large-file segments, and detect external modification conflicts.

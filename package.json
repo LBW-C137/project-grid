@@ -1,7 +1,7 @@
 {
   "name": "project-grid",
   "productName": "Project Grid",
-  "version": "0.5.13",
+  "version": "0.5.14",
   "description": "多个项目、多个真实终端，Codex 完成后一眼可见。",
   "author": "Project Grid",
   "license": "MIT",
@@ -131,6 +131,12 @@
       ],
       "signExecutable": false,
       "artifactName": "Project-Grid-${version}-win-x64.${ext}"
-    }
+    },
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "compression": "maximum",
+    "afterPack": "scripts/after-pack.cjs"
   }
 }
