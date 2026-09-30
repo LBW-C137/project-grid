@@ -11,11 +11,11 @@
   --glass-sheen: linear-gradient(160deg, rgba(255, 255, 255, .15) 0%, rgba(255, 255, 255, .04) 28%, rgba(255, 255, 255, 0) 58%, rgba(255, 255, 255, .03) 100%);
   /* A crisp specular top edge, faint rim light on the other sides, a whisper of inner glow,
      and a tight cast shadow that lifts the pane without muddying the gap between panes. */
-  --glass-hairline: rgba(255, 255, 255, .13);
+  --glass-hairline: rgba(255, 255, 255, .1);
   /* Edge light for large panes: bright where the light lands (upper left), a faint return at the
      lower right, almost nothing in between. The angle scales with the pane, so any aspect ratio works. */
-  --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, .42) 9%, rgba(255, 255, 255, .12) 26%, rgba(255, 255, 255, .05) 50%, rgba(255, 255, 255, .12) 74%, rgba(255, 255, 255, .46) 91%, rgba(255, 255, 255, .82) 100%);
-  --glass-lift: inset 2px 2px 6px -3px rgba(255, 255, 255, .34), inset -2px -2px 6px -3px rgba(255, 255, 255, .16), inset 0 0 22px rgba(255, 255, 255, .045), 0 8px 24px -8px rgba(2, 14, 26, .34), 0 1px 3px rgba(2, 14, 26, .14);
+  --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .62) 0%, rgba(255, 255, 255, .24) 10%, rgba(255, 255, 255, .08) 28%, rgba(255, 255, 255, .04) 55%, rgba(255, 255, 255, .06) 80%, rgba(255, 255, 255, .16) 100%);
+  --glass-lift: inset 0 1px 0 rgba(255, 255, 255, .1), inset 0 0 20px rgba(255, 255, 255, .035), 0 1px 2px rgba(2, 14, 26, .16), 0 3px 6px -3px rgba(2, 14, 26, .22);
   --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .62), inset 1px 0 0 rgba(255, 255, 255, .22), inset -1px 0 0 rgba(255, 255, 255, .1), inset 0 -1px 0 rgba(255, 255, 255, .16), inset 0 0 26px rgba(255, 255, 255, .045), 0 8px 24px -8px rgba(2, 14, 26, .34), 0 1px 3px rgba(2, 14, 26, .14);
   --glass-radius: 14px;
   --layout-gap: 6px; /* one gap between panels and between panels and the top/bottom bars */
@@ -29,6 +29,9 @@
     linear-gradient(rgba(10, 22, 27, .19), rgba(10, 22, 27, .19)),
     url('./assets/macos-high-sierra.webp') center / cover no-repeat;
 }
+/* The wallpaper is only seen directly in the gaps between panes. Softening it there keeps each
+   gap a calm band of colour instead of a sharp, noisy strip framed by two glass edges. */
+.app-shell::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; backdrop-filter: blur(14px) saturate(120%); }
 .titlebar, .workspace-statusbar, .focus-sidebar, .project-panel, .settings-dialog, .file-preview {
   backdrop-filter: var(--liquid-backdrop, blur(6px) saturate(165%));
 }
@@ -67,7 +70,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-panel:hover { border-color: rgba(255, 255, 255, .38); }
 .focus-sidebar { position: relative; }
 .project-panel::after, .focus-sidebar::after, .file-preview::after {
-  content: ''; position: absolute; inset: 0; z-index: 2; padding: 1.25px; pointer-events: none; border-radius: calc(var(--glass-radius) - 1px);
+  content: ''; position: absolute; inset: 0; z-index: 2; padding: 1px; pointer-events: none; border-radius: calc(var(--glass-radius) - 1px);
   background: var(--glass-rim); mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
 }
 .panel-terminal-area { background: rgba(3, 14, 23, .18); }
@@ -310,5 +313,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
   .reorder-hint, .search-input, .button.secondary { background: var(--glass-solid); backdrop-filter: none; text-shadow: none; }
   .project-panel.has-unread { background: #3b2b39; }.project-panel.round-complete { background: #263d35; }
   .settings-dialog::backdrop { background: #07111fc9; backdrop-filter: none; }
+  .app-shell::before { backdrop-filter: none; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
