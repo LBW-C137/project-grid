@@ -349,28 +349,34 @@ try {
   console.log('PASS: interactive alternate-screen app remains responsive through terminal resizing');
 
   const clickTerminalText = async (text, control = true) => {
+    // xterm reuses row elements when output scrolls, so the row found a moment ago may already hold
+    // the next line. Locate and measure again until both steps see the same text.
     const row = panel.locator('.xterm-rows > div').filter({ hasText: text }).last();
-    await row.waitFor();
-    const position = await row.evaluate((element, needle) => {
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-      const nodes = [];
-      let node;
-      while ((node = walker.nextNode())) nodes.push(node);
-      const all = nodes.map(node => node.textContent).join('');
-      let offset = all.indexOf(needle);
-      if (offset < 0) throw new Error(`Missing terminal text: ${needle}`);
-      for (const node of nodes) {
-        if (offset < node.textContent.length) {
-          const range = document.createRange();
-          range.setStart(node, offset); range.setEnd(node, offset + 1);
-          const rect = range.getBoundingClientRect();
-          const screenBox = element.closest('.xterm-screen').getBoundingClientRect();
-          return { x: rect.x - screenBox.x + rect.width / 2, y: rect.y - screenBox.y + rect.height / 2 };
+    let position = null;
+    await waitFor(async () => {
+      await row.waitFor();
+      position = await row.evaluate((element, needle) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        let node;
+        while ((node = walker.nextNode())) nodes.push(node);
+        const all = nodes.map(node => node.textContent).join('');
+        let offset = all.indexOf(needle);
+        if (offset < 0) throw new Error(`Missing terminal text: ${needle}`);
+        for (const node of nodes) {
+          if (offset < node.textContent.length) {
+            const range = document.createRange();
+            range.setStart(node, offset); range.setEnd(node, offset + 1);
+            const rect = range.getBoundingClientRect();
+            const screenBox = element.closest('.xterm-screen').getBoundingClientRect();
+            return { x: rect.x - screenBox.x + rect.width / 2, y: rect.y - screenBox.y + rect.height / 2 };
+          }
+          offset -= node.textContent.length;
         }
-        offset -= node.textContent.length;
-      }
-      throw new Error('No terminal cell');
-    }, text);
+        throw new Error('No terminal cell');
+      }, text).catch(error => { if (/Missing terminal text/.test(error.message)) return null; throw error; });
+      return position !== null;
+    }, `terminal text ${text} stays in place`);
     const screen = panel.locator('.xterm-screen');
     // Cross a different cell before revisiting the same link: xterm caches the
     // last hovered cell even after a pointer leaves the terminal.

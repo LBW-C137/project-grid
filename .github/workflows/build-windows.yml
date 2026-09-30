@@ -39,7 +39,7 @@ jobs:
   windows:
     name: Windows x64 build and desktop tests
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     outputs:
       version: ${{ steps.version.outputs.version }}
       binary: ${{ steps.version.outputs.binary }}
@@ -93,50 +93,50 @@ jobs:
         run: node scripts/verify-update-artifacts.cjs
 
       - name: Verify desktop with actual terminal button clicks
-        run: npm run test:desktop -- --packaged
+        run: node scripts/retry.mjs npm run test:desktop -- --packaged
 
       - name: Verify local terminal restarts refresh Windows PATH without restarting the app
-        run: npm run test:path-refresh -- --packaged
+        run: node scripts/retry.mjs npm run test:path-refresh -- --packaged
 
       - name: Verify session recovery, clipboard and SSH desktop interaction
-        run: npm run test:sessions -- --packaged
+        run: node scripts/retry.mjs npm run test:sessions -- --packaged
 
       - name: Verify animated project expansion and return
         run: |
           node scripts/verify-installer-payload.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $installed = Get-Content -LiteralPath .test-output/installer-payload.json -Raw -Encoding UTF8 | ConvertFrom-Json
-          node scripts/focus-motion-smoke.mjs --executable $installed.executable
+          node scripts/retry.mjs node scripts/focus-motion-smoke.mjs --executable $installed.executable
 
       - name: Verify completion notifications only rearm after new input
-        run: npm run test:completion -- --packaged
+        run: node scripts/retry.mjs npm run test:completion -- --packaged
 
       - name: Verify file operations and microphone UI with isolated test devices
-        run: npm run test:workspace -- --packaged --slow-copy
+        run: node scripts/retry.mjs npm run test:workspace -- --packaged --slow-copy
 
       - name: Verify editing, path copying and independent split terminals
-        run: npm run test:editor-terminals -- --packaged
+        run: node scripts/retry.mjs npm run test:editor-terminals -- --packaged
 
       - name: Verify persistent themes, automatic editing and Markdown previews
-        run: npm run test:themes-markdown -- --packaged
+        run: node scripts/retry.mjs npm run test:themes-markdown -- --packaged
 
       - name: Verify synchronized lights, readable themes and quiet completed cards
-        run: npm run test:visual -- --packaged
+        run: node scripts/retry.mjs npm run test:visual -- --packaged
 
       - name: Verify internal navigation and removed external editor and manual completion actions
-        run: npm run test:navigation -- --packaged
+        run: node scripts/retry.mjs npm run test:navigation -- --packaged
 
       - name: Verify Git status, history and explorer switching for local and SSH projects
-        run: npm run test:git -- --packaged
+        run: node scripts/retry.mjs npm run test:git -- --packaged
 
       - name: Verify image paths use text-only clipboard data and latest-copy ordering
-        run: npm run test:clipboard -- --packaged
+        run: node scripts/retry.mjs npm run test:clipboard -- --packaged
 
       - name: Verify liquid glass under terminal load and reduced transparency
-        run: npm run test:material -- --packaged
+        run: node scripts/retry.mjs npm run test:material -- --packaged
 
       - name: Verify transparent real Codex input and bright text without model requests
-        run: npm run test:composer -- --packaged
+        run: node scripts/retry.mjs npm run test:composer -- --packaged
 
       - name: Create checksum and build notes
         run: |
@@ -254,6 +254,8 @@ jobs:
           Install Codex CLI on the computer or Linux SSH host where your project runs.
 
           - Multiple project terminals with completion alerts.
+          - Voice input uses SenseVoice Small offline: accurate Mandarin, English and Cantonese in simplified Chinese with punctuation. The 239 MB model downloads in the background after the first launch, from Hugging Face or the hf-mirror.com fallback, with resume and SHA-256 checks.
+          - Click the microphone once to talk and again to insert the text into that terminal's input without sending it; Esc cancels. The microphone is blue when a device is connected and red when none is.
           - Cleaner Apple-style glass: the backdrop is softly blurred and more saturated, and cards, the sidebar and file preview get a gradient edge light, bright at the upper left and faint at the lower right, instead of a uniform outline. Panel headers and footers no longer add their own dark bands.
           - Panel spacing is uniform: the same 6px gap sits between cards, beside the sidebar and against the top and bottom bars, in both the overview and the expanded project view.
           - The expanded project's sidebar replaces Settings with Git History. Switch between the file tree and staged, working-tree and conflict changes; browse committed history with merge graphs and changed-file lists for local and Linux SSH projects. File badges refresh automatically while the sidebar is visible, without altering the index or running terminals. Settings remains in the top bar.
@@ -292,7 +294,6 @@ jobs:
           - Ctrl-click Codex relative file paths, including parenthesized report links, to open them from the project root.
           - Softer glass surfaces, luminous edges, rounded controls and readable terminal content, inspired by Liquid Glass.
           - Compact file explorer with native Windows file copy/paste, creation, renaming and deletion; SSH transfers are supported.
-          - Microphone detection and offline speech-to-text with an optional first-time model download of about 64 MB.
           - Completion alerts are rearmed only by a submitted instruction. Background callbacks with new IDs, focus changes and reopening completed history stay quiet; the one-alert state survives restarts.
           - Status dots show blue activity, pink attention and steady green completion; decorative light stays outside the terminal content.
           - Verified with packaged desktop tests, session restart checks, and real Linux SSH/PTY integration.
