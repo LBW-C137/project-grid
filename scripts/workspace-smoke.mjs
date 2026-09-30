@@ -34,9 +34,10 @@ catch (error) {
 const assetIndex = process.argv.indexOf('--voice-assets');
 const assets = assetIndex >= 0 ? path.resolve(process.argv[assetIndex + 1]) : null;
 if (assets) {
-  await fs.mkdir(path.join(dataDir, 'voice'));
-  await fs.cp(path.join(assets, 'runtime'), path.join(dataDir, 'voice/runtime'), { recursive: true });
-  await fs.copyFile(path.join(assets, 'ggml-base-q5_1.bin'), path.join(dataDir, 'voice/model.bin'));
+  // A folder holding the downloaded SenseVoice files, so the real recognizer runs without a download.
+  const { MODEL_DIRECTORY, MODEL_FILES } = require('../electron/voice.cjs');
+  await fs.mkdir(path.join(dataDir, 'voice', MODEL_DIRECTORY), { recursive: true });
+  for (const file of MODEL_FILES) await fs.copyFile(path.join(assets, file.name), path.join(dataDir, 'voice', MODEL_DIRECTORY, file.name));
 }
 const packaged = process.argv.includes('--packaged');
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
@@ -143,20 +144,23 @@ try {
   await isolated.getByRole('button', { name: 'Check microphone' }).click(); await isolated.getByText('BLOCKED', { exact: true }).waitFor();
   console.log('PASS: compact explorer, create/rename/delete, native Explorer copy-out and clipboard paste-in');
   if (await page.getByRole('button', { name: '返回终端', exact: true }).count()) await page.getByRole('button', { name: '返回终端', exact: true }).click();
-  await page.getByRole('button', { name: `语音输入 ${project.name}`, exact: true }).click();
-  await page.getByRole('button', { name: '检测麦克风', exact: true }).click();
-  await page.getByText('麦克风已连接，请说话查看音量', { exact: true }).waitFor();
-  await page.getByRole('button', { name: '开始录音', exact: true }).click();
-  await page.getByText('录音中 0:05', { exact: true }).waitFor();
-  await page.getByRole('button', { name: '停止并识别', exact: true }).click();
-  await waitFor(async () => /project folder/i.test(await page.getByLabel('识别文字', { exact: true }).inputValue()), 'offline dictation result', 60000);
-  await page.screenshot({ path: path.join(output, 'voice-input.png') });
+  const microphone = page.getByRole('button', { name: `语音输入 ${project.name}`, exact: true });
+  await waitFor(async () => /mic-connected/.test(await microphone.getAttribute('class')), 'connected microphone shows the blue state');
+  assert.equal(await page.locator('dialog.voice-dialog').count(), 0);
+  await microphone.click();
+  await waitFor(async () => /is-recording/.test(await microphone.getAttribute('class')), 'first click starts recording in place');
+  assert.equal(await microphone.getAttribute('aria-pressed'), 'true');
+  await page.waitForTimeout(5500);
+  await page.screenshot({ path: path.join(output, 'voice-recording.png') });
   await application.evaluate(() => { globalThis.voicePastes = []; });
-  await page.getByRole('button', { name: '插入终端', exact: true }).click();
-  await waitFor(async () => application.evaluate(() => globalThis.voicePastes.some(item => /project folder/i.test(item.data))), 'dictation pasted into the same terminal');
+  await microphone.click();
+  await waitFor(async () => application.evaluate(() => globalThis.voicePastes.some(item => /project folder/i.test(item.data))), 'second click inserts the text into the same terminal', 60000);
   assert.equal(await application.evaluate(() => globalThis.voicePastes.some(item => item.data === '\r')), false, 'dictation does not press Enter');
-  if (assets) assert.deepEqual(await fs.readdir(path.join(dataDir, 'voice/recordings')), []);
-  console.log(`PASS: simulated microphone capture, ${assets ? 'real offline Whisper recognition' : 'UI-only recognition stub'}, editable transcript and paste without submitting`);
+  await waitFor(async () => !/is-recording|is-busy/.test(await microphone.getAttribute('class')), 'button returns to idle');
+  await page.screenshot({ path: path.join(output, 'voice-input.png') });
+  await microphone.click(); await page.keyboard.press('Escape');
+  await waitFor(async () => !/is-recording/.test(await microphone.getAttribute('class')), 'Escape cancels a recording without inserting');
+  console.log(`PASS: blue connected microphone, click to talk and click again to insert ${assets ? 'real SenseVoice recognition' : 'stubbed recognition'} into the terminal without submitting; Escape cancels`);
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   console.error(error); process.exitCode = 1;

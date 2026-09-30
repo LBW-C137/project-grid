@@ -503,7 +503,7 @@ function registerIpc() {
   handle('voice:state', () => voiceManager.getState());
   handle('voice:prepare', () => voiceManager.prepare());
   handle('voice:cancel', mode => { if (!['download', 'recognition'].includes(mode)) throw new Error('无效的语音操作。'); voiceManager.cancel(mode); });
-  handle('voice:transcribe', (audio, language) => voiceManager.transcribe(audio, language));
+  handle('voice:transcribe', audio => voiceManager.transcribe(audio));
   listen('files:focus', (id, focused) => { if (focused) { findProject(id); activeFileTree = id; activeTerminal = null; } else if (activeFileTree === id) activeFileTree = null; });
   handle('project:file', async (id, relativePath, pageIndex) => {
     const project = findProject(id);
@@ -666,6 +666,9 @@ else {
     }
     store = new WorkspaceStore(path.join(app.getPath('userData'), 'workspace.json'));
     voiceManager = new VoiceManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
+    // Download the offline model in the background after installation so dictation works on first use.
+    // Waits for startup and session restore first; isolated test profiles skip the 239 MB download.
+    if (!process.env.PROJECT_GRID_DATA_DIR) setTimeout(() => { if (!quitting) voiceManager.prepare().catch(() => {}); }, 8000);
     fileOperations = new FileOperations({ integrationDir, cacheRoot: path.join(app.getPath('userData'), 'file-clipboard'), remote: remoteFor, clipboardWrites,
       trash: filename => shell.trashItem(filename),
       confirmDelete: async (project, paths) => (await dialog.showMessageBox(window, { type: 'question', title: '删除文件', message: `删除 ${paths.length} 个文件或文件夹？`,

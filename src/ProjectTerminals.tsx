@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ArrowCounterClockwise, Microphone, Play, Terminal as TerminalIcon, X } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, Play, Terminal as TerminalIcon, X } from '@phosphor-icons/react';
 import { TerminalPane } from './TerminalPane';
+import { VoiceButton } from './VoiceButton';
 import type { Project, ProjectTerminal, Result } from './types';
 
 function label(terminal: ProjectTerminal) {
@@ -9,10 +10,10 @@ function label(terminal: ProjectTerminal) {
   return terminal.status === 'starting' ? '正在启动' : terminal.status === 'shell' ? '终端就绪' : terminal.status === 'exited' ? '已退出' : '尚未启动';
 }
 
-export function ProjectTerminals({ project, focused, fontSize, activeId, setActiveId, onAction, onError, onOpenLink, onVoice }: {
+export function ProjectTerminals({ project, focused, fontSize, activeId, setActiveId, onAction, onError, onOpenLink }: {
   project: Project; focused: boolean; fontSize: number; activeId: string | null; setActiveId: (id: string) => void;
   onAction: <T,>(promise: Promise<Result<T>>) => Promise<T | undefined>;
-  onError: (message: string) => void; onOpenLink: (projectId: string, target: string) => void; onVoice: (project: Project) => void;
+  onError: (message: string) => void; onOpenLink: (projectId: string, target: string) => void;
 }) {
   const area = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
@@ -40,7 +41,7 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
             : <div className="terminal-empty"><TerminalIcon size={28} weight="light" /><p>项目已就位</p><span>启动终端，在这里开始开发</span><button className="button secondary small" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}><Play size={13} weight="fill" />启动终端</button></div>}
         </div>
         {multiple && <footer className="terminal-split-footer"><span>{terminal.error || (project.kind === 'ssh' ? 'SSH' : 'PowerShell')}</span><div>
-          <button className="icon-button voice-button" title="语音输入" aria-label={`语音输入 ${name}`} onClick={() => onVoice({ ...project, id: terminal.id, name, sessionId: terminal.sessionId })}><Microphone size={13} /></button>
+          <VoiceButton terminalId={terminal.id} sessionId={terminal.sessionId} name={name} size={13} onError={onError} />
           {stopped && terminal.sessionId && <button className="text-button" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}>重新启动</button>}
           {!stopped && !terminal.codexActive && terminal.status !== 'starting' && <button className="text-button" disabled={!terminal.shellReady} onClick={() => void onAction(window.projectGrid.launchCodex(terminal.id))}><Play size={12} />启动 Codex</button>}
           {terminal.codexActive && <span className="session-label">CODEX</span>}

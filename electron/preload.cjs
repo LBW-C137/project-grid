@@ -41,7 +41,7 @@ contextBridge.exposeInMainWorld('projectGrid', {
   getVoiceState: () => ipcRenderer.invoke('voice:state'),
   prepareVoice: () => ipcRenderer.invoke('voice:prepare'),
   cancelVoice: (mode = 'recognition') => ipcRenderer.invoke('voice:cancel', mode),
-  transcribe: (audio, language) => ipcRenderer.invoke('voice:transcribe', audio, language),
+  transcribe: audio => ipcRenderer.invoke('voice:transcribe', audio),
   onVoiceState: callback => listen('voice:state', callback),
   pasteTerminal: (id, text, sessionId) => ipcRenderer.invoke('terminal:paste', id, text, sessionId),
   onTerminalPaste: callback => listen('terminal:paste', callback),

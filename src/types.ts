@@ -67,7 +67,7 @@ export type Bridge = {
   getVoiceState(): Promise<Result<VoiceState>>;
   prepareVoice(): Promise<Result<VoiceState>>;
   cancelVoice(mode?: 'download' | 'recognition'): Promise<Result<void>>;
-  transcribe(audio: ArrayBuffer, language: string): Promise<Result<string>>;
+  transcribe(audio: ArrayBuffer): Promise<Result<string>>;
   onVoiceState(callback: (state: VoiceState) => void): () => void;
   pasteTerminal(id: string, text: string, sessionId: string): Promise<Result<void>>;
   onTerminalPaste(callback: (packet: { id: string; sessionId: string; text: string }) => void): () => void;
