@@ -62,10 +62,13 @@ try {
   assert.deepEqual(await app.evaluate(() => globalThis.navigationOpened), [local.path]);
   await first.getByRole('button', { name: `全屏查看 ${local.name}`, exact: true }).click(); await settled(true);
   const sidebar = page.getByRole('complementary', { name: '项目侧边栏' });
-  assert.deepEqual(await sidebar.locator('.explorer-actions button').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['Git 历史']);
+  // The project is the sidebar title; files and Git share one switch, with no separate settings entry.
+  assert.equal(await sidebar.getByRole('heading', { name: local.name, exact: true }).count(), 1);
+  assert.deepEqual(await sidebar.locator('.explorer-tabs button').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['资源管理器', 'Git 历史']);
+  assert.equal(await sidebar.getByRole('treeitem', { name: local.name, exact: true }).count(), 0, 'the project root is the title, not a tree row');
   await page.screenshot({ path: path.join(output, 'sidebar.png') });
   await page.keyboard.press('Control+b'); await sidebar.getByRole('button', { name: '展开目录栏', exact: true }).waitFor();
-  assert.equal(await sidebar.locator('.explorer-actions button').count(), 1);
+  assert.deepEqual(await sidebar.locator('.explorer-rail button').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['资源管理器', 'Git 历史']);
   await page.screenshot({ path: path.join(output, 'sidebar-collapsed.png') });
   await page.keyboard.press('Control+b');
   await page.getByRole('treeitem', { name: 'unsupported.txt', exact: true }).click();

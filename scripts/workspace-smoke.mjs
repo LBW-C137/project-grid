@@ -88,7 +88,9 @@ try {
     assert.equal(await application.evaluate(() => globalThis.directoryPeakRequests), 1, 'automatic refresh must not overlap or discard a slow directory read');
     console.log('PASS: a directory read slower than the refresh interval still renders, with one request in flight');
   }
-  assert.equal(await page.locator('.explorer-project').count(), 0);
+  // The project name appears once, as the sidebar title, never again as a root row of the tree.
+  assert.equal(await page.locator('.explorer-title h2').innerText(), project.name);
+  assert.equal(await page.getByRole('treeitem', { name: project.name, exact: true }).count(), 0);
   assert.equal(await page.locator('.explorer-path').getAttribute('title'), project.path);
   await page.getByRole('button', { name: '新建文件', exact: true }).click();
   await page.getByLabel('文件或文件夹名称', { exact: true }).fill('新文件.txt'); await page.getByRole('button', { name: '创建', exact: true }).click();
@@ -107,7 +109,9 @@ try {
   await exec(powershell, ['-STA', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'scripts/paste-files-fixture.ps1'), '-Destination', path.join(output, 'external'), '-Expected', copied], { windowsHide: true });
   await waitFor(async () => { try { return await fs.readFile(path.join(output, 'external/source.txt'), 'utf8') === 'FILE_CLIPBOARD_CONTENT'; } catch { return false; } }, 'Explorer pastes the copied file outside the project');
   await fileClipboard(path.join(root, 'integration'), 'copy', [path.join(output, 'external/external.txt')]); await ownClipboard();
-  await page.getByRole('treeitem', { name: project.name, exact: true }).click(); await page.keyboard.press('Control+v');
+  // Blank space below the files selects the project root, the destination for a root paste.
+  const rootArea = page.getByRole('tree', { name: `${project.name} 的文件目录`, exact: true }), rootBox = await rootArea.boundingBox();
+  await rootArea.click({ position: { x: 30, y: rootBox.height - 12 } }); await page.keyboard.press('Control+v');
   await page.getByRole('treeitem', { name: 'external.txt', exact: true }).waitFor();
   assert.equal(await fs.readFile(path.join(project.path, 'external.txt'), 'utf8'), 'PASTE_IN_CONTENT');
   await fileClipboard(path.join(root, 'integration'), 'copy', [path.join(output, 'external/external.txt'), path.join(output, 'external/外部文件夹')]); await ownClipboard();

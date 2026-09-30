@@ -26,5 +26,3 @@ button.git-file:hover { background: var(--theme-hover); }.git-file:disabled { op
 .git-commit-hash { padding: 0 7px; font: 10px Consolas, monospace; color: var(--theme-muted); overflow-wrap: anywhere; user-select: text; }
 .git-history-pages { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 9px 4px; font-size: 10px; color: var(--theme-muted); }
 .git-history-pages button { padding: 4px 7px; border-radius: 5px; border: 1px solid var(--theme-line); background: transparent; font-size: 10px; }.git-history-pages button:disabled { cursor: default; }
-.explorer-section-toggle { display: flex; gap: 6px; align-items: center; width: 100%; min-height: 31px; padding: 6px 14px; border: 0; border-bottom: 1px solid var(--theme-line); background: transparent; font-size: 11px; text-align: left; color: var(--theme-muted); }
-.explorer-action[aria-pressed="true"] { background: var(--theme-hover); color: var(--theme-ink); }.explorer-actions .git-action-count { margin-left: auto; font: 600 11px Consolas, monospace; }
