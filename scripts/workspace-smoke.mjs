@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url), exec = promisify(execFile);
 const { fileClipboard } = require('../electron/file-clipboard.cjs');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,7 +41,6 @@ if (assets) {
 const packaged = process.argv.includes('--packaged');
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 let application, page;
-async function waitFor(fn, label, timeout = 30000) { const start = Date.now(); while (Date.now() - start < timeout) { if (await fn()) return; await new Promise(resolve => setTimeout(resolve, 80)); } throw new Error(`Timed out: ${label}`); }
 async function filesFinished() { await waitFor(async () => { const result = await page.evaluate(() => window.projectGrid.getFileProgress()); return result.ok && result.value === null; }, 'all files in the paste operation finish'); }
 async function backupClipboard() { await application.evaluate(async ({ clipboard, ClipboardItem }) => { globalThis.clipboardBackup = await Promise.all((await clipboard.read()).filter(item => item.types.length).map(async item => new ClipboardItem(Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)])))))); }); }
 async function ownClipboard() { await application.evaluate(async ({ clipboard }) => { globalThis.clipboardOwnedText = await clipboard.readText(); }); }

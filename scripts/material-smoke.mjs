@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '.test-output', `material-${Date.now()}`), profile = path.join(output, 'profile');
@@ -15,7 +16,6 @@ await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ versio
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: profile }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 const packaged = process.argv.includes('--packaged'); let app, page;
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value;
-async function waitFor(check, name) { const until = Date.now() + 25000; while (Date.now() < until) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 80)); } throw new Error(`Timed out: ${name}`); }
 const errors = [], performanceSamples = [], materials = [], typography = [], edges = [];
 const layoutGap = 6;
 // Every panel keeps the same gap to its neighbours and to the top and bottom bars.

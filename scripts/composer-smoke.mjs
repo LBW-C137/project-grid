@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '.test-output', `composer-${Date.now()}`), profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
@@ -21,7 +22,6 @@ const packaged = process.argv.includes('--packaged'), doneFile = path.join(outpu
 let app, page, controlId;
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value;
 const write = (id, data) => page.evaluate(({ id, data }) => window.projectGrid.writeTerminal(id, data), { id, data });
-async function waitFor(check, label) { const until = Date.now() + 25000; while (Date.now() < until) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 90)); } throw new Error(`Timed out: ${label}`); }
 async function composerSample(terminal, label) {
   await waitFor(async () => terminal.locator('.xterm-rows span').evaluateAll(cells => cells.some(cell => /background-color:\s*(#1e1e1e|rgb\(30, 30, 30\))/.test(cell.getAttribute('style') || ''))), `${label}: Codex finished probing terminal colors`);
   const sample = await terminal.locator('.xterm-rows').evaluate(rows => {

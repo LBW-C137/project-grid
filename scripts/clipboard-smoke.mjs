@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { fileClipboard } = require('../electron/file-clipboard.cjs');
@@ -16,7 +17,6 @@ await fs.copyFile(path.join(root, 'assets/icon.png'), absolute);
 await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { notifications: false, restoreSessions: false, closeToTray: false } }));
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: profile }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 const packaged = process.argv.includes('--packaged'); let app, page;
-async function waitFor(check, name) { const until = Date.now() + 15000; while (Date.now() < until) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 70)); } throw new Error(`Timed out: ${name}`); }
 const ownClipboard = () => app.evaluate(async ({ clipboard }) => { globalThis.pathClipboardOwner = await clipboard.readText(); });
 const formats = () => app.evaluate(async ({ clipboard }) => (await clipboard.read()).flatMap(item => item.types));
 async function assertText(expected) {

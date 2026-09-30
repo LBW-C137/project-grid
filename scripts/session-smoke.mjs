@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url);
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
@@ -46,11 +47,6 @@ delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 const packaged = process.argv.includes('--packaged');
 let application; let page;
 const errors = [];
-async function waitFor(callback, message, timeout = 25000) {
-  const start = Date.now();
-  while (Date.now() - start < timeout) { if (await callback()) return; await new Promise(resolve => setTimeout(resolve, 80)); }
-  throw new Error(`Timed out: ${message}`);
-}
 async function launch() {
   application = await electron.launch({ executablePath: packaged ? path.join(root, 'release/win-unpacked/Project Grid.exe') : require('electron'), args: [...(packaged ? [] : [root]), '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], cwd: root, env, timeout: 30000 });
   page = await application.firstWindow();

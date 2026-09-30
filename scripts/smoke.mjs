@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import net from 'node:net';
 import { _electron as electron } from 'playwright';
 import { runDesktopTask } from '../tests/helpers/desktop-task-fixture.mjs';
+import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url);
 const exec = promisify(execFile);
@@ -60,11 +61,6 @@ delete env.PROJECT_GRID_DEV_URL;
 let application;
 const packaged = process.argv.includes('--packaged');
 const errors = [];
-async function waitFor(fn, message, timeout = 20000) {
-  const start = Date.now();
-  while (Date.now() - start < timeout) { if (await fn()) return; await new Promise(resolve => setTimeout(resolve, 100)); }
-  throw new Error(`Timed out: ${message}`);
-}
 try {
   const captureFlags = ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
   if (process.argv.includes('--compact-screen')) captureFlags.push('--force-device-scale-factor=2');

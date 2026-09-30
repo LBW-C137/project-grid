@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url), exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '.test-output', `completion-${Date.now()}`), dataDir = path.join(output, 'profile');
@@ -19,7 +20,6 @@ const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir, CODEX_HOME: home }
 const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path'); env[pathKey] = bin + path.delimiter + env[pathKey];
 const packaged = process.argv.includes('--packaged');
 let application, page, bootstrap;
-async function waitFor(check, label) { const until = Date.now() + 15000; while (Date.now() < until) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 60)); } throw new Error(`Timed out: ${label}`); }
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[0];
 const notices = () => application.evaluate(() => globalThis.completionNotices);
 const input = data => page.evaluate(({ id, data }) => window.projectGrid.writeTerminal(id, data), { id: project.id, data });

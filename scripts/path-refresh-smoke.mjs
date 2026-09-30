@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), exec = promisify(execFile), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '.test-output', `path-refresh-${Date.now()}`), profile = path.join(output, 'profile'), bin = path.join(output, 'inherited-bin'), home = path.join(output, 'codex-home');
@@ -32,7 +33,6 @@ const executable = executableIndex >= 0 ? path.resolve(process.argv[executableIn
 let app, page;
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[0];
 const write = (id, data) => page.evaluate(({ id, data }) => window.projectGrid.writeTerminal(id, data), { id, data });
-async function waitFor(check, label) { const until = Date.now() + 25000; while (Date.now() < until) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 80)); } throw new Error(`Timed out: ${label}`); }
 async function prove(id, label) {
   const name = `${label}.json`;
   await write(id, `[IO.File]::WriteAllText((Join-Path (Get-Location).Path '${name}'), (@{pid=$PID;command=(Get-Command where.exe -CommandType Application | Select-Object -First 1).Source;run=(@(& where.exe where.exe));extra=(Get-Command project-grid-extra.cmd).Source;kept=$env:PG_PATH_SENTINEL;mimo=(Get-Command mimo.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source} | ConvertTo-Json -Compress))\r`);

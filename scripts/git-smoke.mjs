@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), exec = promisify(execFile), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
@@ -35,7 +36,6 @@ const env = { ...process.env, PROJECT_GRID_DATA_DIR: profile, CODEX_HOME: home, 
 const packaged = process.argv.includes('--packaged'), errors = [];
 let app, page;
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value;
-async function waitFor(check, label) { const end = Date.now() + 25000; while (Date.now() < end) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 90)); } throw new Error(`Timed out: ${label}`); }
 async function openGit(name) {
   await page.getByRole('button', { name: `全屏查看 ${name}`, exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));

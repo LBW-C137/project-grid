@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
@@ -26,7 +27,6 @@ await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ versio
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: profile, PROJECT_GRID_TEST_SSH_CONFIG: ssh.configFile, PROJECT_GRID_TEST_RESTORE: '1', CODEX_HOME: path.join(output, 'codex-home') }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 const packaged = process.argv.includes('--packaged'); let app, page;
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value;
-async function waitFor(check, label) { const until = Date.now() + 20000; while (Date.now() < until) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 70)); } throw new Error(`Timed out: ${label}`); }
 const settled = focused => page.waitForFunction(focused => !!document.querySelector('.focus-mode') === focused && !document.querySelector('[data-focus-motion]'), focused);
 const errors = [];
 try {

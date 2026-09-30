@@ -50,6 +50,8 @@ jobs:
     env:
       CI: 'true'
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # Two-core runners start six PowerShell sessions at once; a first command can take over 20 s.
+      PROJECT_GRID_TEST_TIMEOUT_SCALE: '3'
 
     steps:
       - name: Check out source
