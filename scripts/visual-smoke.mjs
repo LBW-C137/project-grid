@@ -125,15 +125,15 @@ try {
   await page.waitForFunction(() => Math.abs(innerWidth - 820) <= 1); // Windows DPI can round the client width by one CSS pixel.
   const compact = await page.locator('.panel-header').evaluateAll(headers => headers.map(header => {
     const bounds = header.getBoundingClientRect(), name = header.querySelector('.panel-name').getBoundingClientRect();
-    return { titleWidth: name.width, inside: [...header.children].filter(child => getComputedStyle(child).display !== 'none').every(child => { const box = child.getBoundingClientRect(); return box.left >= bounds.left && box.right <= bounds.right + 1; }), metaSize: getComputedStyle(header.parentElement.querySelector('.panel-meta')).fontSize };
+    return { titleWidth: name.width, inside: [...header.children].filter(child => getComputedStyle(child).display !== 'none').every(child => { const box = child.getBoundingClientRect(); return box.left >= bounds.left && box.right <= bounds.right + 1; }), metaSize: getComputedStyle(header.querySelector('.status-badge')).fontSize };
   }));
   await page.screenshot({ path: path.join(output, 'compact-820x560.png') });
   assert.ok(compact.every(card => card.inside && card.titleWidth >= 70 && parseFloat(card.metaSize) >= 11), JSON.stringify(compact));
   const compactEdges = await page.evaluate(() => {
-    const top = document.querySelector('.titlebar').getBoundingClientRect(), bottom = document.querySelector('.workspace-statusbar').getBoundingClientRect();
-    return { top: top.top, left: top.left, right: top.right, bottom: bottom.bottom, bottomLeft: bottom.left, bottomRight: bottom.right, width: innerWidth, height: innerHeight };
+    const top = document.querySelector('.titlebar').getBoundingClientRect();
+    return { top: top.top, left: top.left, right: top.right, width: innerWidth, height: innerHeight };
   });
-  assert.ok([compactEdges.top, compactEdges.left, compactEdges.bottomLeft, compactEdges.right - compactEdges.width, compactEdges.bottomRight - compactEdges.width, compactEdges.bottom - compactEdges.height].every(gap => Math.abs(gap) < 1), `compact bars meet viewport edges within DPI rounding: ${JSON.stringify(compactEdges)}`);
+  assert.ok([compactEdges.top, compactEdges.left, compactEdges.right - compactEdges.width].every(gap => Math.abs(gap) < 1), `compact bars meet viewport edges within DPI rounding: ${JSON.stringify(compactEdges)}`);
   await panel(3).locator('.panel-terminal-area').click({ position: { x: 40, y: 50 } });
   await page.keyboard.type('DRAFT_STAYS_SMALL'); assert.equal(await page.locator('.focus-mode').count(), 0);
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 900));

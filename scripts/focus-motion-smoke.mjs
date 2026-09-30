@@ -68,8 +68,9 @@ try {
   await page.keyboard.type("Write-Output 'PENDING_INPUT'");
   assert.equal(await page.locator('.focus-mode').count(), 0, 'clicking the terminal input and typing stays in the small card');
   assert.equal(await panel.locator('textarea').evaluate(element => element === document.activeElement), true);
-  await panel.locator('.panel-meta').click();
-  assert.equal(await page.locator('.focus-mode').count(), 0, 'the footer does not expand the card');
+  const area = panel.locator('.panel-terminal-area'), areaBox = await area.boundingBox();
+  await area.click({ position: { x: areaBox.width - 20, y: areaBox.height - 12 } });
+  assert.equal(await page.locator('.focus-mode').count(), 0, 'clicking the bottom of the card body does not expand it');
   await panel.evaluate(panel => { globalThis.motionTerminal = panel.querySelector('.terminal-host'); });
   // The welcome banner can legitimately scroll out of a small terminal after
   // multiline input. Select the current prompt, which remains on screen.

@@ -40,12 +40,14 @@ function statusText(project: Project) {
   if (project.codexActive && project.codexActivity === 'working') return '正在处理';
   if (project.unread) return '等待你查看';
   if (project.error) return '需要检查';
-  if (project.status === 'codex') return project.codexActivity === 'complete' ? '本轮已完成' : project.codexActivity === 'interrupted' ? '已中断' : 'Codex 会话中';
+  if (project.status === 'codex') return project.codexActivity === 'complete' ? '本轮已完成' : project.codexActivity === 'interrupted' ? '已中断' : `${agentName(project.agent)} 会话中`;
   if (project.status === 'shell') return '终端就绪';
   if (project.status === 'starting') return project.kind === 'ssh' ? '正在连接 SSH' : '正在启动';
   if (project.status === 'exited') return project.kind === 'ssh' ? 'SSH 终端已退出' : '终端已退出';
   return '尚未启动';
 }
+
+function agentName(agent: Project['agent']) { return agent === 'claude' ? 'Claude' : 'Codex'; }
 
 function isRoundComplete(project: Project) {
   return project.codexActive && project.codexActivity === 'complete' && !project.unread && !project.error;
@@ -75,6 +77,7 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, onFocus,
   // A new turn starts the edge and dot together; ordinary renders keep their clock.
   const signalKey = `${working ? 'working' : 'rest'}:${project.lastCompletedAt}`;
   const badgeClass = `status-badge ${working ? 'blue' : roundComplete ? 'green' : project.unread ? 'red' : project.error ? 'amber' : ''}`;
+  const meta = working ? '' : project.lastCompletedAt ? `${relativeTime(project.lastCompletedAt, now)}完成` : '';
   const badge = <><span key={signalKey} className="status-dot" aria-hidden="true" /><span>{statusText(project)}</span></>;
   useEffect(() => {
     if (!menuOpen) return;
@@ -98,9 +101,15 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, onFocus,
         {project.branch && <small><GitBranch size={11} />{project.branch}</small>}
         {project.kind === 'ssh' && <small className="ssh-project-label"><Globe size={11} />{project.ssh?.host}</small>}
       </button>
+      {!!meta && <span className="panel-meta" title={project.path}>{meta}</span>}
       {!!project.unread && !focused && !working
         ? <button type="button" className={`${badgeClass} status-button`} title={statusText(project)} onClick={() => onFocus(project.id)} aria-label={`查看 ${project.name} 的完成结果`}>{badge}</button>
         : <span className={badgeClass} title={statusText(project)}>{badge}</span>}
+      {project.unread > 1 && <span className="unread-count" title={`${project.unread} 轮未查看`}>{project.unread}</span>}
+      {!multiple && stopped && hasTerminal && <button className="text-button panel-action" aria-label="重新启动" onClick={() => onAction(api.startTerminal(first.id))}><Play size={12} weight="fill" /><span>重启</span></button>}
+      {!multiple && !stopped && !first.codexActive && first.status !== 'starting' && <button className="text-button panel-action" aria-label="启动 Codex" disabled={!first.shellReady} title="在空白终端提示符下启动 Codex" onClick={() => onAction(api.launchCodex(first.id))}><Play size={12} weight="fill" /><span>Codex</span></button>}
+      {!multiple && first.codexActive && <span className="session-label"><span className="session-dot" />{agentName(first.agent).toUpperCase()}</span>}
+      {!multiple && <VoiceButton terminalId={first.id} sessionId={first.sessionId} name={project.name} onError={onError} />}
       <IconButton label={`新增终端 ${project.name}`} onClick={() => void addTerminal()}><Plus size={16} /></IconButton>
       {!focused && <IconButton label={`全屏查看 ${project.name}`} onClick={() => onFocus(project.id)}><ArrowsOutSimple size={16} /></IconButton>}
       <div className="panel-menu-anchor" ref={menu}>
@@ -116,22 +125,6 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, onFocus,
     </header>
     <ProjectTerminals project={project} focused={focused} fontSize={fontSize} activeId={activeTerminalId} setActiveId={setActiveTerminalId} onAction={onAction} onError={onError} onOpenLink={onOpenLink} />
     {project.error && <div className="panel-error"><Info size={13} /><span>{project.error}</span></div>}
-    <footer className="panel-footer">
-      <span className="panel-meta" title={project.path}>
-        <TerminalIcon size={12} />
-        {project.kind === 'ssh' ? `SSH · ${project.ssh?.host}` : 'PowerShell'}
-        <span className="meta-separator">/</span>
-        <span>{working ? '任务进行中' : project.lastCompletedAt ? `${relativeTime(project.lastCompletedAt, now)}完成一轮` : stopped ? project.kind === 'ssh' ? '远程项目' : '本地项目' : '独立终端'}</span>
-      </span>
-      <div className="panel-footer-actions">
-        {!multiple && <VoiceButton terminalId={first.id} sessionId={first.sessionId} name={project.name} onError={onError} />}
-        {multiple && <span className="session-label">{project.terminals.length} 个终端</span>}
-        {project.unread > 1 && <span className="unread-count">{project.unread} 轮未查看</span>}
-        {!multiple && stopped && hasTerminal && <button className="text-button" onClick={() => onAction(api.startTerminal(first.id))}><Play size={12} weight="fill" />重新启动</button>}
-        {!multiple && !stopped && !first.codexActive && first.status !== 'starting' && <button className="text-button" disabled={!first.shellReady} title="在空白终端提示符下启动 Codex" onClick={() => onAction(api.launchCodex(first.id))}><Play size={12} weight="fill" />启动 Codex</button>}
-        {!multiple && first.codexActive && <span className="session-label"><span className="session-dot" />CODEX</span>}
-      </div>
-    </footer>
   </article>;
 }
 
@@ -185,6 +178,9 @@ export function App() {
   useEffect(() => { applyMotion(workspace?.settings.focusAnimation || 'smooth'); }, [workspace?.settings.focusAnimation]);
   const [updates, setUpdates] = useState<AppUpdateState | null>(null);
   const [query, setQuery] = useState('');
+  // With only a few projects the search box is a single icon; Ctrl+K or a click opens it.
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => { if (searchOpen) queryInput.current?.focus(); }, [searchOpen]);
   const { root: focusMotionRoot, focusedId, focus: setFocusedId } = useProjectFocusMotion(workspace?.settings.focusAnimation || 'smooth');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -261,7 +257,7 @@ export function App() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'g') { event.preventDefault(); event.stopPropagation(); returnToGrid(); }
-      if (!focusedId && event.ctrlKey && event.key.toLowerCase() === 'k') { event.preventDefault(); event.stopPropagation(); queryInput.current?.focus(); }
+      if (!focusedId && event.ctrlKey && event.key.toLowerCase() === 'k') { event.preventDefault(); event.stopPropagation(); setSearchOpen(true); requestAnimationFrame(() => queryInput.current?.focus()); }
       if (focusedId && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); event.stopPropagation(); perform(api.settings({ explorerCollapsed: !workspace?.settings.explorerCollapsed })); }
     };
     document.addEventListener('keydown', handler, true);
@@ -275,6 +271,7 @@ export function App() {
   const orderedProjects = reorder.order ? reorder.order.flatMap(id => projectRecords.get(id) || []) : projects;
   const unread = projects.filter(p => p.unread > 0).length;
   const completed = projects.filter(isRoundComplete).length;
+  const compactSearch = projects.length <= 3 && !query && !searchOpen;
   const visible = projects.filter(p => !query || `${p.name} ${p.path} ${p.ssh?.host || ''}`.toLowerCase().includes(query.toLowerCase()));
   const visibleIds = new Set(visible.map(p => p.id));
   const columns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(Math.max(visible.length, 1)))));
@@ -284,10 +281,17 @@ export function App() {
 
   return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''}`} style={{ '--liquid-backdrop': 'url("#project-grid-refraction") blur(6px) saturate(165%)' } as CSSProperties}>
     <div className="titlebar">
-      <div className="titlebar-brand"><span className="brand-mark"><i /><i /><i /><i /></span><span>Project Grid</span><span className="titlebar-divider" /> <span className="titlebar-subtitle">项目矩阵</span></div>
+      <div className="titlebar-brand"><span className="brand-mark"><i /><i /><i /><i /></span><span>Project Grid</span></div>
+      {!!projects.length && <div className="workspace-summary" role="status" aria-label="工作区概况">
+        <span>{projects.length} 个项目{projects.some(project => project.kind === 'ssh') ? ' · 含 SSH' : ''}</span>
+        {!!unread && <span className="summary-unread"><i className="legend-red" />{unread} 待查看</span>}
+        {!!completed && <span className="summary-complete"><i className="legend-green" />{completed} 本轮完成</span>}
+      </div>}
       <div className="titlebar-space" />
       <div className="titlebar-tools">
-        {!focusedId && <><div className="search-input"><MagnifyingGlass size={16} /><input ref={queryInput} placeholder="搜索项目或路径…" aria-label="搜索项目" value={query} onChange={e => setQuery(e.target.value)} />{query ? <IconButton label="清除搜索" onClick={() => setQuery('')}><X size={13} /></IconButton> : <kbd>Ctrl K</kbd>}</div>
+        {!focusedId && <>{compactSearch
+          ? <IconButton label="搜索项目 · Ctrl+K" className="search-toggle" onClick={() => setSearchOpen(true)}><MagnifyingGlass size={17} /></IconButton>
+          : <div className="search-input"><MagnifyingGlass size={16} /><input ref={queryInput} placeholder="搜索项目或路径…" aria-label="搜索项目" value={query} onChange={e => setQuery(e.target.value)} onBlur={() => { if (!query) setSearchOpen(false); }} />{query ? <IconButton label="清除搜索" onClick={() => setQuery('')}><X size={13} /></IconButton> : <kbd>Ctrl K</kbd>}</div>}
         <button className="button primary" onClick={() => setAddOpen(true)}><FolderSimplePlus size={17} />添加项目</button></>}
         <IconButton label="工作台设置" className={updates?.status === 'ready' ? 'update-ready' : ''} onClick={() => setSettingsOpen(true)}><GearSix size={19} /></IconButton>
       </div>
@@ -323,7 +327,6 @@ export function App() {
         </div>
       </main>
     </div>
-    <footer className="workspace-statusbar"><span><span className="connection-dot" />{projects.some(project => project.kind === 'ssh') ? '本地与 SSH 工作区' : '本地工作区'}<span className="statusbar-divider">/</span>{projects.length} 个项目</span><span>{focusedId ? <><kbd>Ctrl Shift G</kbd>返回总览</> : <><span className="legend-red" />{unread} 个待查看<span className="legend-green" />{completed} 个本轮完成</>}</span></footer>
     {error && <div className="error-toast" role="alert"><Info size={18} /><span>{error}</span><IconButton label="关闭提示" onClick={() => setError(null)}><X size={16} /></IconButton></div>}
     {settingsOpen && <SettingsDialog settings={settings} updates={updates} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => setSettingsOpen(false)} update={setPreference} quit={() => perform(api.quit())} />}
     {addOpen && <AddProjectDialog onClose={() => setAddOpen(false)} onAdded={() => setQuery('')} onError={reportError} />}

@@ -72,7 +72,7 @@ export function useProjectFocusMotion(mode: 'smooth' | 'system' | 'off') {
       // Leaving native fullscreen can immediately make the viewport smaller.
       // Keep the whole moving card inside that viewport while it shrinks.
       const top = shell.querySelector('.titlebar')?.getBoundingClientRect().bottom || 0;
-      const bottom = window.innerHeight - (shell.querySelector('.workspace-statusbar')?.clientHeight || 0);
+      const bottom = window.innerHeight;
       const scale = Math.min(1, window.innerWidth / from.width, Math.max(1, bottom - top) / from.height);
       const width = from.width * scale, height = from.height * scale;
       const left = Math.max(0, Math.min(from.left, window.innerWidth - width));

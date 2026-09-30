@@ -18,12 +18,12 @@ const packaged = process.argv.includes('--packaged'); let app, page;
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value;
 const errors = [], performanceSamples = [], materials = [], typography = [], edges = [];
 const layoutGap = 6;
-// Every panel keeps the same gap to its neighbours and to the top and bottom bars.
+// Every panel keeps the same gap to its neighbours, the title bar and the bottom of the window.
 async function checkGaps(mode) {
   const gaps = await page.evaluate(() => {
     const rect = selector => document.querySelector(selector)?.getBoundingClientRect();
     const slots = [...document.querySelectorAll('.project-slot')].filter(node => node.offsetParent).map(node => node.getBoundingClientRect());
-    const bar = rect('.titlebar'), foot = rect('.workspace-statusbar'), side = rect('.focus-sidebar');
+    const bar = rect('.titlebar'), foot = { top: innerHeight }, side = rect('.focus-sidebar');
     const left = Math.min(...slots.map(box => box.left));
     const measured = { top: Math.min(...slots.map(box => box.top)) - bar.bottom, bottom: foot.top - Math.max(...slots.map(box => box.bottom)), right: innerWidth - Math.max(...slots.map(box => box.right)) };
     if (side) Object.assign(measured, { sideLeft: side.left, sideTop: side.top - bar.bottom, sideBottom: foot.top - side.bottom, sideToPanel: left - side.right });
@@ -36,10 +36,10 @@ async function checkGaps(mode) {
 async function checkEdges(mode) {
   const rects = await page.evaluate(() => {
     const bounds = selector => { const box = document.querySelector(selector).getBoundingClientRect(); return { left: box.left, top: box.top, right: box.right, bottom: box.bottom }; };
-    return { top: bounds('.titlebar'), bottom: bounds('.workspace-statusbar'), width: innerWidth, height: innerHeight };
+    return { top: bounds('.titlebar'), width: innerWidth, height: innerHeight, statusbars: document.querySelectorAll('.workspace-statusbar').length };
   });
   assert.ok(Math.abs(rects.top.left) < 1 && Math.abs(rects.top.top) < 1 && Math.abs(rects.top.right - rects.width) < 1, `${mode}: titlebar meets top/left/right edges`);
-  assert.ok(Math.abs(rects.bottom.left) < 1 && Math.abs(rects.bottom.right - rects.width) < 1 && Math.abs(rects.bottom.bottom - rects.height) < 1, `${mode}: statusbar meets bottom/left/right edges`);
+  assert.equal(rects.statusbars, 0, `${mode}: the workspace summary lives in the title bar, not a bottom bar`);
   edges.push({ mode, ...rects });
 }
 async function readCells(rows) {
@@ -146,7 +146,7 @@ try {
   for (const theme of ['forest', 'mountain-blue', 'wild-red']) {
     await page.evaluate(theme => window.projectGrid.settings({ theme }), theme);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
-    const surfaces = await page.locator('.titlebar, .workspace-statusbar, .focus-sidebar, .project-panel:visible').evaluateAll(nodes => nodes.map(node => {
+    const surfaces = await page.locator('.titlebar, .focus-sidebar, .project-panel:visible').evaluateAll(nodes => nodes.map(node => {
       const style = getComputedStyle(node), values = style.backgroundColor.match(/[\d.]+/g).map(Number);
       return { className: node.className, backdrop: style.backdropFilter, alpha: values.length === 4 ? values[3] : 1 };
     }));

@@ -33,13 +33,11 @@
 /* The wallpaper is only seen directly in the gaps between panes. Softening it there keeps each
    gap a calm band of colour instead of a sharp, noisy strip framed by two glass edges. */
 .app-shell::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; backdrop-filter: blur(14px) saturate(120%); }
-.titlebar, .workspace-statusbar, .focus-sidebar, .project-panel, .settings-dialog, .file-preview {
+.titlebar, .focus-sidebar, .project-panel, .settings-dialog, .file-preview {
   backdrop-filter: var(--liquid-backdrop, blur(6px) saturate(165%));
 }
 .titlebar { height: 48px; flex-basis: 48px; margin: 0; border: 0; border-bottom: 1px solid var(--glass-border); border-radius: 0; background: var(--glass-sheen), rgba(9, 24, 34, .38); box-shadow: var(--glass-shadow); overflow: hidden; text-shadow: var(--text-shadow); }
 .titlebar-brand { padding-left: 22px; gap: 11px; color: #e3ebf5; }
-.titlebar-subtitle { color: #c5d6e6; }
-.titlebar-divider { background: #bdd9f32d; }
 .window-actions .icon-button { height: 100%; }
 .icon-button { color: #d6e4f2; border-radius: 50%; transition: background .18s ease, box-shadow .18s ease, transform .18s cubic-bezier(.2,.8,.2,1); }
 .icon-button:hover { color: #f1f7ff; background: #edfbff16; box-shadow: inset 0 1px 0 #ffffff29; }
@@ -102,8 +100,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .panel-name { color: #f1f6fc; }.panel-name small { color: #c3d3e2; }.panel-index { color: #bdcfdf; }
 .status-badge { color: #a1b2c7; }.status-badge.blue { color: #a3cbed; }.status-badge.green { color: #a2d8b8; }.status-badge.red { color: #ffb1bb; }
 .panel-header .icon-button { color: #a5b7cb; }
-.panel-footer { background: transparent; border-color: rgba(255, 255, 255, .14); border-radius: 0 0 calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px); text-shadow: var(--text-shadow); }
-.panel-meta { color: #96abc5; }.text-button { color: #c2d5ec; }.session-label { color: #aac7e7; }
+.panel-meta { color: #c3d3e2; }.text-button { color: #c2d5ec; }.session-label { color: #aac7e7; }
 .terminal-host .xterm-viewport { background-color: transparent !important; }
 .terminal-host .xterm-rows { text-shadow: var(--text-shadow); }
 /* DIM is encoded in color alpha. Keep each resolved RGB, including ANSI and
@@ -155,7 +152,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 @keyframes signal-breathe { 0%, 100% { opacity: var(--light-low); } 50% { opacity: var(--light-peak); } }
 .dropdown { background: var(--glass-sheen), var(--glass-strong); border-color: #e8f5ff80; border-radius: 14px; box-shadow: inset 0 1px 0 #ffffff96, inset 0 -1px 0 #0b1a2855, 0 12px 28px #07131e40; backdrop-filter: blur(6px) saturate(135%); animation: glass-appear .16s cubic-bezier(.2,.8,.2,1); transform-origin: top center; }
 .dropdown button { color: #e5f0fa; border-radius: 9px; }.dropdown button:hover { background: #e3f2ff19; box-shadow: inset 0 1px 0 #ffffff15; }.menu-divider { background: #e1efff21; }
-.workspace-statusbar { background: var(--glass-sheen), rgba(9, 24, 34, .38); border: 0; border-top: 1px solid #e4f3ff70; border-radius: 0; margin: 0; padding: 0 18px; color: #edf6ff; height: 28px; flex-basis: 28px; font-size: 11px; box-shadow: var(--glass-shadow); text-shadow: var(--text-shadow); }
 .empty-workspace p { color: #a2b4ca; }.empty-workspace h2 { color: #e3edf9; }.empty-workspace > .eyebrow { color: #a9bdd5; }
 .empty-hints { color: #a1b6cf; }.empty-illustration .illustration-tile { background: #d2e9ff0d; border-color: #dfedff38; box-shadow: inset 0 1px 0 #ffffff0c; }
 .empty-illustration .red-tile { background: #d7809717; border-color: #ec9aaa60; }.empty-illustration .green-tile { background: #86cda618; border-color: #8fcaa355; }
@@ -235,7 +231,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .file-name-label input { display: block; width: 100%; margin-top: 9px; padding: 10px 12px; border-radius: 10px; border: 1px solid #c8e0f047; background: #102637aa; color: #f0f7ff; }
 .explorer-file-status { display: flex; gap: 6px; align-items: center; padding: 6px 10px; border-top: 1px solid #ffffff16; color: #dfedf5; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .explorer-file-status span { min-width: 0; flex: 1; }.explorer-file-status .icon-button { flex-shrink: 0; width: 23px; height: 23px; }
-.panel-footer .voice-button { width: 23px; height: 23px; }
 /* Microphone: blue when a device is connected, red when none is. Recording fills the button and its halo follows the voice level. */
 .voice-button.mic-connected, .voice-button.mic-connected:hover { color: #3fa9ff; }
 .voice-button.mic-missing, .voice-button.mic-missing:hover { color: #ff5c5c; }
@@ -254,7 +249,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .focus-mode .project-panel { border-color: var(--glass-hairline); }
 .focus-mode .project-panel.round-complete { border-color: #8cc9a778; }
 .focus-mode .terminal-host { inset: 17px 12px 10px 18px; }
-.focus-mode .panel-header { padding: 0 14px 0 17px; }.focus-mode .panel-footer { padding: 0 17px; }
+.focus-mode .panel-header { padding: 0 14px 0 17px; }
 
 /* File previews share the same surface; terminals keep their original session. */
 .file-preview { position: absolute; inset: 0; z-index: 5; }
@@ -309,7 +304,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 /* Brighter copy stays legible against both clouds and dark foliage. */
 .panel-name, .file-code pre, .selected-file-tab, .search-input input, .titlebar-brand { color: #ffffff; }
 .icon-button, .panel-header .icon-button, .window-actions .icon-button, .text-button, .terminal-tab { color: #f4f9ff; }
-.panel-name small, .panel-index, .panel-meta, .status-badge, .workspace-statusbar, .session-label,
+.panel-name small, .panel-index, .panel-meta, .status-badge, .workspace-summary, .session-label,
 .eyebrow, .tree-placeholder, .file-preview-toolbar,
 .file-preview-footer, .preview-readonly, .line-numbers, .zoom-label, .settings-intro, .setting-row small,
 .settings-note, .empty-workspace p, .empty-hints, .no-results, .terminal-empty > span, kbd { color: #e7f1fa; }
@@ -317,7 +312,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .terminal-empty p, .no-results h2, .empty-workspace h2, .file-preview-message, .preview-option { color: #f6fbff; }
 .status-badge.blue { color: #d0edff; }.status-badge.green { color: #d4ffe5; }.status-badge.red { color: #ffe0ea; }
 @media (prefers-reduced-transparency: reduce) {
-  .project-panel, .focus-sidebar, .file-preview, .titlebar, .workspace-statusbar, .settings-dialog, .dropdown,
+  .project-panel, .focus-sidebar, .file-preview, .titlebar, .settings-dialog, .dropdown,
   .reorder-hint, .search-input, .button.secondary { background: var(--glass-solid); backdrop-filter: none; text-shadow: none; }
   .project-panel.has-unread { background: #3b2b39; }.project-panel.round-complete { background: #263d35; }
   .settings-dialog::backdrop { background: #07111fc9; backdrop-filter: none; }
@@ -326,3 +321,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 /* Motion follows the app setting (src/motion.ts): "off" always stops it, "system" follows Windows. */
 :root[data-motion="off"] :is(*, *::before, *::after) { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { :root[data-motion="system"] :is(*, *::before, *::after) { animation: none !important; transition: none !important; } }
+
+.panel-header .voice-button { width: 24px; height: 27px; }
+.titlebar-tools > .search-toggle { width: 32px; height: 32px; }
