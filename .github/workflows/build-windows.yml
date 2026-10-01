@@ -129,6 +129,9 @@ jobs:
       - name: Verify Git status, history and explorer switching for local and SSH projects
         run: node scripts/retry.mjs npm run test:git -- --packaged
 
+      - name: Verify Command Prompt terminals report prompts, run agents and resume sessions
+        run: node scripts/retry.mjs npm run test:cmd -- --packaged
+
       - name: Verify image paths use text-only clipboard data and latest-copy ordering
         run: node scripts/retry.mjs npm run test:clipboard -- --packaged
 
@@ -254,6 +257,7 @@ jobs:
           Install Codex CLI on the computer or Linux SSH host where your project runs.
 
           - Multiple project terminals with completion alerts.
+          - Choose PowerShell or Command Prompt (cmd) for local terminals in Settings. Command Prompt keeps the same integration: prompt and directory tracking, codex and claude status, Claude hooks, spoken notices and session restore with continue.
           - A short usage guide opens on first use and after every update (on what is new): the three steps of a round, the main features and the shortcuts in use. Reopen it any time from Settings.
           - Restarting restores Claude Code as well as Codex: each terminal resumes its own Claude session, and an unfinished turn is told to continue ("继续"). The Launch Codex buttons are gone; type codex or claude at the prompt.
           - Finished rounds breathe slowly from the card edge into the terminal three times, then keep a soft glow until you look; working cards stay steady instead of flashing. Sending a new prompt counts as looking, and the rounds-unviewed counter is gone.

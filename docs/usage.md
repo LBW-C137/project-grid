@@ -177,7 +177,7 @@ Markdown（`.md`、`.markdown`、`.mdown`、`.mkd`）提供「编辑 / 预览」
 
 ## 运行条件与范围
 
-- Windows 10/11，x64；使用 Windows PowerShell 和 ConPTY。
+- Windows 10/11，x64；本地终端使用 Windows PowerShell 或命令提示符 (cmd)（设置中选择，新开或重启的终端生效），基于 ConPTY。
 - Codex CLI 已安装并在 PATH 中。已在本机 Codex CLI 0.154.0 上进行启动检查。
 - 支持标准 npm 安装和原生 `codex.exe`。
 - 本应用为所选目录创建独立终端。VS Code 中已经运行的终端不会被直接搬入这个窗口。

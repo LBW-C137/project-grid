@@ -548,5 +548,13 @@
   "设置里可切换中文或英文界面。": "Switch between a Chinese and an English interface in Settings.",
   "所有快捷键都能在设置里修改；搜索 Ctrl+F、添加项目 Ctrl+A、新建分屏 Ctrl+Shift+T。": "Every shortcut can be changed in Settings; search is Ctrl+F, add project Ctrl+A, new split Ctrl+Shift+T.",
   "完成时边框缓缓呼吸后留一层柔光；工作中不再闪烁，发送新指令即视为已查看。": "Finished rounds breathe slowly, then keep a soft glow; working cards no longer flash, and a new prompt counts as seen.",
-  "文件打开即可编辑并显示行号；最近打开过的项目可在添加项目时一键加回。": "Files open ready to edit with line numbers; recent projects come back in one click from Add project."
+  "文件打开即可编辑并显示行号；最近打开过的项目可在添加项目时一键加回。": "Files open ready to edit with line numbers; recent projects come back in one click from Add project.",
+  "终端": "Terminal",
+  "新开或重启的本地终端使用；SSH 项目始终使用 Bash": "Used by new or restarted local terminals; SSH projects always use Bash",
+  "命令提示符 (cmd)": "Command Prompt (cmd)",
+  "命令提示符": "Command Prompt",
+  "新增使用指南：第一次打开和每次更新后显示，也可在设置里随时再看。": "A usage guide: it opens on first use and after each update, and any time from Settings.",
+  "设置里可选择本地终端使用 PowerShell 或命令提示符 (cmd)；两者都能识别 Codex 与 Claude Code、提醒完成并在重启后恢复会话。": "Choose PowerShell or Command Prompt (cmd) for local terminals in Settings; both recognise Codex and Claude Code, announce finished rounds and restore sessions after a restart.",
+  "新建分屏终端的快捷键 Ctrl+Shift+T，项目菜单里也会显示快捷键。": "Ctrl+Shift+T opens a new split terminal, and the project menu shows the key.",
+  "顶部标题栏只保留设置按钮；搜索 Ctrl+Shift+F、添加项目 Ctrl+Shift+N，都可在设置里修改。": "The title bar keeps only the settings button; search is Ctrl+Shift+F and add project Ctrl+Shift+N, both changeable in Settings."
 }
