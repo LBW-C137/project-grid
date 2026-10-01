@@ -76,3 +76,48 @@
    so a mouse user never sees two themes that both look selected. */
 .theme-option:focus-within .theme-swatch { outline: none; }
 .theme-option:has(input:focus-visible) .theme-swatch { outline: 2px solid var(--theme-accent); outline-offset: 3px; }
+
+/* ── Project sidebar ─────────────────────────────────────────────────────── */
+
+/* Indent guides: each open folder draws a hairline under its chevron, down through its children.
+   Rows indent 8 + 14 × depth px, so a folder's chevron centre sits at 14 + 14 × depth px. */
+.tree-children { --tree-guide: #ffffff1c; background: linear-gradient(var(--tree-guide), var(--tree-guide)) no-repeat; background-size: 1px 100%; background-position: -9px 0; animation: polish-tree-in .24s cubic-bezier(.2, .8, .2, 1); }
+.file-tree:hover .tree-children { --tree-guide: #ffffff30; }
+.file-tree > .tree-node > .tree-children > .tree-node > .tree-children { background-position: 14px 0; }
+.file-tree > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children { background-position: 28px 0; }
+.file-tree > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children { background-position: 42px 0; }
+.file-tree > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children { background-position: 56px 0; }
+.file-tree > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children { background-position: 70px 0; }
+.file-tree > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children > .tree-node > .tree-children { background-position: 84px 0; }
+@keyframes polish-tree-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* A folder's chevron turns as it opens. */
+.tree-row[aria-expanded="true"] .tree-chevron svg { animation: polish-chevron-open .24s cubic-bezier(.2, .8, .2, 1); }
+@keyframes polish-chevron-open { from { transform: rotate(-90deg); } }
+.tree-chevron { transition: color .15s ease; }
+.tree-row:hover .tree-chevron { color: var(--sidebar-ink); }
+/* Folders take the theme's own accent, so a warm theme doesn't carry cold blue folders. */
+:root:not([data-theme="forest"]) .folder-icon { color: color-mix(in srgb, var(--theme-accent) 85%, white); }
+
+/* The open file carries a soft wash of the theme accent. */
+.tree-row.file-selected { background: linear-gradient(90deg, color-mix(in srgb, var(--theme-accent, #8fcbff) 30%, transparent), #ffffff1a 70%); box-shadow: inset 0 1px 0 #ffffff14; }
+
+/* Files / Git: the pill slides between the two halves instead of jumping. */
+.explorer-tabs { position: relative; isolation: isolate; }
+.explorer-tabs::before { content: ''; position: absolute; z-index: -1; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 6px) / 2); border-radius: 7px; background: rgba(255, 255, 255, .18); box-shadow: 0 1px 2px rgba(0, 10, 20, .2), inset 0 1px 0 rgba(255, 255, 255, .2); transition: transform .42s cubic-bezier(.34, 1.25, .64, 1); }
+.explorer-tabs:has(button:nth-child(2)[aria-pressed="true"])::before { transform: translateX(calc(100% + 2px)); }
+.explorer-tabs button, .explorer-tabs button[aria-pressed="true"] { background: transparent; box-shadow: none; transition: color .2s ease; }
+
+/* "Overview" points the way back. */
+.explorer-back { transition: background .15s ease; }
+.explorer-back svg { transition: transform .25s cubic-bezier(.2, .8, .2, 1); }
+.explorer-back:hover svg { transform: translateX(-2px); }
+
+/* Git change groups use a drawn chevron instead of the browser's triangle. */
+.git-change-group summary { display: flex; align-items: center; gap: 7px; list-style: none; border-radius: 6px; transition: background .14s ease; }
+.git-change-group summary::-webkit-details-marker { display: none; }
+.git-change-group summary::before { content: ''; flex: 0 0 auto; width: 5px; height: 5px; margin: 0 2px 0 3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; opacity: .7; transform: rotate(-45deg); transition: transform .24s cubic-bezier(.2, .8, .2, 1); }
+.git-change-group[open] > summary::before { transform: translateY(-1px) rotate(45deg); }
+.git-change-group summary:hover { background: var(--theme-hover, #ffffff10); }
+.git-change-group summary span { float: none; margin-left: auto; }
+.git-commit-row, button.git-file { transition: background .14s ease; }
