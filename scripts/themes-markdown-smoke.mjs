@@ -55,7 +55,7 @@ async function chooseTheme(id, name) {
   assert.equal(wallpaper.position.split(',').at(-1).trim(), wallpaper.previewPosition, 'preview and workspace crop match');
   wallpaperChecks.push(wallpaper);
   await page.screenshot({ path: path.join(output, `${id}-settings.png`) });
-  await dialog.getByRole('button', { name: '关闭设置', exact: true }).click();
+  await dialog.getByRole('button', { name: '完成', exact: true }).click();
 }
 try {
   await launch();

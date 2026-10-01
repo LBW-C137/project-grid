@@ -60,6 +60,7 @@ try {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 900));
   await page.waitForSelector('.project-panel');
+  await page.keyboard.press('Control+f');
   const search = page.getByRole('textbox', { name: '搜索项目', exact: true }); await search.fill('运行样例');
   await checkEdges('overview');
   await checkGaps('overview');
@@ -94,7 +95,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));
   await checkEdges('focused');
   await checkGaps('focused');
-  await first.getByRole('button', { name: `新增终端 ${projects[0].name}`, exact: true }).click();
+  await first.getByRole('button', { name: `${projects[0].name} 的更多操作`, exact: true }).click(); await first.getByRole('menuitem', { name: '新建终端并分屏', exact: true }).click();
   await waitFor(async () => (await state()).projects[0].terminals.length === 2 && (await state()).projects[0].terminals.every(terminal => terminal.shellReady), 'split terminals ready');
   const sample = 'PLAIN  中文字体更亮更清晰\r\n\x1b[1mBOLD   重点文字\x1b[0m\r\n\x1b[2mDIM_DEFAULT  Working / background task\x1b[0m\r\n\x1b[2;31mDIM_RED\x1b[0m\r\n\x1b[2;32mDIM_GREEN\x1b[0m\r\n\x1b[2;38;5;45mDIM_256\x1b[0m\r\n\x1b[2;38;2;130;180;220mDIM_RGB\x1b[0m\r\n\x1b[7mINVERSE\x1b[0m\r\n\x1b[2;7mDIM_INVERSE\x1b[0m\r\n';
   const encoded = Buffer.from(sample).toString('base64');

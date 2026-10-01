@@ -19,12 +19,15 @@ const { UpdateManager, isInstalledBuild } = require('./updates.cjs');
 const { getSSHInfo } = require('./ssh-config.cjs');
 const { SSHAuthServer } = require('./ssh-auth.cjs');
 const { RemoteConnection } = require('./remote-connection.cjs');
-const { recentSession, resumeCommand } = require('./session-restore.cjs');
+const { recentSession, resumeCommand, claudeResumeCommand } = require('./session-restore.cjs');
 const { CodexActivityReader, monitorActivity } = require('./codex-activity.cjs');
 const { TerminalTitleTracker } = require('./terminal-title.cjs');
 const { FileOperations } = require('./file-operations.cjs');
 const { ClipboardWrites } = require('./clipboard-writes.cjs');
 const { VoiceManager } = require('./voice.cjs');
+const { SpeechManager } = require('./speech.cjs');
+const { summarizeTask } = require('./task-summary.cjs');
+const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
 
 const root = path.join(__dirname, '..');
@@ -40,6 +43,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'project-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
+const { translate } = require('./i18n.cjs');
+// Text shown by the main process follows the language chosen in settings (Chinese source -> locales/en.json).
+const t = (text, values) => translate(store?.settings.language, text, values);
 let window, tray, store, eventServer, sshAuth, updateManager, quitting = false, installingUpdate = false;
 const sessions = new Map();
 const branches = new Map();
@@ -54,7 +60,7 @@ let sshAskpassDir;
 let activeTerminal = null;
 let activeFileTree = null;
 let fileOperations, fileProgress = null;
-let voiceManager;
+let voiceManager, speechManager;
 let attentionTimer;
 let editorDirty = false, editorCloseRequest = null, editorFile = null;
 const fileSaves = new Set();
@@ -73,7 +79,7 @@ function publicState() {
     projects: store.projects.map(p => {
       const terminals = terminalIds(p).map((id, index) => {
         const s = sessions.get(id);
-        return { id, title: `终端 ${index + 1}`, sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
+        return { id, title: t('终端 {n}', { n: index + 1 }), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
           codexActivity: s?.codexActivity || 'unknown', shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null };
       });
@@ -109,14 +115,34 @@ function disposeProjectTerminals(project) {
 function updateIndicators() {
   const unread = store.projects.filter(p => p.unread > 0).length;
   if (window && !window.isDestroyed()) {
-    window.setTitle(`${unread ? `(${unread}) ` : ''}Project Grid · 项目矩阵`);
+    window.setTitle(`${unread ? `(${unread}) ` : ''}${t('Project Grid · 项目矩阵')}`);
     if (!unread) window.flashFrame(false);
   }
   if (tray && !tray.isDestroyed()) {
     tray.setImage(nativeImage.createFromPath(path.join(root, 'assets', unread ? 'icon-alert.png' : 'icon.png')));
-    tray.setToolTip(unread ? `Project Grid · ${unread} 个项目待查看` : 'Project Grid · 项目矩阵');
+    tray.setToolTip(unread ? t('Project Grid · {count} 个项目待查看', { count: unread }) : t('Project Grid · 项目矩阵'));
   }
 }
+// The same "Ctrl+Shift+F" form the window records (src/shortcuts.ts), from an Electron input event.
+const SHORTCUT_KEYS = { Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`', Space: 'Space', Tab: 'Tab', Enter: 'Enter', NumpadEnter: 'Enter' };
+function isAppShortcut(input) {
+  const code = String(input.code || '');
+  const key = /^Key[A-Z]$/.test(code) ? code.slice(3) : /^Digit\d$/.test(code) ? code.slice(5) : /^F([1-9]|1[0-2])$/.test(code) ? code : SHORTCUT_KEYS[code];
+  if (!key) return false;
+  const pressed = [input.control && 'Ctrl', input.alt && 'Alt', input.shift && 'Shift', key].filter(Boolean).join('+');
+  return Object.values({ ...DEFAULT_SHORTCUTS, ...store.settings.shortcuts }).includes(pressed);
+}
+
+// Rebuilt when the language changes; Electron menus keep the labels they were built with.
+function trayMenu() {
+  if (!tray || tray.isDestroyed()) return;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: t('打开项目矩阵'), click: () => showWindow() },
+    { type: 'separator' },
+    { label: t('退出应用'), click: () => { showWindow(); requestQuit().catch(report); } },
+  ]));
+}
+
 function broadcast() {
   clearTimeout(stateTimer);
   stateTimer = null;
@@ -134,7 +160,8 @@ function showWindow(id) {
   if (id) send('project:focus', id);
 }
 
-function notifyCompletion(project) {
+// task: a short name for what the round worked on, from its prompt (empty when unknown).
+function notifyCompletion(project, task = '') {
   if (!window.isFocused()) {
     window.flashFrame(true); clearTimeout(attentionTimer);
     attentionTimer = setTimeout(() => { if (window && !window.isDestroyed()) window.flashFrame(false); }, 9000);
@@ -142,8 +169,8 @@ function notifyCompletion(project) {
   }
   if (store.settings.notifications && Notification.isSupported()) {
     const note = new Notification({
-      title: `${project.name} · Codex 已完成`,
-      body: '这一轮任务已结束，点击查看终端。',
+      title: t('{name} · 本轮已完成', { name: project.name }),
+      body: t('这一轮任务已结束，点击查看终端。'),
       icon: path.join(root, 'assets/icon-alert.png'),
       silent: !store.settings.sound,
     });
@@ -151,6 +178,8 @@ function notifyCompletion(project) {
     note.on('failed', () => {});
     note.show();
   }
+  // Spoken with the system voice in the window, which knows the chosen language and phrase.
+  if (store.settings.announce) send('completion:announce', { projectId: project.id, name: project.name, task });
 }
 
 // One place turns an agent's turn state into lights and completion alerts, for Codex and Claude alike.
@@ -160,13 +189,15 @@ function applyActivity(project, s, snapshot) {
   // must not make newly running work look complete.
   if (snapshot.updatedAt < Math.max(s.activitySince, s.activityInputAt)) return;
   s.rootThreadId = snapshot.threadId; s.activeTurnId = snapshot.turnId;
+  // Keep the last prompt that named some work; a bare "继续" or "continue" keeps the one before it.
+  if (summarizeTask(snapshot.prompt)) s.lastTask = summarizeTask(snapshot.prompt);
   if (s.agent === 'codex') store.setRestore(s.terminalId, { threadId: snapshot.threadId });
   s.codexActivity = snapshot.state;
   if (snapshot.state === 'working') store.expectCompletion(project.id);
   else if (snapshot.state === 'complete' && snapshot.turnId) {
     s.lastCompletedAt = snapshot.updatedAt;
     if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
-    if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project);
+    if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project, s.lastTask || '');
   } else if (snapshot.state === 'interrupted') store.expectCompletion(project.id, false);
   broadcast();
 }
@@ -176,7 +207,9 @@ function claudeActivity(project, s, event) {
   if (!s.codexActive || s.agent !== 'claude' || !['working', 'complete'].includes(event.state)) return;
   if (typeof event.sessionId !== 'string' || !/^[\w-]{1,100}$/.test(event.sessionId) || typeof event.eventId !== 'string' || event.eventId.length > 200) return;
   const turnId = event.eventId.slice(event.sessionId.length + 1);
-  applyActivity(project, s, { threadId: event.sessionId, turnId: event.state === 'complete' ? turnId : null, state: event.state, updatedAt: Date.now() });
+  // Remember the conversation and whether its turn is still open, so a restart can resume it and continue.
+  store.setRestore(s.terminalId, { threadId: event.sessionId, interrupted: event.state === 'working' });
+  applyActivity(project, s, { threadId: event.sessionId, turnId: event.state === 'complete' ? turnId : null, state: event.state, updatedAt: Date.now(), prompt: typeof event.prompt === 'string' ? event.prompt.slice(0, 2000) : undefined });
 }
 
 function onEvent(event) {
@@ -193,6 +226,7 @@ function onEvent(event) {
     s.inputDirty = false;
     s.status = 'shell';
     s.codexAvailable = event.codexAvailable === true;
+    s.claudeAvailable = event.claudeAvailable === true;
     if (typeof event.codexHome === 'string') s.codexHome = event.codexHome;
     if (!quitting && typeof event.cwd === 'string') store.setRestore(s.terminalId, { cwd: event.cwd });
   } else if (event.type === 'codex-started') {
@@ -204,11 +238,15 @@ function onEvent(event) {
     s.codexActivity = 'unknown'; s.activitySince = Date.now(); s.activityInputAt = 0;
     s.agent = event.agent === 'claude' ? 'claude' : 'codex';
     s.activityMonitor?.stop(); s.activityMonitor = null;
+    // A terminal restores the agent it last ran. Switching agents drops the other one's conversation id.
+    const previousAgent = store.findTerminal(s.terminalId)?.record.restore?.agent || 'codex';
+    const agentRestore = { agent: s.agent, ...(previousAgent !== s.agent ? { threadId: null, interrupted: false } : {}) };
     if (s.agent === 'claude') {
-      // Claude reports turns through its hooks; restore stays with Codex, which it cannot resume.
-      store.setRestore(s.terminalId, { terminal: true, cwd: event.cwd });
+      // Claude reports turns and its session id through hooks (claudeActivity).
+      store.setRestore(s.terminalId, { terminal: true, codex: true, cwd: event.cwd, ...agentRestore });
       broadcast(); return;
     }
+    store.setRestore(s.terminalId, agentRestore);
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
     const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0 });
@@ -229,7 +267,7 @@ function onEvent(event) {
     s.reportedThreadId = null;
     if (!quitting) store.setRestore(s.terminalId, { codex: false });
     const code = Number(event.exitCode);
-    if (code && code !== 130 && code !== -1073741510) s.error = `${s.agent === 'claude' ? 'Claude Code' : 'Codex'} 已退出（代码 ${code}），请查看终端输出。`;
+    if (code && code !== 130 && code !== -1073741510) s.error = t('{agent} 已退出（代码 {code}），请查看终端输出。', { agent: s.agent === 'claude' ? 'Claude Code' : 'Codex', code });
   } else if (event.type === 'turn-complete') {
     // notify is inherited by child agents. It only requests a refresh; the
     // interactive parent's task lifecycle is the authority for completion.
@@ -244,9 +282,22 @@ async function resumeAfterPrompt(project, session) {
   const plan = restorePlans.get(session.terminalId);
   if (!plan || !session.ready || session.inputDirty) return;
   restorePlans.delete(session.terminalId);
+  const restore = store.findTerminal(session.terminalId)?.record.restore;
+  // Claude Code (local projects) resumes its own conversation, continuing an unfinished turn.
+  if (restore?.agent === 'claude' && project.kind !== 'ssh') {
+    if (!session.claudeAvailable || !plan.codex) return;
+    try {
+      const command = claudeResumeCommand(restore);
+      if (sessions.get(session.terminalId) !== session || !session.ready || session.inputDirty || session.codexActive) return;
+      store.expectCompletion(project.id, restore.interrupted === true);
+      session.ready = false;
+      session.terminal.write(command);
+      broadcast();
+    } catch (error) { session.error = `恢复会话失败：${error.message}`; broadcast(); }
+    return;
+  }
   if (!session.codexAvailable) return;
   try {
-    const restore = store.findTerminal(session.terminalId)?.record.restore;
     const info = project.kind === 'ssh' ? await session.terminal.request('resume-info', { threadId: restore?.threadId }) : await recentSession(restore?.cwd || project.path, session.codexHome, restore?.threadId);
     // Legacy versions did not record which process owned a conversation. Open
     // that history, but do not submit work to a possibly still-running session.
@@ -283,6 +334,16 @@ function captureBranch(project) {
     if (branch) setBranch(project.id, branch);
     else git(['rev-parse', 'HEAD'], head => setBranch(project.id, head ? `HEAD ${head.slice(0, 8)}` : ''));
   });
+}
+
+// Adds a local folder as a project and opens its terminal; an already open folder just returns its id.
+function addLocalProject(folder, name) {
+  const { project, added } = store.add(folder, name);
+  if (added) {
+    try { startTerminal(project.id); }
+    catch (error) { startupErrors.set(project.id, error.message); }
+  }
+  return project.id;
 }
 
 function startTerminal(id) {
@@ -352,7 +413,7 @@ function startTerminal(id) {
     s.status = 'exited'; s.ready = false; s.codexActive = false;
     s.activityMonitor?.stop(); s.activityMonitor = null; s.codexActivity = 'unknown';
     restorePlans.delete(id);
-    if (exitCode) s.error = terminal.error || `终端已退出（代码 ${exitCode}）。`;
+    if (exitCode) s.error = terminal.error || t('终端已退出（代码 {code}）。', { code: exitCode });
     if (!quitting && !exitCode) store.setRestore(id, { terminal: false, codex: false });
     if (bootstrapFile) fs.rmSync(bootstrapFile, { force: true });
     broadcast();
@@ -380,7 +441,8 @@ function handle(channel, fn) {
   ipcMain.handle(channel, async (event, ...args) => {
     checkSender(event);
     try { return { ok: true, value: await fn(...args) }; }
-    catch (error) { return { ok: false, error: String(error?.message || error) }; }
+    // Errors from every module are written in Chinese; they reach the window in the chosen language.
+    catch (error) { return { ok: false, error: t(String(error?.message || error)) }; }
   });
 }
 function listen(channel, fn) {
@@ -393,9 +455,9 @@ async function confirmTerminalClose(id, verb, all = false) {
   const count = chosen.filter(item => item.status !== 'exited').length;
   if (!count) return true;
   const result = await dialog.showMessageBox(window, {
-    type: 'question', title: `${verb}${all ? '项目' : '终端'}`, message: `${verb}“${project.name}”的 ${count} 个终端？`,
-    detail: '所选终端内的 Codex 和其他运行中的命令会被结束。项目文件会保留。',
-    buttons: ['取消', `确认${verb}`], defaultId: 0, cancelId: 0,
+    type: 'question', title: t(`${verb}${all ? '项目' : '终端'}`), message: t('{verb}“{name}”的 {count} 个终端？', { verb: t(verb), name: project.name, count }),
+    detail: t('所选终端内的 Codex 和其他运行中的命令会被结束。项目文件会保留。'),
+    buttons: [t('取消'), t(`确认${verb}`)], defaultId: 0, cancelId: 0,
   });
   return result.response === 1;
 }
@@ -405,9 +467,9 @@ async function requestQuit() {
   const count = [...sessions.values()].filter(s => s.status !== 'exited').length;
   if (count) {
     const result = await dialog.showMessageBox(window, {
-      type: 'question', message: `退出并关闭 ${count} 个终端？`,
-      detail: '运行中的任务会被结束。若要让任务继续，请最小化窗口或关闭到系统托盘。',
-      buttons: ['继续运行', '退出应用'], defaultId: 0, cancelId: 0,
+      type: 'question', message: t('退出并关闭 {count} 个终端？', { count }),
+      detail: t('运行中的任务会被结束。若要让任务继续，请最小化窗口或关闭到系统托盘。'),
+      buttons: [t('继续运行'), t('退出应用')], defaultId: 0, cancelId: 0,
     });
     if (result.response !== 1) return false;
   }
@@ -457,9 +519,9 @@ function registerIpc() {
       const count = [...sessions.values()].filter(session => session.status !== 'exited').length;
       if (count) {
         const result = await dialog.showMessageBox(window, {
-          type: 'question', title: '重启并安装更新', message: `重启会关闭 ${count} 个终端`,
-          detail: '请先确认任务已经完成。取消后，下载好的更新会继续保留。',
-          buttons: ['继续工作', '关闭终端并更新'], defaultId: 0, cancelId: 0,
+          type: 'question', title: t('重启并安装更新'), message: t('重启会关闭 {count} 个终端', { count }),
+          detail: t('请先确认任务已经完成。取消后，下载好的更新会继续保留。'),
+          buttons: [t('继续工作'), t('关闭终端并更新')], defaultId: 0, cancelId: 0,
         });
         if (result.response !== 1) { installingUpdate = false; return false; }
       }
@@ -470,20 +532,23 @@ function registerIpc() {
   });
   handle('workspace:state', publicState);
   handle('workspace:add', async () => {
-    const result = await dialog.showOpenDialog(window, { title: '添加项目文件夹（可多选）', properties: ['openDirectory', 'multiSelections'] });
+    const result = await dialog.showOpenDialog(window, { title: t('添加项目文件夹（可多选）'), properties: ['openDirectory', 'multiSelections'] });
     if (result.canceled) return [];
-    const ids = [];
-    for (const folder of result.filePaths) {
-      const { project, added } = store.add(folder);
-      ids.push(project.id);
-      if (added) {
-        try { startTerminal(project.id); }
-        catch (error) { startupErrors.set(project.id, error.message); }
-      }
-    }
+    const ids = result.filePaths.map(folder => addLocalProject(folder));
     broadcast();
     return ids;
   });
+  const recentProjects = () => store.recentProjects().map(item => ({ ...item, exists: fs.existsSync(item.path) }));
+  handle('workspace:recent', recentProjects);
+  // Only folders already in the history can be reopened this way; anything else goes through the folder picker.
+  handle('workspace:add-recent', folder => {
+    const entry = store.recentEntry(folder);
+    if (!entry) throw new Error('这个项目不在最近列表里，请重新选择文件夹。');
+    if (!fs.existsSync(entry.path)) throw new Error('文件夹已不存在，可以把它从最近列表中删除。');
+    const id = addLocalProject(entry.path, entry.name); broadcast(); return id;
+  });
+  handle('workspace:forget-recent', folder => { store.forget(folder); return recentProjects(); });
+  handle('workspace:clear-recent', () => { store.clearHistory(); return recentProjects(); });
   handle('workspace:remove', async id => {
     if (editorFile?.id === id && !await allowEditorClose()) return false;
     if (!await confirmTerminalClose(id, '移除', true)) return false;
@@ -493,7 +558,9 @@ function registerIpc() {
   handle('workspace:reorder', ids => { store.reorderProjects(ids); broadcast(); });
   handle('workspace:settings', patch => {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('无效的设置。');
+    const language = store.settings.language;
     store.updateSettings(patch); broadcast();
+    if (store.settings.language !== language) trayMenu();
     if (patch.restoreSessions === false) restorePlans.clear();
   });
   handle('project:directory', (id, relativePath = '', offset = 0) => findProject(id).kind === 'ssh' ? remoteFor(id).request('directory', { path: relativePath, offset }) : listDirectory(findProject(id), relativePath, offset));
@@ -530,6 +597,9 @@ function registerIpc() {
   handle('voice:state', () => voiceManager.getState());
   handle('voice:prepare', () => voiceManager.prepare());
   handle('voice:transcribe', audio => voiceManager.transcribe(audio));
+  handle('speech:state', () => speechManager.getState());
+  handle('speech:prepare', () => speechManager.prepare());
+  handle('speech:speak', text => speechManager.speak(text));
   listen('files:focus', (id, focused) => { if (focused) { findProject(id); activeFileTree = id; activeTerminal = null; } else if (activeFileTree === id) activeFileTree = null; });
   handle('project:file', async (id, relativePath, pageIndex) => {
     const project = findProject(id);
@@ -552,8 +622,8 @@ function registerIpc() {
     } finally { fileSaves.delete(key); }
   });
   handle('editor:confirm-close', async filename => {
-    const result = await dialog.showMessageBox(window, { type: 'question', title: '未保存的修改', message: `保存对“${String(filename).slice(0, 500)}”的修改？`,
-      buttons: ['保存', '不保存', '取消'], defaultId: 0, cancelId: 2 });
+    const result = await dialog.showMessageBox(window, { type: 'question', title: t('未保存的修改'), message: t('保存对“{name}”的修改？', { name: String(filename).slice(0, 500) }),
+      buttons: [t('保存'), t('不保存'), t('取消')], defaultId: 0, cancelId: 2 });
     return ['save', 'discard', 'cancel'][result.response] || 'cancel';
   });
   listen('editor:dirty', (value, id, filename) => { editorDirty = value === true; editorFile = editorDirty && typeof id === 'string' && typeof filename === 'string' ? { id, path: filename } : null; });
@@ -616,20 +686,14 @@ function registerIpc() {
     s.flush();
     return { sessionId: s.sessionId, seq: s.seq, data: s.chunks.join('') };
   });
-  handle('terminal:codex', id => {
-    findProject(id);
-    const s = sessions.get(id);
-    if (!s?.ready || s.inputDirty) throw new Error('请先结束当前命令，并在空白终端提示符下启动 Codex。');
-    if (s.codexActive) return;
-    if (!s.codexAvailable) throw new Error('终端中未找到 Codex CLI，请安装后重启终端。');
-    s.codexActive = true; s.status = 'codex';
-    s.ready = false; s.terminal.write('codex\r'); broadcast();
-  });
   listen('terminal:write', (id, data) => {
     if (typeof data !== 'string' || data.length > 1024 * 1024) return;
     const s = sessions.get(id);
     if (s && s.status !== 'exited') {
-      if (s.submissions.write(data) && s.codexActive) {
+      const submitted = s.submissions.write(data);
+      // Sending a new prompt means the last result has been read: clear the unviewed state before the next round.
+      if (submitted && store.projects.find(p => p.id === s.projectId)?.unread) { store.acknowledge(s.projectId); scheduleState(); }
+      if (submitted && s.codexActive) {
         store.expectCompletion(s.projectId);
         s.codexActivity = 'working'; s.activityInputAt = Date.now();
         scheduleState();
@@ -694,12 +758,15 @@ else {
     voiceManager = new VoiceManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
     // Download the offline model in the background after installation so dictation works on first use.
     // Waits for startup and session restore first; isolated test profiles skip the 239 MB download.
+    speechManager = new SpeechManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('speech:state', state) });
     if (!process.env.PROJECT_GRID_DATA_DIR) setTimeout(() => { if (!quitting) voiceManager.prepare().catch(() => {}); }, 8000);
+    // The natural voice for spoken notices downloads once, after voice input, while announcing is on.
+    if (!process.env.PROJECT_GRID_DATA_DIR) setTimeout(() => { if (!quitting && store.settings.announce) speechManager.prepare().then(() => speechManager.warm()).catch(() => {}); }, 20000);
     fileOperations = new FileOperations({ integrationDir, cacheRoot: path.join(app.getPath('userData'), 'file-clipboard'), remote: remoteFor, clipboardWrites,
       trash: filename => shell.trashItem(filename),
-      confirmDelete: async (project, paths) => (await dialog.showMessageBox(window, { type: 'question', title: '删除文件', message: `删除 ${paths.length} 个文件或文件夹？`,
-        detail: `${paths.slice(0, 5).join('\n')}${paths.length > 5 ? '\n…' : ''}\n\n${project.kind === 'ssh' ? '远程文件会被永久删除。' : '本地文件会移入回收站。'}`,
-        buttons: ['取消', '删除'], defaultId: 0, cancelId: 0 })).response === 1,
+      confirmDelete: async (project, paths) => (await dialog.showMessageBox(window, { type: 'question', title: t('删除文件'), message: t('删除 {count} 个文件或文件夹？', { count: paths.length }),
+        detail: `${paths.slice(0, 5).join('\n')}${paths.length > 5 ? '\n…' : ''}\n\n${project.kind === 'ssh' ? t('远程文件会被永久删除。') : t('本地文件会移入回收站。')}`,
+        buttons: [t('取消'), t('删除')], defaultId: 0, cancelId: 0 })).response === 1,
       progress: value => { fileProgress = value; send('files:progress', value); },
     });
     runtimeDir = fs.mkdtempSync(path.join(app.getPath('userData'), 'runtime-'));
@@ -725,12 +792,12 @@ else {
       try {
         const resource = await previewResources.resolve(request.url);
         return resourceResponse(resource, request);
-      } catch { return new Response('文件不存在、超出项目范围，或预览已关闭。', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } }); }
+      } catch { return new Response(t('文件不存在、超出项目范围，或预览已关闭。'), { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } }); }
     });
     registerIpc();
     window = new BrowserWindow({
       width: 1500, height: 940, minWidth: 820, minHeight: 560,
-      title: 'Project Grid · 项目矩阵', backgroundColor: '#101216',
+      title: t('Project Grid · 项目矩阵'), backgroundColor: '#101216',
       frame: false, show: false, icon: path.join(root, 'assets/icon.png'),
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, nodeIntegrationInSubFrames: false, contextIsolation: true, sandbox: true, spellcheck: false, backgroundThrottling: false },
     });
@@ -748,15 +815,18 @@ else {
     window.webContents.on('context-menu', (_event, params) => {
       if (activeTerminal || (!params.isEditable && !params.selectionText)) return;
       const items = params.isEditable ? [
-        { label: '撤销', role: 'undo' }, { label: '重做', role: 'redo' }, { type: 'separator' },
-        { label: '剪切', role: 'cut' }, { label: '复制', role: 'copy' }, { label: '粘贴', role: 'paste' }, { type: 'separator' }, { label: '全选', role: 'selectAll' },
-      ] : [{ label: '复制', role: 'copy' }];
+        { label: t('撤销'), role: 'undo' }, { label: t('重做'), role: 'redo' }, { type: 'separator' },
+        { label: t('剪切'), role: 'cut' }, { label: t('复制'), role: 'copy' }, { label: t('粘贴'), role: 'paste' }, { type: 'separator' }, { label: t('全选'), role: 'selectAll' },
+      ] : [{ label: t('复制'), role: 'copy' }];
       Menu.buildFromTemplate(items).popup({ window });
     });
     // A frameless window has no Edit menu accelerators. Explicitly retain
     // standard editing shortcuts for inputs, including SSH password fields.
     window.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown' || activeTerminal || input.alt) return;
+      // An app shortcut (Ctrl+A adds a project by default) reaches the window, which keeps the usual
+      // editing meaning inside text boxes and runs the action elsewhere.
+      if (isAppShortcut(input)) return;
       const key = input.key.toLowerCase();
       if (activeFileTree && (((input.control || input.meta) && ['a', 'c', 'v'].includes(key)) || ['delete', 'f2'].includes(key) || (key === 'insert' && (input.control || input.shift)))) return;
       let action;
@@ -784,12 +854,8 @@ else {
       else requestQuit().catch(report);
     });
     tray = new Tray(nativeImage.createFromPath(path.join(root, 'assets/icon.png')));
-    tray.setToolTip('Project Grid · 项目矩阵');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: '打开项目矩阵', click: () => showWindow() },
-      { type: 'separator' },
-      { label: '退出应用', click: () => { showWindow(); requestQuit().catch(report); } },
-    ]));
+    tray.setToolTip(t('Project Grid · 项目矩阵'));
+    trayMenu();
     tray.on('click', () => showWindow());
     Menu.setApplicationMenu(null);
     for (const project of store.projects) captureBranch(project);
@@ -814,7 +880,7 @@ else {
 }
 app.on('before-quit', () => {
   clearTimeout(attentionTimer);
-  voiceManager?.close(); fileOperations?.cancel();
+  voiceManager?.close(); speechManager?.close(); fileOperations?.cancel();
   quitting = true;
   updateManager?.dispose();
   clearTimeout(stateTimer);

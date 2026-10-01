@@ -22,6 +22,8 @@ try {
         state = $(if ($Kind -eq 'stop') { 'complete' } else { 'working' })
         sessionId = $sessionId
         eventId = $sessionId + ':' + [DateTime]::UtcNow.Ticks
+        # The submitted prompt names the work; the spoken completion notice says what finished.
+        prompt = $(if ($Kind -eq 'start' -and $hook.prompt) { ([string]$hook.prompt).Substring(0, [Math]::Min(2000, ([string]$hook.prompt).Length)) } else { $null })
     } | ConvertTo-Json -Compress
     $pipe = [System.IO.Pipes.NamedPipeClientStream]::new('.', $PipeName, [System.IO.Pipes.PipeDirection]::Out)
     try {

@@ -170,7 +170,7 @@ try {
   await page.getByLabel('界面动画', { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(output, 'motion-settings.png') });
   await page.getByLabel('界面动画', { exact: true }).selectOption('system');
-  await page.getByRole('button', { name: '关闭设置', exact: true }).click();
+  await page.getByRole('button', { name: '完成', exact: true }).click();
   await panel.locator('.panel-name').click(); await settled(true);
   assert.equal(await page.locator('.focus-motion-panel').count(), 0);
   await page.getByRole('button', { name: '返回总览', exact: true }).click(); await settled(false);
@@ -179,7 +179,7 @@ try {
 
   await page.getByRole('button', { name: '工作台设置', exact: true }).click();
   await page.getByLabel('界面动画', { exact: true }).selectOption('off');
-  await page.getByRole('button', { name: '关闭设置', exact: true }).click();
+  await page.getByRole('button', { name: '完成', exact: true }).click();
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await panel.locator('.panel-name').click(); await settled(true);
   assert.equal(await page.locator('.focus-motion-panel').count(), 0);

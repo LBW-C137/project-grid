@@ -50,7 +50,7 @@ try {
   const first = page.locator(`[data-project-id="${projects[0].id}"]`);
   await first.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await state()).projects[0].shellReady, 'shell ready');
-  await first.getByRole('button', { name: `新增终端 ${projects[0].name}`, exact: true }).click();
+  await first.getByRole('button', { name: `${projects[0].name} 的更多操作`, exact: true }).click(); await first.getByRole('menuitem', { name: '新建终端并分屏', exact: true }).click();
   await waitFor(async () => (await state()).projects[0].terminals.length === 2 && (await state()).projects[0].terminals.every(terminal => terminal.shellReady), 'independent split ready');
   controlId = (await state()).projects[0].terminals[1].id;
   const terminal = page.locator(`[data-terminal-id="${projects[0].id}"]`), control = page.locator(`[data-terminal-id="${controlId}"]`);

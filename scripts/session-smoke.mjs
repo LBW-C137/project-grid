@@ -21,6 +21,8 @@ await fs.mkdir(dataDir, { recursive: true });
 await fs.mkdir(path.join(codexHome, 'sessions'), { recursive: true });
 await fs.mkdir(bin);
 await exec(path.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/target:exe', '/reference:System.Web.Extensions.dll', `/out:${path.join(bin, 'codex.exe')}`, path.join(root, 'tests/fixtures/restore-codex.cs')], { windowsHide: true });
+// The same offline fixture stands in for Claude Code: it records the arguments it was resumed with.
+await fs.copyFile(path.join(bin, 'codex.exe'), path.join(bin, 'claude.exe'));
 const projects = [];
 for (const [index, name] of ['中断的项目', '已结束这一轮', '主动关闭终端', '旧版完成项目'].entries()) {
   const directory = path.join(output, name);
@@ -33,7 +35,14 @@ for (const [index, name] of ['中断的项目', '已结束这一轮', '主动关
     ...(index === 1 ? [{ type: 'event_msg', payload: { type: 'task_complete' } }] : []),
   ].map(value => JSON.stringify(value)).join('\n') + '\n');
 }
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { notifications: false, sound: false, closeToTray: false, restoreSessions: true, columns: 2 } }));
+// Claude Code sessions: one stopped mid-turn, one whose last turn finished.
+const claudeProjects = [];
+for (const [index, name] of ['Claude 中断', 'Claude 已完成'].entries()) {
+  const directory = path.join(output, name); await fs.mkdir(directory);
+  const sessionId = randomUUID();
+  claudeProjects.push({ id: randomUUID(), name, path: directory, kind: 'local', seenEvents: [], restore: { terminal: true, codex: true, cwd: directory, agent: 'claude', threadId: sessionId, ...(index === 0 ? { interrupted: true } : {}) }, sessionId });
+}
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [...projects, ...claudeProjects], settings: { notifications: false, sound: false, closeToTray: false, restoreSessions: true, columns: 2 } }));
 const fixture = await createSSHFixture({ password: true, unknownHost: true, nativeWorker: false });
 await fs.writeFile(path.join(fixture.project, 'README.md'), 'REMOTE_TEXT_PREVIEW 中文');
 await fs.copyFile(path.join(root, 'assets/icon.png'), path.join(fixture.project, '图片.png'));
@@ -67,10 +76,19 @@ async function verifyResume() {
   assert.deepEqual((await receipt(projects[1])).args.slice(4), ['resume', projects[1].sessionId]);
   assert.equal(await receipt(projects[2]), null);
   assert.equal(await receipt(projects[3]), null);
-  await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects.filter(p => p.codexActive).length === 2, 'two active restored conversations');
+  // Claude Code resumes its own session through the wrapper (hooks passed with --settings first).
+  await waitFor(async () => (await receipt(claudeProjects[0])) && (await receipt(claudeProjects[1])), 'restored Claude Code processes');
+  assert.equal((await receipt(claudeProjects[0])).args[0], '--settings');
+  assert.deepEqual((await receipt(claudeProjects[0])).args.slice(2), ['--resume', claudeProjects[0].sessionId, '继续']);
+  assert.deepEqual((await receipt(claudeProjects[1])).args.slice(2), ['--resume', claudeProjects[1].sessionId]);
+  await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects.filter(p => p.codexActive).length === 4, 'four active restored conversations');
+  assert.deepEqual((await page.evaluate(() => window.projectGrid.getState())).value.projects.filter(p => p.agent === 'claude').map(p => p.id).sort(), claudeProjects.map(p => p.id).sort());
   const stored = JSON.parse(await fs.readFile(path.join(dataDir, 'workspace.json'), 'utf8'));
   assert.equal(stored.projects.find(project => project.id === projects[0].id).completionArmed, true, 'automatic continuation arms a completion alert');
   assert.equal(stored.projects.find(project => project.id === projects[1].id).completionArmed, false, 'opening completed history stays quiet');
+  assert.equal(stored.projects.find(project => project.id === claudeProjects[0].id).completionArmed, true, 'continuing an unfinished Claude turn arms a completion alert');
+  assert.equal(stored.projects.find(project => project.id === claudeProjects[1].id).completionArmed, false, 'reopening a finished Claude session stays quiet');
+  assert.equal(stored.projects.find(project => project.id === claudeProjects[0].id).restore.agent, 'claude', 'the terminal keeps restoring Claude Code');
 }
 const clipboardText = () => application.evaluate(({ clipboard }) => clipboard.readText());
 const setClipboard = text => application.evaluate(async ({ clipboard }, text) => { globalThis.testClipboardLast = text; await clipboard.writeText(text); }, text);
@@ -95,7 +113,7 @@ try {
   assert.ok((await page.evaluate(() => window.projectGrid.getState())).value.projects.every(project => !('done' in project)));
   console.log('PASS: interrupted session resumes with 继续; completed round resumes without a prompt; closed and legacy-finished projects stay stopped after migration');
   await application.close(); application = null;
-  for (const project of projects.slice(0, 2)) await fs.unlink(path.join(project.path, 'resume-receipt.json'));
+  for (const project of [...projects.slice(0, 2), ...claudeProjects]) await fs.unlink(path.join(project.path, 'resume-receipt.json'));
   await launch(); await verifyResume();
   console.log('PASS: real application restart retains and restores coding state');
   const panel = page.locator(`[data-project-id="${projects[0].id}"]`);
@@ -142,12 +160,13 @@ try {
   await waitFor(async () => (await receivedKeys()).some(key => key.key === 'Enter' && key.modifiers === '0'), 'ordinary Enter remains a submission key');
   console.log('PASS: native Windows CLI receives a real Shift+Enter, ordinary Enter stays distinct, and input stays in the small card');
 
+  await page.keyboard.press('Control+f');
   const search = page.getByRole('textbox', { name: '搜索项目', exact: true });
   await setClipboard('输入框粘贴 中文🙂');
   await search.focus(); await page.keyboard.press('Control+v');
   await waitFor(async () => (await search.inputValue()) === '输入框粘贴 中文🙂', 'native input paste');
-  await search.fill('');
-  await page.getByRole('button', { name: '添加项目', exact: true }).click();
+  await search.fill(''); await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('Control+a');
   await page.getByRole('button', { name: /SSH 远程项目/ }).click();
   const sshHost = page.getByLabel('SSH 主机', { exact: true });
   await setClipboard('fixture'); await sshHost.focus(); await page.keyboard.press('Control+v');

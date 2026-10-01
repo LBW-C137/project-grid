@@ -81,7 +81,6 @@ kbd { font: 600 9px 'Segoe UI', sans-serif; border: 1px solid #303743; border-ra
 .terminal-empty > span { font-size: 11px; color: #6e7e91; }
 .terminal-empty button { margin-top: 7px; }
 .panel-meta { flex-shrink: 1; min-width: 0; font-size: 11px; color: #6a7a8f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.unread-count { min-width: 18px; padding: 0 5px; border-radius: 9px; background: #ff86d433; color: #ffd6ea; font: 700 10px/16px Consolas, monospace; text-align: center; }
 .panel-action { flex-shrink: 0; gap: 4px; font-size: 11px; }
 .session-label { display: flex; align-items: center; gap: 5px; color: #8099b4; font: 600 11px 'Consolas', monospace; letter-spacing: .3px; }
 .session-dot { width: 4px; height: 4px; border-radius: 50%; background: #769fbf; }

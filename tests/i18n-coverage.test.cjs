@@ -1,0 +1,28 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { en } = require('../electron/i18n.cjs');
+
+// Every literal t('…') phrase in the window and the main process has an English entry,
+// so switching to English never leaves a Chinese label behind.
+test('every interface phrase has an English translation', () => {
+  const root = path.join(__dirname, '..');
+  const files = [...fs.readdirSync(path.join(root, 'src')).filter(name => /\.tsx?$/.test(name)).map(name => path.join(root, 'src', name)), path.join(root, 'electron', 'main.cjs')];
+  const missing = new Set();
+  for (const file of files) {
+    for (const match of fs.readFileSync(file, 'utf8').matchAll(/\bt\(\s*'((?:[^'\\]|\\.)*)'/g)) {
+      const key = match[1].replace(/\\'/g, "'");
+      if (/[一-鿿]/.test(key) && !Object.prototype.hasOwnProperty.call(en, key)) missing.add(`${path.basename(file)}: ${key}`);
+    }
+  }
+  assert.deepEqual([...missing], []);
+});
+
+test('shortcut action names and theme names are translated too', () => {
+  const shortcuts = fs.readFileSync(path.join(__dirname, '..', 'src', 'shortcuts.ts'), 'utf8');
+  const themes = fs.readFileSync(path.join(__dirname, '..', 'src', 'themes.ts'), 'utf8');
+  const labels = [...shortcuts.matchAll(/label: '([^']+)'/g), ...themes.matchAll(/(?:name|description): '([^']+)'/g)].map(match => match[1]);
+  assert.ok(labels.length >= 15);
+  assert.deepEqual(labels.filter(label => !Object.prototype.hasOwnProperty.call(en, label)), []);
+});

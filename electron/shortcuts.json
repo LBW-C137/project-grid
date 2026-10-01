@@ -1,0 +1,11 @@
+{
+  "search": "Ctrl+F",
+  "addProject": "Ctrl+A",
+  "voice": "Ctrl+T",
+  "overview": "Ctrl+Shift+G",
+  "explorer": "Ctrl+B",
+  "settings": "Ctrl+,",
+  "nextProject": "Ctrl+Tab",
+  "previousProject": "Ctrl+Shift+Tab",
+  "maximize": "Ctrl+Shift+Enter"
+}

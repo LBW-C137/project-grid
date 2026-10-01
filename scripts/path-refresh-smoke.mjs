@@ -56,7 +56,7 @@ try {
   await panel.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await state()).shellReady, 'initial terminal');
   const first = await prove(project.id, 'initial');
-  await panel.getByRole('button', { name: `新增终端 ${project.name}`, exact: true }).click();
+  await panel.getByRole('button', { name: `${project.name} 的更多操作`, exact: true }).click(); await panel.getByRole('menuitem', { name: '新建终端并分屏', exact: true }).click();
   await waitFor(async () => (await state()).terminals.length === 2 && (await state()).terminals.every(terminal => terminal.shellReady), 'new split');
   const neighbor = (await state()).terminals[1]; await prove(neighbor.id, 'split');
   await write(neighbor.id, "Write-Output 'NEIGHBOR_DRAFT_STAYS'");

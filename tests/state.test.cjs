@@ -159,7 +159,13 @@ test('corrupt workspace is copied aside before a new workspace can be saved', t 
 });
 
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'forest', notifications: true, sound: false, closeToTray: true, explorerCollapsed: false, restoreSessions: true });
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'forest', language: 'zh', shortcuts: {}, announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true });
+  assert.equal(cleanSettings({ language: 'fr' }).language, 'zh');
+  assert.deepEqual(cleanSettings({ shortcuts: { search: 'Ctrl+Shift+K', addProject: 'A', voice: 'Alt+V', overview: 'F6', settings: 'Ctrl+rm', nextProject: 'Ctrl+Tab', unknown: 'Ctrl+Q' } }).shortcuts, { search: 'Ctrl+Shift+K', voice: 'Alt+V', overview: 'F6', nextProject: 'Ctrl+Tab' }, 'only valid combinations for known actions are kept');
+  assert.equal(cleanSettings({ language: 'en' }).language, 'en');
+  assert.equal(cleanSettings({ announce: 'loud' }).announce, true);
+  assert.equal(cleanSettings({ announcePhrase: '  {项目}\n做完了  ' }).announcePhrase, '{项目} 做完了', 'phrases are one trimmed line');
+  assert.equal(cleanSettings({ announcePhrase: 'x'.repeat(200) }).announcePhrase.length, 80);
   assert.equal(cleanSettings({ focusAnimation: 'invalid' }).focusAnimation, 'smooth');
   assert.equal(cleanSettings({ focusAnimation: 'system' }).focusAnimation, 'system');
   assert.equal(cleanSettings({ focusAnimation: 'off' }).focusAnimation, 'off');
@@ -225,4 +231,52 @@ test('insertion reorder preserves all records and rejects stale or duplicated pr
   assert.deepEqual(new WorkspaceStore(file).projects.map(item => item.id), [second.id, third.id, project.id]);
   assert.equal(store.projects[2], project); assert.equal(project.unread, 1);
   for (const order of [[second.id, project.id], [second.id, project.id, project.id], [second.id, third.id, 'missing'], null]) assert.throws(() => store.reorderProjects(order), /项目列表已变化/);
+});
+
+test('removed local projects stay in a bounded recent list that can be pruned or cleared', t => {
+  const { directory, projectDir, file, store, project } = fixture(t);
+  assert.deepEqual(store.recentProjects(), [], 'open projects are not offered again');
+  store.remove(project.id);
+  const [recent] = new WorkspaceStore(file).recentProjects();
+  assert.equal(recent.path, fs.realpathSync(projectDir));
+  assert.equal(recent.name, project.name);
+  const reopened = new WorkspaceStore(file);
+  assert.equal(reopened.isRecent(projectDir.toUpperCase()), process.platform === 'win32');
+  assert.equal(reopened.add(projectDir, recent.name).project.name, project.name, 're-adding keeps the remembered name');
+  assert.deepEqual(reopened.recentProjects(), [], 're-adding hides it again');
+  const folders = Array.from({ length: 35 }, (_, index) => { const folder = path.join(directory, `p${index}`); fs.mkdirSync(folder); return folder; });
+  for (const folder of folders) reopened.remove(reopened.add(folder).project.id);
+  const listed = new WorkspaceStore(file).recentProjects();
+  assert.equal(listed.length, 30, 'thirty entries at most');
+  assert.equal(listed[0].path, fs.realpathSync(folders.at(-1)), 'newest first');
+  reopened.forget(listed[0].path);
+  assert.equal(new WorkspaceStore(file).isRecent(listed[0].path), false);
+  reopened.clearHistory();
+  assert.deepEqual(new WorkspaceStore(file).history, []);
+});
+
+test('SSH projects and malformed history entries are not remembered', t => {
+  const { file, store } = fixture(t);
+  store.remember({ kind: 'ssh', path: '/srv/app', name: 'app' });
+  assert.equal(store.history.length, 1, 'only the local fixture project');
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  saved.history = [{ path: 'relative/folder' }, { path: 42 }, null, { path: path.resolve('/abs/one'), name: 'one', lastOpenedAt: 5 }, { path: path.resolve('/abs/one') }];
+  fs.writeFileSync(file, JSON.stringify(saved));
+  assert.deepEqual(new WorkspaceStore(file).history, [{ path: path.resolve('/abs/one'), name: 'one', lastOpenedAt: 5 }]);
+});
+
+test('each terminal remembers whether Claude Code or Codex ran, and an unfinished Claude turn', t => {
+  const { file, store, project } = fixture(t);
+  const split = store.addTerminal(project.id), thread = '00000000-0000-4000-8000-000000000009';
+  store.setRestore(split, { codex: true, agent: 'claude', threadId: thread, interrupted: true });
+  let reopened = new WorkspaceStore(file);
+  assert.deepEqual(reopened.findTerminal(split).record.restore, { terminal: true, codex: true, cwd: project.path, threadId: thread, agent: 'claude', interrupted: true });
+  assert.equal(reopened.findTerminal(project.id).record.restore.agent, undefined, 'the other terminal still restores Codex');
+  reopened.setRestore(split, { interrupted: false });
+  assert.equal(new WorkspaceStore(file).findTerminal(split).record.restore.interrupted, undefined, 'a finished turn is not continued');
+  reopened.setRestore(split, { agent: 'codex', threadId: null, interrupted: false });
+  reopened = new WorkspaceStore(file);
+  assert.deepEqual(reopened.findTerminal(split).record.restore, { terminal: true, codex: true, cwd: project.path });
+  reopened.setRestore(split, { agent: 'other', interrupted: 'yes' });
+  assert.equal(new WorkspaceStore(file).findTerminal(split).record.restore.agent, undefined, 'unknown agents are ignored');
 });

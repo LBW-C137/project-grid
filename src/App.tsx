@@ -3,9 +3,9 @@ import {
   SquaresFour, FolderSimplePlus, Bell, MagnifyingGlass, ArrowsOutSimple,
   Play, Plus, Terminal as TerminalIcon, Check, DotsThree, GitBranch, X, Minus, Square,
   GearSix, CheckCircle, FolderOpen, Power, ArrowCounterClockwise,
-  Monitor, Info, Circle, SpeakerHigh, Globe, Microphone,
+  Monitor, Info, Circle, SpeakerHigh, Globe, Microphone, Waveform,
 } from '@phosphor-icons/react';
-import type { AppUpdateState, Project, ProjectLocation, Result, Settings, SSHAuthPrompt, Workspace } from './types';
+import type { AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
 import { ProjectTerminals } from './ProjectTerminals';
 import { ProjectExplorer } from './ProjectExplorer';
 import { AddProjectDialog } from './AddProjectDialog';
@@ -16,6 +16,11 @@ import { applyTheme, themes } from './themes';
 import { applyMotion } from './motion';
 import { LiquidGlass } from './LiquidGlass';
 import { VoiceButton, VoiceModelStatus, VoiceOverlay } from './VoiceButton';
+import { announce, announcementVoice, onVoicesReady } from './announce';
+import { applyLanguage, currentLanguage, t } from './i18n';
+import { actionFor, applyShortcuts, editingKeyInField, shortcut } from './shortcuts';
+import { quickDictation } from './voice-input';
+import { ShortcutSettings } from './ShortcutSettings';
 const FilePreview = lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
 
 const api = window.projectGrid;
@@ -29,22 +34,22 @@ function IconButton({ label, children, onClick, className = '', disabled = false
 function relativeTime(timestamp: number | null, now: number) {
   if (!timestamp) return '';
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
-  if (seconds < 10) return '刚刚';
-  if (seconds < 60) return `${seconds} 秒前`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN');
+  if (seconds < 10) return t('刚刚');
+  if (seconds < 60) return t('{n} 秒前', { n: seconds });
+  if (seconds < 3600) return t('{n} 分钟前', { n: Math.floor(seconds / 60) });
+  if (seconds < 86400) return t('{n} 小时前', { n: Math.floor(seconds / 3600) });
+  return new Date(timestamp).toLocaleDateString(currentLanguage() === 'en' ? 'en-US' : 'zh-CN');
 }
 
 function statusText(project: Project) {
-  if (project.codexActive && project.codexActivity === 'working') return '正在处理';
-  if (project.unread) return '等待你查看';
-  if (project.error) return '需要检查';
-  if (project.status === 'codex') return project.codexActivity === 'complete' ? '本轮已完成' : project.codexActivity === 'interrupted' ? '已中断' : `${agentName(project.agent)} 会话中`;
-  if (project.status === 'shell') return '终端就绪';
-  if (project.status === 'starting') return project.kind === 'ssh' ? '正在连接 SSH' : '正在启动';
-  if (project.status === 'exited') return project.kind === 'ssh' ? 'SSH 终端已退出' : '终端已退出';
-  return '尚未启动';
+  if (project.codexActive && project.codexActivity === 'working') return t('正在处理');
+  if (project.unread) return t('等待你查看');
+  if (project.error) return t('需要检查');
+  if (project.status === 'codex') return project.codexActivity === 'complete' ? t('本轮已完成') : project.codexActivity === 'interrupted' ? t('已中断') : t('{agent} 会话中', { agent: agentName(project.agent) });
+  if (project.status === 'shell') return t('终端就绪');
+  if (project.status === 'starting') return project.kind === 'ssh' ? t('正在连接 SSH') : t('正在启动');
+  if (project.status === 'exited') return project.kind === 'ssh' ? t('SSH 终端已退出') : t('终端已退出');
+  return t('尚未启动');
 }
 
 function agentName(agent: Project['agent']) { return agent === 'claude' ? 'Claude' : 'Codex'; }
@@ -77,7 +82,7 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, onFocus,
   // A new turn starts the edge and dot together; ordinary renders keep their clock.
   const signalKey = `${working ? 'working' : 'rest'}:${project.lastCompletedAt}`;
   const badgeClass = `status-badge ${working ? 'blue' : roundComplete ? 'green' : project.unread ? 'red' : project.error ? 'amber' : ''}`;
-  const meta = working ? '' : project.lastCompletedAt ? `${relativeTime(project.lastCompletedAt, now)}完成` : '';
+  const meta = working ? '' : project.lastCompletedAt ? t('{time}完成', { time: relativeTime(project.lastCompletedAt, now) }) : '';
   const badge = <><span key={signalKey} className="status-dot" aria-hidden="true" /><span>{statusText(project)}</span></>;
   useEffect(() => {
     if (!menuOpen) return;
@@ -92,7 +97,8 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, onFocus,
     style={{ display: hidden ? 'none' : undefined }}
   >
     <span key={signalKey} className="panel-signal" aria-hidden="true" />
-    <header className="panel-header" title={focused ? undefined : '点击标题栏放大，按住标题栏拖动排序'} onClick={event => {
+    <span key={`glow:${signalKey}`} className="panel-glow" aria-hidden="true" />
+    <header className="panel-header" title={focused ? undefined : t('点击标题栏放大，按住标题栏拖动排序')} onClick={event => {
       if (!focused && event.button === 0 && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !(event.target as Element).closest('button, [role="menu"]')) onFocus(project.id);
     }}>
       <span className="panel-index">{String(index + 1).padStart(2, '0')}</span>
@@ -103,31 +109,49 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, onFocus,
       </button>
       {!!meta && <span className="panel-meta" title={project.path}>{meta}</span>}
       {!!project.unread && !focused && !working
-        ? <button type="button" className={`${badgeClass} status-button`} title={statusText(project)} onClick={() => onFocus(project.id)} aria-label={`查看 ${project.name} 的完成结果`}>{badge}</button>
+        ? <button type="button" className={`${badgeClass} status-button`} title={statusText(project)} onClick={() => onFocus(project.id)} aria-label={t('查看 {name} 的完成结果', { name: project.name })}>{badge}</button>
         : <span className={badgeClass} title={statusText(project)}>{badge}</span>}
-      {project.unread > 1 && <span className="unread-count" title={`${project.unread} 轮未查看`}>{project.unread}</span>}
-      {!multiple && stopped && hasTerminal && <button className="text-button panel-action" aria-label="重新启动" onClick={() => onAction(api.startTerminal(first.id))}><Play size={12} weight="fill" /><span>重启</span></button>}
-      {!multiple && !stopped && !first.codexActive && first.status !== 'starting' && <button className="text-button panel-action" aria-label="启动 Codex" disabled={!first.shellReady} title="在空白终端提示符下启动 Codex" onClick={() => onAction(api.launchCodex(first.id))}><Play size={12} weight="fill" /><span>Codex</span></button>}
+      {!multiple && stopped && hasTerminal && <button className="text-button panel-action" aria-label={t('重新启动')} onClick={() => onAction(api.startTerminal(first.id))}><Play size={12} weight="fill" /><span>{t('重启')}</span></button>}
       {!multiple && first.codexActive && <span className="session-label"><span className="session-dot" />{agentName(first.agent).toUpperCase()}</span>}
       {!multiple && <VoiceButton terminalId={first.id} sessionId={first.sessionId} name={project.name} onError={onError} />}
-      <IconButton label={`新增终端 ${project.name}`} onClick={() => void addTerminal()}><Plus size={16} /></IconButton>
-      {!focused && <IconButton label={`全屏查看 ${project.name}`} onClick={() => onFocus(project.id)}><ArrowsOutSimple size={16} /></IconButton>}
+      {!focused && <IconButton label={t('全屏查看 {name}', { name: project.name })} onClick={() => onFocus(project.id)}><ArrowsOutSimple size={16} /></IconButton>}
       <div className="panel-menu-anchor" ref={menu}>
-        <IconButton label={`${project.name} 的更多操作`} onClick={() => setMenuOpen(!menuOpen)}><DotsThree size={20} weight="bold" /></IconButton>
+        <IconButton label={t('{name} 的更多操作', { name: project.name })} onClick={() => setMenuOpen(!menuOpen)}><DotsThree size={20} weight="bold" /></IconButton>
         {menuOpen && <div className="dropdown panel-menu" role="menu">
-          <button role="menuitem" onClick={() => action(() => void addTerminal())}><Plus size={16} />新建终端并分屏</button>
-          <button role="menuitem" onClick={() => action(() => onRevealProject(project.id))}><FolderOpen size={16} />打开项目目录</button>
-          <button role="menuitem" onClick={() => action(() => { onAction(api.restartTerminal(currentTerminal.id)); })}><ArrowCounterClockwise size={16} />{project.kind === 'ssh' ? '重新连接 SSH' : '重启当前终端'}</button>
+          <button role="menuitem" onClick={() => action(() => void addTerminal())}><Plus size={16} />{t('新建终端并分屏')}</button>
+          <button role="menuitem" onClick={() => action(() => onRevealProject(project.id))}><FolderOpen size={16} />{t('打开项目目录')}</button>
+          <button role="menuitem" onClick={() => action(() => { onAction(api.restartTerminal(currentTerminal.id)); })}><ArrowCounterClockwise size={16} />{project.kind === 'ssh' ? t('重新连接 SSH') : t('重启当前终端')}</button>
           <div className="menu-divider" />
-          <button role="menuitem" className="danger-text" onClick={() => action(() => { onAction(api.removeProject(project.id)); })}><X size={16} />移除项目</button>
+          <button role="menuitem" className="danger-text" onClick={() => action(() => { onAction(api.removeProject(project.id)); })}><X size={16} />{t('移除项目')}</button>
         </div>}
       </div>
     </header>
     <ProjectTerminals project={project} focused={focused} fontSize={fontSize} activeId={activeTerminalId} setActiveId={setActiveTerminalId} onAction={onAction} onError={onError} onOpenLink={onOpenLink} />
-    {project.error && <div className="panel-error"><Info size={13} /><span>{project.error}</span></div>}
+    {project.error && <div className="panel-error"><Info size={13} /><span>{t(project.error)}</span></div>}
   </article>;
 }
 
+// Spoken completion notice: on/off, an optional own phrase, and a preview in the chosen voice.
+function AnnounceSettings({ settings, update }: { settings: Settings; update: (patch: Partial<Settings>) => void }) {
+  const [voice, setVoice] = useState<string | null>(null);
+  const [speech, setSpeech] = useState<SpeechState | null>(null);
+  const [phrase, setPhrase] = useState(settings.announcePhrase);
+  useEffect(() => onVoicesReady(() => setVoice(announcementVoice(settings.language)?.name.replace(/^Microsoft\s+/, '').replace(/\s+(Desktop|-).*$/, '') || null)), [settings.language]);
+  useEffect(() => { void api.getSpeechState().then(result => { if (result.ok) setSpeech(result.value); }); return api.onSpeechState(setSpeech); }, []);
+  const example = settings.language === 'zh' ? '{项目}，{任务}，完成啦。' : '{project}: {task}, done.';
+  const savePhrase = () => { if (phrase.trim() !== settings.announcePhrase) update({ announcePhrase: phrase }); };
+  const status = speech?.ready ? t('一轮完成时由本地自然女声播报哪个项目完成了什么')
+    : speech?.phase === 'downloading' ? t('自然女声下载中 {percent}%，下载前先用系统语音', { percent: speech.percent })
+    : voice ? t('一轮完成时由 {voice} 播报；可下载更自然的本地女声（约 74 MB）', { voice }) : t('一轮完成时播报项目名（系统中未找到对应语言的语音）');
+  return <div className="setting-group">
+    <label className="setting-row"><span><Waveform size={19} /><span><b>{t('语音播报')}</b><small title={speech?.error ? t(speech.error) : undefined}>{status}</small></span></span><input type="checkbox" checked={settings.announce} onChange={event => { update({ announce: event.target.checked }); if (event.target.checked && !speech?.ready) void api.prepareSpeech(); }} /></label>
+    {settings.announce && <div className="announce-options">
+      <input aria-label={t('播报语')} placeholder={t('留空轮换内置提示语，如：{example}', { example })} value={phrase} maxLength={80} onChange={event => setPhrase(event.target.value)} onBlur={savePhrase} onKeyDown={event => { if (event.key === 'Enter') savePhrase(); }} />
+      {!speech?.ready && speech?.phase !== 'downloading' && <button type="button" className="button secondary small" onClick={() => void api.prepareSpeech()}>{t('下载自然女声')}</button>}
+      <button type="button" className="button secondary small" onClick={() => { savePhrase(); announce(t('示例项目'), t('给登录页加上验证码'), { ...settings, announcePhrase: phrase.trim() }); }}>{t('试听')}</button>
+    </div>}
+  </div>;
+}
 function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, close, update, quit }: {
   settings: Settings; close: () => void; update: (patch: Partial<Settings>) => void; quit: () => void;
   updates: AppUpdateState | null; onCheckUpdate: () => void; onInstallUpdate: () => void; onDownloadPage: () => void;
@@ -136,38 +160,41 @@ function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onD
   useEffect(() => { dialog.current?.showModal(); }, []);
   return <dialog className="settings-dialog" ref={dialog} onCancel={close} onClick={event => { if (event.target === event.currentTarget) close(); }}>
     <div className="dialog-content">
-      <div className="dialog-heading"><div><span className="eyebrow">PREFERENCES</span><h2>工作台设置</h2></div><IconButton label="关闭设置" onClick={close}><X size={18} /></IconButton></div>
-      <p className="settings-intro">按照你的开发习惯调整提醒和终端。</p>
-      <fieldset className="theme-picker"><legend>外观主题</legend><div className="theme-options">
+      <div className="dialog-heading"><div><span className="eyebrow">PREFERENCES</span><h2>{t('工作台设置')}</h2></div></div>
+      <p className="settings-intro">{t('按照你的开发习惯调整提醒和终端。')}</p>
+      <fieldset className="theme-picker"><legend>{t('外观主题')}</legend><div className="theme-options">
         {themes.map(theme => <label key={theme.id} className={`theme-option ${settings.theme === theme.id ? 'is-selected' : ''}`}>
-          <input type="radio" name="theme" value={theme.id} checked={settings.theme === theme.id} aria-label={theme.name} onChange={() => update({ theme: theme.id })} />
+          <input type="radio" name="theme" value={theme.id} checked={settings.theme === theme.id} aria-label={t(theme.name)} onChange={() => update({ theme: theme.id })} />
           <span className="theme-swatch" data-theme-preview={theme.id} aria-hidden="true"><span className="theme-mini-window"><i /><i /><i /></span><span className="theme-check"><Check size={12} weight="bold" /></span></span>
-          <span className="theme-name">{theme.name}</span><small>{theme.description}</small>
+          <span className="theme-name">{t(theme.name)}</span><small>{t(theme.description)}</small>
         </label>)}
       </div></fieldset>
-      <label className="setting-row"><span><Bell size={19} /><span><b>桌面通知</b><small>Codex 本轮结束时发送系统通知</small></span></span><input type="checkbox" checked={settings.notifications} onChange={e => update({ notifications: e.target.checked })} /></label>
-      <label className="setting-row"><span><SpeakerHigh size={19} /><span><b>通知声音</b><small>播放系统默认提示音</small></span></span><input type="checkbox" checked={settings.sound} onChange={e => update({ sound: e.target.checked })} /></label>
-      <label className="setting-row"><span><Monitor size={19} /><span><b>关闭到托盘</b><small>关闭窗口后，终端和任务继续运行</small></span></span><input type="checkbox" checked={settings.closeToTray} onChange={e => update({ closeToTray: e.target.checked })} /></label>
-      <label className="setting-row"><span><TerminalIcon size={19} /><span><b>终端字号</b><small>全屏与网格共用字号</small></span></span><select aria-label="终端字号" value={settings.fontSize} onChange={e => update({ fontSize: Number(e.target.value) })}>{[10, 11, 12, 13, 14, 16, 18, 20].map(n => <option key={n} value={n}>{n} px</option>)}</select></label>
-      <label className="setting-row"><span><ArrowsOutSimple size={19} /><span><b>界面动画</b><small>窗口平滑放大与呼吸灯；默认不受 Windows“动画效果”开关影响</small></span></span><select aria-label="界面动画" value={settings.focusAnimation} onChange={e => update({ focusAnimation: e.target.value as Settings['focusAnimation'] })}><option value="smooth">开启</option><option value="system">跟随系统</option><option value="off">关闭</option></select></label>
-      <label className="setting-row"><span><ArrowCounterClockwise size={19} /><span><b>启动时恢复工作</b><small>恢复最近会话，被中断的任务自动发送“继续”</small></span></span><input type="checkbox" checked={settings.restoreSessions} onChange={event => update({ restoreSessions: event.target.checked })} /></label>
-      <div className="setting-row"><span><Microphone size={19} /><span><b>本地语音输入</b><small>按 Ctrl+T 或点击终端上的麦克风说话，按回车识别并发送，Esc 取消</small></span></span><VoiceModelStatus /></div>
-      {updates && <section className="update-section" aria-label="应用更新">
-        <div className="update-heading"><b>应用更新</b><span>当前版本 v{updates.currentVersion}</span></div>
-        <p role="status">{updates.status === 'unavailable' ? '当前为便携版或开发版。安装 Windows 版后，即可自动检查和下载更新。'
-          : updates.status === 'checking' ? '正在检查更新…'
-          : updates.status === 'current' ? '当前已是最新版本。'
-          : updates.status === 'downloading' ? `正在下载 v${updates.version} · ${updates.percent}%`
-          : updates.status === 'ready' ? `v${updates.version} 已下载，可在方便时重启安装。`
-          : updates.status === 'error' ? updates.error : '启动后自动检查更新，并在后台下载新版本。'}</p>
-        {updates.status === 'downloading' && <progress aria-label="更新下载进度" max={100} value={updates.percent} />}
+      <label className="setting-row"><span><Globe size={19} /><span><b>{t('语言')}</b><small>{t('界面、提示与语音播报的语言')}</small></span></span><select aria-label={t('语言')} value={settings.language} onChange={event => update({ language: event.target.value as Settings['language'] })}><option value="zh">中文</option><option value="en">English</option></select></label>
+      <label className="setting-row"><span><Bell size={19} /><span><b>{t('桌面通知')}</b><small>{t('一轮结束时发送系统通知')}</small></span></span><input type="checkbox" checked={settings.notifications} onChange={e => update({ notifications: e.target.checked })} /></label>
+      <label className="setting-row"><span><SpeakerHigh size={19} /><span><b>{t('通知声音')}</b><small>{t('播放系统默认提示音')}</small></span></span><input type="checkbox" checked={settings.sound} onChange={e => update({ sound: e.target.checked })} /></label>
+      <AnnounceSettings settings={settings} update={update} />
+      <label className="setting-row"><span><Monitor size={19} /><span><b>{t('关闭到托盘')}</b><small>{t('关闭窗口后，终端和任务继续运行')}</small></span></span><input type="checkbox" checked={settings.closeToTray} onChange={e => update({ closeToTray: e.target.checked })} /></label>
+      <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端字号')}</b><small>{t('全屏与网格共用字号')}</small></span></span><select aria-label={t('终端字号')} value={settings.fontSize} onChange={e => update({ fontSize: Number(e.target.value) })}>{[10, 11, 12, 13, 14, 16, 18, 20].map(n => <option key={n} value={n}>{n} px</option>)}</select></label>
+      <label className="setting-row"><span><ArrowsOutSimple size={19} /><span><b>{t('界面动画')}</b><small>{t('窗口平滑放大与呼吸灯；默认不受 Windows“动画效果”开关影响')}</small></span></span><select aria-label={t('界面动画')} value={settings.focusAnimation} onChange={e => update({ focusAnimation: e.target.value as Settings['focusAnimation'] })}><option value="smooth">{t('开启')}</option><option value="system">{t('跟随系统')}</option><option value="off">{currentLanguage() === 'en' ? 'Off' : '关闭'}</option></select></label>
+      <label className="setting-row"><span><ArrowCounterClockwise size={19} /><span><b>{t('启动时恢复工作')}</b><small>{t('恢复 Codex 与 Claude Code 的最近会话，被中断的任务自动发送“继续”')}</small></span></span><input type="checkbox" checked={settings.restoreSessions} onChange={event => update({ restoreSessions: event.target.checked })} /></label>
+      <div className="setting-row"><span><Microphone size={19} /><span><b>{t('本地语音输入')}</b><small>{t('按 {key} 或点击终端上的麦克风说话，按回车识别并发送，Esc 取消', { key: shortcut('voice') })}</small></span></span><VoiceModelStatus /></div>
+      <ShortcutSettings settings={settings} update={update} />
+      {updates && <section className="update-section" aria-label={t('应用更新')}>
+        <div className="update-heading"><b>{t('应用更新')}</b><span>{t('当前版本 v{version}', { version: updates.currentVersion })}</span></div>
+        <p role="status">{updates.status === 'unavailable' ? t('当前为便携版或开发版。安装 Windows 版后，即可自动检查和下载更新。')
+          : updates.status === 'checking' ? t('正在检查更新…')
+          : updates.status === 'current' ? t('当前已是最新版本。')
+          : updates.status === 'downloading' ? t('正在下载 v{version} · {percent}%', { version: updates.version || '', percent: updates.percent })
+          : updates.status === 'ready' ? t('v{version} 已下载，可在方便时重启安装。', { version: updates.version || '' })
+          : updates.status === 'error' ? t(updates.error || '') : t('启动后自动检查更新，并在后台下载新版本。')}</p>
+        {updates.status === 'downloading' && <progress aria-label={t('更新下载进度')} max={100} value={updates.percent} />}
         <div className="update-actions">{!updates.supported
-          ? <button className="button secondary small" onClick={onDownloadPage}>下载 Windows 安装版</button>
-          : updates.status === 'ready' ? <button className="button primary small" onClick={onInstallUpdate}>重启并安装更新</button>
-          : <button className="button secondary small" disabled={updates.status === 'checking' || updates.status === 'downloading'} onClick={onCheckUpdate}>{updates.status === 'error' ? '重试更新' : '检查更新'}</button>}</div>
+          ? <button className="button secondary small" onClick={onDownloadPage}>{t('下载 Windows 安装版')}</button>
+          : updates.status === 'ready' ? <button className="button primary small" onClick={onInstallUpdate}>{t('重启并安装更新')}</button>
+          : <button className="button secondary small" disabled={updates.status === 'checking' || updates.status === 'downloading'} onClick={onCheckUpdate}>{updates.status === 'error' ? t('重试更新') : t('检查更新')}</button>}</div>
       </section>}
-      <div className="settings-note"><Info size={15} /><p>粉色呼吸表示本轮结束、等待查看；绿色常亮表示已查看的本轮完成。没有新指令时不会重复提醒。减少动态效果的系统设置会关闭呼吸动画。</p></div>
-      <div className="dialog-footer"><button className="text-button danger-text" onClick={quit}><Power size={15} />退出应用</button><button className="button primary" onClick={close}>完成</button></div>
+      <div className="settings-note"><Info size={15} /><p>{t('一轮结束时，方框从边缘缓缓呼吸三次，之后留一层柔光等你查看；在终端里发送新指令也算已查看。绿色常亮表示已查看的本轮完成。没有新指令时不会重复提醒。')}</p></div>
+      <div className="dialog-footer"><button className="text-button danger-text" onClick={quit}><Power size={15} />{t('退出应用')}</button><button className="button primary" onClick={close}>{t('完成')}</button></div>
     </div>
   </dialog>;
 }
@@ -237,6 +264,16 @@ export function App() {
     await showProjectLocation(id, await perform(api.revealProject(id)));
   }, [perform, showProjectLocation]);
 
+  const settingsRef = useRef<Settings | null>(null); settingsRef.current = workspace?.settings || null;
+  // Project order for next/previous (set each render), and the card whose terminal was used last.
+  const navigation = useRef<string[]>([]);
+  const lastProject = useRef<string | null>(null);
+  useEffect(() => {
+    const remember = (event: FocusEvent) => { const id = (event.target as Element | null)?.closest?.<HTMLElement>('[data-project-id]')?.dataset.projectId; if (id) lastProject.current = id; };
+    document.addEventListener('focusin', remember);
+    return () => document.removeEventListener('focusin', remember);
+  }, []);
+  useEffect(() => api?.onAnnounce(({ name, task }) => { const settings = settingsRef.current; if (settings?.announce) announce(name, task || '', settings); }), []);
   useEffect(() => {
     if (!api) return;
     const offState = api.onState(setWorkspace);
@@ -255,47 +292,69 @@ export function App() {
     if (focusedId && workspace && !workspace.projects.some(p => p.id === focusedId)) returnToGrid();
   }, [workspace, focusedId, returnToGrid]);
   useEffect(() => {
+    // App shortcuts (configurable in settings). In text boxes and the editor, standard editing keys such as
+    // Ctrl+A keep their meaning; in terminals and elsewhere the shortcut wins, before xterm sees the key.
+    // While a dialog is open (including recording a new shortcut) nothing is intercepted.
     const handler = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'g') { event.preventDefault(); event.stopPropagation(); returnToGrid(); }
-      if (!focusedId && event.ctrlKey && event.key.toLowerCase() === 'k') { event.preventDefault(); event.stopPropagation(); setSearchOpen(true); requestAnimationFrame(() => queryInput.current?.focus()); }
-      if (focusedId && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); event.stopPropagation(); perform(api.settings({ explorerCollapsed: !workspace?.settings.explorerCollapsed })); }
+      const action = actionFor(event);
+      if (!action || editingKeyInField(event) || document.querySelector('dialog[open]')) return;
+      event.preventDefault(); event.stopPropagation();
+      if (event.repeat) return;
+      if (action === 'search' && !focusedId) { setSearchOpen(true); requestAnimationFrame(() => queryInput.current?.focus()); }
+      else if (action === 'addProject') setAddOpen(true);
+      else if (action === 'voice') void quickDictation(reportError);
+      else if (action === 'overview') void returnToGrid();
+      else if (action === 'explorer' && focusedId) perform(api.settings({ explorerCollapsed: !workspace?.settings.explorerCollapsed }));
+      else if (action === 'settings') setSettingsOpen(true);
+      else if (action === 'maximize') { if (focusedId) void returnToGrid(); else { const id = currentProject(); if (id) void focusProject(id); } }
+      else if (action === 'nextProject' || action === 'previousProject') {
+        const ids = navigation.current, current = currentProject();
+        if (!ids.length) return;
+        const index = current ? ids.indexOf(current) : -1, forward = action === 'nextProject';
+        const next = index < 0 ? ids[forward ? 0 : ids.length - 1] : ids[(index + (forward ? 1 : ids.length - 1)) % ids.length];
+        // Expanded: switch the expanded project. Overview: move to that card's terminal without expanding it.
+        if (focusedId) void focusProject(next);
+        else (document.querySelector<HTMLElement>(`[data-project-id="${CSS.escape(next)}"] .xterm-helper-textarea`) || document.querySelector<HTMLElement>(`[data-project-id="${CSS.escape(next)}"] .panel-name`))?.focus();
+      }
     };
+    const currentProject = () => focusedId || document.activeElement?.closest<HTMLElement>('[data-project-id]')?.dataset.projectId || lastProject.current;
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [focusedId, returnToGrid, perform, workspace?.settings.explorerCollapsed]);
+  }, [focusedId, returnToGrid, focusProject, perform, reportError, workspace?.settings.explorerCollapsed]);
 
   if (!api) return <div className="startup-message"><SquaresFour size={38} /><h1>Project Grid 是桌面应用</h1><p>请在项目目录运行 npm start，或双击打包后的应用。</p></div>;
-  if (!workspace) return <div className="startup-message"><SquaresFour size={34} /><p>{error || '正在打开工作区…'}</p></div>;
+  if (!workspace) return <div className="startup-message"><SquaresFour size={34} /><p>{error || t('正在打开工作区…')}</p></div>;
   const { projects, settings } = workspace;
+  // Set before the children render, so every t() in this render uses the chosen language.
+  applyLanguage(settings.language);
+  applyShortcuts(settings.shortcuts);
   const projectRecords = new Map(projects.map(project => [project.id, project]));
   const orderedProjects = reorder.order ? reorder.order.flatMap(id => projectRecords.get(id) || []) : projects;
   const unread = projects.filter(p => p.unread > 0).length;
   const completed = projects.filter(isRoundComplete).length;
-  const compactSearch = projects.length <= 3 && !query && !searchOpen;
   const visible = projects.filter(p => !query || `${p.name} ${p.path} ${p.ssh?.host || ''}`.toLowerCase().includes(query.toLowerCase()));
   const visibleIds = new Set(visible.map(p => p.id));
   const columns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(Math.max(visible.length, 1)))));
   const rows = Math.max(1, Math.ceil(visible.length / columns));
   const focus = projects.find(p => p.id === focusedId);
+  navigation.current = (focusedId ? orderedProjects : orderedProjects.filter(project => visibleIds.has(project.id))).map(project => project.id);
   const setPreference = (patch: Partial<Settings>) => { perform(api.settings(patch)); };
 
   return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''}`} style={{ '--liquid-backdrop': 'url("#project-grid-refraction") blur(6px) saturate(165%)' } as CSSProperties}>
     <div className="titlebar">
       <div className="titlebar-brand"><span className="brand-mark"><i /><i /><i /><i /></span><span>Project Grid</span></div>
-      {!!projects.length && <div className="workspace-summary" role="status" aria-label="工作区概况">
-        <span>{projects.length} 个项目{projects.some(project => project.kind === 'ssh') ? ' · 含 SSH' : ''}</span>
-        {!!unread && <span className="summary-unread"><i className="legend-red" />{unread} 待查看</span>}
-        {!!completed && <span className="summary-complete"><i className="legend-green" />{completed} 本轮完成</span>}
+      {!!projects.length && <div className="workspace-summary" role="status" aria-label={t('工作区概况')}>
+        <span>{projects.length === 1 ? t('1 个项目') : t('{count} 个项目', { count: projects.length })}{projects.some(project => project.kind === 'ssh') ? t(' · 含 SSH') : ''}</span>
+        {!!unread && <span className="summary-unread"><i className="legend-red" />{t('{count} 待查看', { count: unread })}</span>}
+        {!!completed && <span className="summary-complete"><i className="legend-green" />{t('{count} 本轮完成', { count: completed })}</span>}
       </div>}
       <div className="titlebar-space" />
       <div className="titlebar-tools">
-        {!focusedId && <>{compactSearch
-          ? <IconButton label="搜索项目 · Ctrl+K" className="search-toggle" onClick={() => setSearchOpen(true)}><MagnifyingGlass size={17} /></IconButton>
-          : <div className="search-input"><MagnifyingGlass size={16} /><input ref={queryInput} placeholder="搜索项目或路径…" aria-label="搜索项目" value={query} onChange={e => setQuery(e.target.value)} onBlur={() => { if (!query) setSearchOpen(false); }} />{query ? <IconButton label="清除搜索" onClick={() => setQuery('')}><X size={13} /></IconButton> : <kbd>Ctrl K</kbd>}</div>}
-        <button className="button primary" onClick={() => setAddOpen(true)}><FolderSimplePlus size={17} />添加项目</button></>}
-        <IconButton label="工作台设置" className={updates?.status === 'ready' ? 'update-ready' : ''} onClick={() => setSettingsOpen(true)}><GearSix size={19} /></IconButton>
+        {/* Search and add project open from their shortcuts (Ctrl+F, Ctrl+A by default); the search box shows while in use. */}
+        {!focusedId && (searchOpen || query) && <div className="search-input"><MagnifyingGlass size={15} /><input ref={queryInput} placeholder={t('搜索项目或路径…')} aria-label={t('搜索项目')} value={query} onChange={e => setQuery(e.target.value)} onBlur={() => { if (!query) setSearchOpen(false); }} onKeyDown={event => { if (event.key === 'Escape') { setQuery(''); setSearchOpen(false); } }} />{query ? <IconButton label={t('清除搜索')} onClick={() => setQuery('')}><X size={13} /></IconButton> : <kbd>{shortcut('search')}</kbd>}</div>}
+        <IconButton label={t('工作台设置')} className={updates?.status === 'ready' ? 'update-ready' : ''} onClick={() => setSettingsOpen(true)}><GearSix size={16} /></IconButton>
       </div>
-      <div className="window-actions"><IconButton label="最小化" onClick={() => api.minimize()}><Minus size={16} /></IconButton><IconButton label="最大化或还原" onClick={() => api.maximize()}><Square size={12} /></IconButton><IconButton label="关闭窗口" className="window-close" onClick={() => api.close()}><X size={17} /></IconButton></div>
+      <div className="window-actions"><IconButton label={t('最小化')} onClick={() => api.minimize()}><Minus size={16} /></IconButton><IconButton label={t('最大化或还原')} onClick={() => api.maximize()}><Square size={12} /></IconButton><IconButton label={t('关闭窗口')} className="window-close" onClick={() => api.close()}><X size={17} /></IconButton></div>
     </div>
     <div className="workspace-layout">
       {focus && <ProjectExplorer key={focus.id} project={focus} collapsed={settings.explorerCollapsed}
@@ -306,32 +365,32 @@ export function App() {
         onExpandedChange={paths => setExpandedByProject(value => ({ ...value, [focus.id]: paths }))}
         onSelectFile={async path => { if (previewFile?.projectId === focus.id && previewFile.path === path) return; if (await allowNavigation()) setPreviewFile({ projectId: focus.id, path }); }} onReturn={returnToGrid} />}
       <main className="main-workspace">
-        {workspace.warning && <div className="workspace-warning"><Info size={15} />{workspace.warning}</div>}
+        {workspace.warning && <div className="workspace-warning"><Info size={15} />{t(workspace.warning)}</div>}
         {focusedId && previewFile?.projectId === focusedId && <Suspense fallback={null}><FilePreview key={`${focusedId}:${previewFile.path}`} projectId={focusedId} filePath={previewFile.path} onClose={async () => { if (await allowNavigation()) setPreviewFile(null); }} onOpenLink={target => openTerminalLink(focusedId, target)} onError={reportError} registerGuard={registerEditorGuard} /></Suspense>}
         <div className={`grid-area ${!projects.length ? 'empty-area' : ''}`} style={{ visibility: focusedId && previewFile?.projectId === focusedId ? 'hidden' : undefined }}>
           {!projects.length ? <div className="empty-workspace">
             <div className="empty-illustration" aria-hidden="true"><div className="illustration-tile"><span /><i /><i /><i /></div><div className="illustration-tile red-tile"><span /><i /><i /><b /></div><div className="illustration-tile green-tile"><Check size={22} /></div><div className="illustration-tile"><span /><i /><i /></div></div>
-            <span className="eyebrow">你的多项目工作台</span><h2>每个项目，一个方框。</h2><p>添加项目目录，在独立终端里运行 Codex。<br />红框亮起时，点击全屏查看，再继续下一轮。</p>
-            <button className="button primary" onClick={() => setAddOpen(true)}><FolderSimplePlus size={18} />添加第一个项目</button>
-            <div className="empty-hints"><span><Circle weight="fill" size={7} />粉色呼吸 · 等待查看</span><span><CheckCircle weight="fill" size={12} />绿色常亮 · 本轮完成</span></div>
+            <span className="eyebrow">{t('你的多项目工作台')}</span><h2>{t('每个项目，一个方框。')}</h2><p>{t('添加项目目录，在独立终端里运行 Codex 或 Claude Code。')}<br />{t('方框亮起时，点击全屏查看，再继续下一轮。')}</p>
+            <button className="button primary" onClick={() => setAddOpen(true)}><FolderSimplePlus size={18} />{t('添加第一个项目')}</button>
+            <div className="empty-hints"><span><Circle weight="fill" size={7} />{t('粉色呼吸 · 等待查看')}</span><span><CheckCircle weight="fill" size={12} />{t('绿色常亮 · 本轮完成')}</span></div>
           </div> : <>
-            {!focusedId && !visible.length && <div className="no-results"><MagnifyingGlass size={30} weight="light" /><h2>没有找到匹配项目</h2><p>试试其他项目名称或目录。</p><button className="button secondary small" onClick={() => setQuery('')}>重置搜索</button></div>}
+            {!focusedId && !visible.length && <div className="no-results"><MagnifyingGlass size={30} weight="light" /><h2>{t('没有找到匹配项目')}</h2><p>{t('试试其他项目名称或目录。')}</p><button className="button secondary small" onClick={() => setQuery('')}>{t('重置搜索')}</button></div>}
             <div className={`project-grid ${reorder.drag ? 'is-reordering' : ''}`} onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture} style={{ '--columns': columns, '--rows': rows, display: !focusedId && !visible.length ? 'none' : undefined } as CSSProperties}>
               {orderedProjects.map((project, index) => <div key={project.id} className={`project-slot ${reorder.drag?.id === project.id ? 'drag-placeholder' : ''}`} data-project-slot={project.id} style={{ display: focusedId ? focusedId !== project.id ? 'none' : undefined : !visibleIds.has(project.id) ? 'none' : undefined }}><ProjectPanel project={project} index={index}
                 hidden={focusedId ? focusedId !== project.id : !visibleIds.has(project.id)} focused={focusedId === project.id && !previewFile}
                 fontSize={settings.fontSize} now={now} onFocus={focusProject} onAction={perform} onError={reportError} onOpenLink={openTerminalLink} onRevealProject={revealProject}
                 dragging={reorder.drag?.id === project.id} /> </div>)}
-              {reorder.drag && <div className="reorder-hint" role="status">拖动项目排序 · 松开完成<span>Esc 取消</span></div>}
+              {reorder.drag && <div className="reorder-hint" role="status">{t('拖动项目排序 · 松开完成')}<span>{t('Esc 取消')}</span></div>}
             </div>
           </>}
         </div>
       </main>
     </div>
-    {error && <div className="error-toast" role="alert"><Info size={18} /><span>{error}</span><IconButton label="关闭提示" onClick={() => setError(null)}><X size={16} /></IconButton></div>}
+    {error && <div className="error-toast" role="alert"><Info size={18} /><span>{error}</span><IconButton label={t('关闭提示')} onClick={() => setError(null)}><X size={16} /></IconButton></div>}
     {settingsOpen && <SettingsDialog settings={settings} updates={updates} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => setSettingsOpen(false)} update={setPreference} quit={() => perform(api.quit())} />}
     {addOpen && <AddProjectDialog onClose={() => setAddOpen(false)} onAdded={() => setQuery('')} onError={reportError} />}
     {sshAuth[0] && <SSHAuthDialog key={sshAuth[0].id} request={sshAuth[0]} />}
-    <VoiceOverlay onError={reportError} />
+    <VoiceOverlay />
     <LiquidGlass />
   </div>;
 }

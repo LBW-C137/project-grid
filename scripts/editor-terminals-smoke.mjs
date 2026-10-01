@@ -49,7 +49,7 @@ try {
   await page.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await state()).shellReady, 'first terminal');
   const primarySession = (await state()).sessionId;
-  await page.getByRole('button', { name: `新增终端 ${project.name}`, exact: true }).click();
+  await page.getByRole('button', { name: `${project.name} 的更多操作`, exact: true }).click(); await page.getByRole('menuitem', { name: '新建终端并分屏', exact: true }).click();
   await waitFor(async () => (await state()).terminals.length === 2 && (await state()).terminals.every(item => item.shellReady), 'two ready terminals');
   const ids = (await state()).terminals.map(item => item.id);
   assert.equal((await state()).terminals[0].sessionId, primarySession);
@@ -94,8 +94,28 @@ try {
   const editor = page.getByRole('textbox', { name: '文件编辑器', exact: true });
   await editor.waitFor();
   assert.equal(await page.getByRole('button', { name: '编辑', exact: true }).count(), 0, 'text files start editable without an edit-button step');
-  await editor.fill('saved\n保留中文'); await page.keyboard.press('Control+s');
+  await editor.fill('saved\n保留中文');
+  assert.equal(await page.locator('.preview-readonly').innerText(), '编辑模式 · 未保存，Ctrl+S 保存', 'one edit-mode label hints at Ctrl+S instead of offering buttons');
+  assert.equal(await page.locator('.file-preview-toolbar button').count(), 0, 'no save, stop-editing, refresh or copy buttons while editing');
+  await page.keyboard.press('Control+s');
   await waitFor(async () => (await fs.readFile(path.join(project.path, 'src', 'main.txt'), 'utf8')) === 'saved\r\n保留中文', 'Ctrl+S saves with original CRLF');
+  await waitFor(async () => (await page.locator('.preview-readonly').innerText()) === '编辑模式', 'saved state shows plain edit mode');
+  // Line numbers: one per line, the caret's line highlighted, and still level with their text after scrolling.
+  const gutter = page.locator('.editor-gutter span');
+  await waitFor(async () => (await gutter.allInnerTexts()).join(',') === '1,2', 'the editor numbers each line');
+  await editor.press('Control+End');
+  await waitFor(async () => (await page.locator('.editor-gutter .is-current').innerText()) === '2', 'the caret line number is highlighted');
+  await editor.fill(Array.from({ length: 400 }, (_, index) => `line ${index + 1}`).join('\n'));
+  await editor.evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await waitFor(async () => (await gutter.last().innerText()) === '400', 'numbers follow the editor scroll to the last line');
+  assert.ok(await gutter.count() < 120, 'only the visible line numbers are drawn');
+  const offset = await editor.evaluate(node => {
+    const style = getComputedStyle(node), line = parseFloat(style.lineHeight), top = node.getBoundingClientRect().top + parseFloat(style.paddingTop) - node.scrollTop;
+    const number = [...document.querySelectorAll('.editor-gutter span')].find(span => span.textContent === '380');
+    return Math.abs(number.getBoundingClientRect().top - (top + 379 * line));
+  });
+  assert.ok(offset < 1, `line numbers stay level with their text (off by ${offset}px)`);
+  await page.screenshot({ path: path.join(output, 'file-editor-lines.png') });
   await editor.fill('unsaved draft');
   await answer(2); await page.getByRole('treeitem', { name: 'other.txt', exact: true }).click();
   assert.equal(await editor.inputValue(), 'unsaved draft');
@@ -120,7 +140,8 @@ try {
   await waitFor(async () => (await state()).terminals.every(item => item.shellReady), 'shells still ready after editing');
   console.log('PASS: path copy, text/HTML edits, Ctrl+S, unsaved navigation/quit and save-conflict protection');
 
-  for (const id of ids) await page.locator(`[data-terminal-id="${id}"]`).getByRole('button', { name: '启动 Codex', exact: true }).click();
+  for (const id of ids) await page.evaluate(id => window.projectGrid.writeTerminal(id, 'codex\r'), id);
+  assert.equal(await page.getByRole('button', { name: '启动 Codex', exact: true }).count(), 0, 'no launch button: agents start from the prompt');
   await waitFor(async () => { const saved = await readSaved(); return !!saved.restore.threadId && !!saved.terminals[0].restore.threadId; }, 'distinct native terminal titles');
   const saved = await readSaved(), threads = [saved.restore.threadId, saved.terminals[0].restore.threadId];
   assert.notEqual(threads[0], threads[1]);
@@ -143,7 +164,7 @@ try {
   const remoteId = (await page.evaluate(() => window.projectGrid.addSSHProject({ host: 'fixture', path: '/srv/fixture', name: 'SSH 分屏验证' }))).value;
   const remoteState = async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects.find(item => item.id === remoteId);
   await waitFor(async () => (await remoteState()).shellReady, 'SSH terminal ready');
-  await page.getByRole('button', { name: '新增终端 SSH 分屏验证', exact: true }).click();
+  await page.getByRole('button', { name: 'SSH 分屏验证 的更多操作', exact: true }).click(); await page.getByRole('menuitem', { name: '新建终端并分屏', exact: true }).click();
   await waitFor(async () => (await remoteState()).terminals.length === 2 && (await remoteState()).terminals.every(item => item.shellReady), 'two independent SSH terminals');
   const remoteSecond = (await remoteState()).terminals[1].sessionId;
   await page.getByRole('button', { name: '全屏查看 SSH 分屏验证', exact: true }).click();

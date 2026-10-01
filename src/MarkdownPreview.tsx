@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
 import './markdown.css';
+import { t } from './i18n';
 
 const purifier = createDOMPurify(window);
 
@@ -59,8 +60,8 @@ function renderMarkdown(content: string, baseUrl: string) {
 export function MarkdownPreview({ content, baseUrl, onOpenLink }: { content: string; baseUrl: string; onOpenLink: (target: string) => void }) {
   const root = useRef<HTMLElement>(null);
   const rendered = useMemo(() => { try { return { html: renderMarkdown(content, baseUrl), error: false }; } catch { return { html: '', error: true }; } }, [content, baseUrl]);
-  if (rendered.error) return <div className="file-preview-message" role="status">Markdown 未能渲染，请切回编辑检查内容。</div>;
-  return <article ref={root} className="markdown-body" aria-label="Markdown 预览" tabIndex={0} onClick={event => {
+  if (rendered.error) return <div className="file-preview-message" role="status">{t('Markdown 未能渲染，请切回编辑检查内容。')}</div>;
+  return <article ref={root} className="markdown-body" aria-label={t('Markdown 预览')} tabIndex={0} onClick={event => {
     const link = (event.target as Element).closest<HTMLAnchorElement>('a');
     if (!link || !root.current?.contains(link)) return;
     event.preventDefault();

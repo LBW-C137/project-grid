@@ -3,11 +3,12 @@ import { ArrowCounterClockwise, Play, Terminal as TerminalIcon, X } from '@phosp
 import { TerminalPane } from './TerminalPane';
 import { VoiceButton } from './VoiceButton';
 import type { Project, ProjectTerminal, Result } from './types';
+import { t } from './i18n';
 
 function label(terminal: ProjectTerminal) {
-  if (terminal.error) return '需要检查';
-  if (terminal.codexActive) return terminal.codexActivity === 'working' ? '正在处理' : terminal.codexActivity === 'complete' ? '本轮已完成' : terminal.codexActivity === 'interrupted' ? '已中断' : `${terminal.agent === 'claude' ? 'Claude' : 'Codex'} 会话中`;
-  return terminal.status === 'starting' ? '正在启动' : terminal.status === 'shell' ? '终端就绪' : terminal.status === 'exited' ? '已退出' : '尚未启动';
+  if (terminal.error) return t('需要检查');
+  if (terminal.codexActive) return terminal.codexActivity === 'working' ? t('正在处理') : terminal.codexActivity === 'complete' ? t('本轮已完成') : terminal.codexActivity === 'interrupted' ? t('已中断') : t('{agent} 会话中', { agent: terminal.agent === 'claude' ? 'Claude' : 'Codex' });
+  return terminal.status === 'starting' ? t('正在启动') : terminal.status === 'shell' ? t('终端就绪') : terminal.status === 'exited' ? t('已退出') : t('尚未启动');
 }
 
 export function ProjectTerminals({ project, focused, fontSize, activeId, setActiveId, onAction, onError, onOpenLink }: {
@@ -33,17 +34,16 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
       const name = `${project.name} ${terminal.title}`;
       return <section key={terminal.id} className={`terminal-split ${selected === terminal.id ? 'is-active-terminal' : ''}`} data-terminal-id={terminal.id} data-session-id={terminal.sessionId || ''} data-codex-active={terminal.codexActive} aria-label={name} onPointerDownCapture={() => setActiveId(terminal.id)}>
         {multiple && <header className="terminal-split-header"><span>{terminal.title}</span><span className={`split-status ${terminal.codexActivity === 'working' ? 'working' : terminal.codexActivity === 'complete' ? 'complete' : ''}`}>{label(terminal)}</span>
-          <button className="icon-button" title="重启此终端" aria-label={`重启 ${name}`} onClick={() => void onAction(window.projectGrid.restartTerminal(terminal.id))}><ArrowCounterClockwise size={13} /></button>
-          <button className="icon-button" title="关闭此终端" aria-label={`关闭 ${name}`} onClick={() => void onAction(window.projectGrid.closeTerminal(terminal.id))}><X size={13} /></button>
+          <button className="icon-button" title={t('重启此终端')} aria-label={t('重启 {name}', { name })} onClick={() => void onAction(window.projectGrid.restartTerminal(terminal.id))}><ArrowCounterClockwise size={13} /></button>
+          <button className="icon-button" title={t('关闭此终端')} aria-label={t('关闭 {name}', { name })} onClick={() => void onAction(window.projectGrid.closeTerminal(terminal.id))}><X size={13} /></button>
         </header>}
         <div className="terminal-split-body">
           {terminal.sessionId ? <TerminalPane id={terminal.id} sessionId={terminal.sessionId} fontSize={fontSize} focused={focused && selected === terminal.id} onError={onError} onOpenLink={(_id, target) => onOpenLink(project.id, target)} remote={project.kind === 'ssh'} />
-            : <div className="terminal-empty"><TerminalIcon size={28} weight="light" /><p>项目已就位</p><span>启动终端，在这里开始开发</span><button className="button secondary small" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}><Play size={13} weight="fill" />启动终端</button></div>}
+            : <div className="terminal-empty"><TerminalIcon size={28} weight="light" /><p>{t('项目已就位')}</p><span>{t('启动终端，在这里开始开发')}</span><button className="button secondary small" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}><Play size={13} weight="fill" />{t('启动终端')}</button></div>}
         </div>
-        {multiple && <footer className="terminal-split-footer"><span>{terminal.error || (project.kind === 'ssh' ? 'SSH' : 'PowerShell')}</span><div>
+        {multiple && <footer className="terminal-split-footer"><span>{terminal.error ? t(terminal.error) : project.kind === 'ssh' ? 'SSH' : 'PowerShell'}</span><div>
           <VoiceButton terminalId={terminal.id} sessionId={terminal.sessionId} name={name} size={13} onError={onError} />
-          {stopped && terminal.sessionId && <button className="text-button" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}>重新启动</button>}
-          {!stopped && !terminal.codexActive && terminal.status !== 'starting' && <button className="text-button" disabled={!terminal.shellReady} onClick={() => void onAction(window.projectGrid.launchCodex(terminal.id))}><Play size={12} />启动 Codex</button>}
+          {stopped && terminal.sessionId && <button className="text-button" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}>{t('重新启动')}</button>}
           {terminal.codexActive && <span className="session-label">{terminal.agent === 'claude' ? 'CLAUDE' : 'CODEX'}</span>}
         </div></footer>}
       </section>;

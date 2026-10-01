@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowClockwise, CaretLeft, CaretRight, Copy, FileText, FilmStrip, FloppyDisk, Globe, Image as ImageIcon, MagnifyingGlassMinus, MagnifyingGlassPlus, PencilSimple, SpinnerGap, Terminal, X } from '@phosphor-icons/react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { ArrowClockwise, CaretLeft, CaretRight, Copy, FileText, FilmStrip, Globe, Image as ImageIcon, MagnifyingGlassMinus, MagnifyingGlassPlus, PencilSimple, SpinnerGap, Terminal, X } from '@phosphor-icons/react';
 import type { FilePreview as Preview, Result } from './types';
+import { t } from './i18n';
 const MarkdownPreview = lazy(() => import('./MarkdownPreview').then(module => ({ default: module.MarkdownPreview })));
 
 function TextContent({ content }: { content: string }) {
@@ -19,7 +20,32 @@ function TextContent({ content }: { content: string }) {
   const last = Math.min(lines.length, first + Math.ceil(scroll.height / 22) + 20);
   return <div className="file-code-scroll" ref={viewport} onScroll={event => { const top = event.currentTarget.scrollTop; setScroll(value => ({ ...value, top })); }}>
     <div className="file-code-page" style={{ height: lines.length * 22 + 44, minWidth: Math.min(width, 2000) * 7.3 + 90 }}>
-      <div className="file-code" style={{ top: first * 22 }}><div className="line-numbers" aria-hidden="true">{lines.slice(first, last).map((_, index) => <span key={first + index}>{first + index + 1}</span>)}</div><pre tabIndex={0} aria-label="文件文本内容"><code>{lines.slice(first, last).join('\n') || ' '}</code></pre></div>
+      <div className="file-code" style={{ top: first * 22 }}><div className="line-numbers" aria-hidden="true">{lines.slice(first, last).map((_, index) => <span key={first + index}>{first + index + 1}</span>)}</div><pre tabIndex={0} aria-label={t('文件文本内容')}><code>{lines.slice(first, last).join('\n') || ' '}</code></pre></div>
+    </div>
+  </div>;
+}
+
+// Line numbers beside the editor. The textarea never wraps, so each text line is one row; only the rows in
+// view are drawn, shifted by the textarea's own scroll, and the caret's line is highlighted.
+function EditorGutter({ editor, text }: { editor: RefObject<HTMLTextAreaElement | null>; text: string }) {
+  const [view, setView] = useState({ top: 0, height: 0, line: 24, padding: 0 });
+  const [caret, setCaret] = useState(0);
+  const count = useMemo(() => { let lines = 1; for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) lines++; return lines; }, [text]);
+  useEffect(() => {
+    const node = editor.current; if (!node) return;
+    const measure = () => { const style = getComputedStyle(node); setView({ top: node.scrollTop, height: node.clientHeight, line: parseFloat(style.lineHeight) || 24, padding: parseFloat(style.paddingTop) || 0 }); };
+    const scroll = () => setView(value => ({ ...value, top: node.scrollTop }));
+    const select = () => { if (document.activeElement === node) setCaret(node.value.slice(0, node.selectionStart).split('\n').length - 1); };
+    measure(); select();
+    const resize = new ResizeObserver(measure); resize.observe(node);
+    node.addEventListener('scroll', scroll); node.addEventListener('focus', select); document.addEventListener('selectionchange', select);
+    return () => { resize.disconnect(); node.removeEventListener('scroll', scroll); node.removeEventListener('focus', select); document.removeEventListener('selectionchange', select); };
+  }, [editor]);
+  const first = Math.max(0, Math.floor((view.top - view.padding) / view.line) - 2);
+  const last = Math.min(count, first + Math.ceil(view.height / view.line) + 4);
+  return <div className="editor-gutter" aria-hidden="true" style={{ width: `calc(${Math.max(2, String(count).length)}ch + 30px)` }}>
+    <div style={{ transform: `translateY(${view.padding + first * view.line - view.top}px)` }}>
+      {Array.from({ length: Math.max(0, last - first) }, (_, index) => first + index).map(line => <span key={line} className={line === caret ? 'is-current' : undefined} style={{ height: view.line }}>{line + 1}</span>)}
     </div>
   </div>;
 }
@@ -73,7 +99,7 @@ export function FilePreview({ projectId, filePath, onClose, onError, registerGua
       setLoaded({ key, result });
       if ('content' in result.value) setDraft(result.value.content.replace(/\r\n/g, '\n'));
       dirtyRef.current = false; window.projectGrid.editorDirty(false);
-      setSaveMessage('已保存'); return true;
+      setSaveMessage(t('已保存')); return true;
     }).catch(error => { setSaveMessage(String(error.message || error)); return false; })
       .finally(() => { setSaving(false); savingTask.current = null; });
     savingTask.current = task; return task;
@@ -122,58 +148,58 @@ export function FilePreview({ projectId, filePath, onClose, onError, registerGua
   const changeZoom = (step: number) => setZoom(value => Math.max(.1, Math.min(4, (value === 'fit' ? 1 : value) + step)));
   const Icon = preview?.kind === 'image' ? ImageIcon : preview?.kind === 'video' ? FilmStrip : preview?.kind === 'html' ? Globe : FileText;
 
-  const editorField = <textarea ref={editor} className="file-text-editor" aria-label="文件编辑器" value={draft} spellCheck={false} wrap="off" disabled={saving}
+  const editorField = <div className="file-editor"><EditorGutter editor={editor} text={draft} /><textarea ref={editor} className="file-text-editor" aria-label={t('文件编辑器')} value={draft} spellCheck={false} wrap="off" disabled={saving}
     onChange={event => { setDraft(event.target.value); setSaveMessage(''); }} onFocus={() => { window.projectGrid.terminalFocus(projectId, false); window.projectGrid.fileTreeFocus(projectId, false); }}
     onKeyDown={event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); }
       if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); document.execCommand('insertText', false, '  '); }
-    }} />;
-  const markdownBody = markdown && previewUrl ? <Suspense fallback={<div className="file-preview-message">正在渲染 Markdown…</div>}><MarkdownPreview content={editing ? draft : text || ''} baseUrl={previewUrl} onOpenLink={onOpenLink} /></Suspense> : null;
+    }} /></div>;
+  const markdownBody = markdown && previewUrl ? <Suspense fallback={<div className="file-preview-message">{t('正在渲染 Markdown…')}</div>}><MarkdownPreview content={editing ? draft : text || ''} baseUrl={previewUrl} onOpenLink={onOpenLink} /></Suspense> : null;
   let body;
   if (editing && text !== null) body = markdown ? <div className="markdown-editor-surface"><div className="markdown-source-pane" hidden={mode === 'preview'}>{editorField}</div>{mode === 'preview' && markdownBody}</div> : editorField;
-  else if (loading && !preview) body = <div className="file-preview-message"><SpinnerGap size={22} className="loading-spinner" />正在读取文件…</div>;
-  else if (error) body = <div className="file-preview-message" role="status"><FileText size={28} /><p>{error}</p><button className="button secondary small" onClick={() => setRevision(r => r + 1)}>重试</button></div>;
+  else if (loading && !preview) body = <div className="file-preview-message"><SpinnerGap size={22} className="loading-spinner" />{t('正在读取文件…')}</div>;
+  else if (error) body = <div className="file-preview-message" role="status"><FileText size={28} /><p>{error}</p><button className="button secondary small" onClick={() => setRevision(r => r + 1)}>{t('重试')}</button></div>;
   else if (preview?.kind === 'image') body = imageError
-    ? <div className="file-preview-message" role="status"><ImageIcon size={28} /><p>图片无法显示，请确认文件完整后刷新。</p><button className="button secondary small" onClick={() => setRevision(r => r + 1)}>重新加载图片</button></div>
+    ? <div className="file-preview-message" role="status"><ImageIcon size={28} /><p>{t('图片无法显示，请确认文件完整后刷新。')}</p><button className="button secondary small" onClick={() => setRevision(r => r + 1)}>{t('重新加载图片')}</button></div>
     : <div className="image-viewport"><div className={`image-canvas ${zoom === 'fit' ? 'image-fit' : 'image-zoomed'}`}>
       <img key={preview.url} className="preview-image" src={preview.url} alt={preview.name} draggable={false}
         style={zoom !== 'fit' && dimensions.width ? { width: dimensions.width * zoom, height: dimensions.height * zoom } : undefined}
         onLoad={event => setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
         onError={() => setImageError(true)} />
     </div></div>;
-  else if (preview?.kind === 'html' && mode === 'preview') body = <iframe key={preview.url} className="html-preview-frame" title="HTML 页面预览" src={preview.url} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" />;
+  else if (preview?.kind === 'html' && mode === 'preview') body = <iframe key={preview.url} className="html-preview-frame" title={t('HTML 页面预览')} src={preview.url} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" />;
   else if (markdown && mode === 'preview') body = markdownBody;
   else if (preview?.kind === 'video') body = videoError
-    ? <div className="file-preview-message" role="status"><FilmStrip size={28} /><p>当前视频编码无法在应用中播放，或文件尚未生成完整。</p><button className="button secondary small" onClick={openVideo}>用系统播放器打开</button><button className="text-button" onClick={() => setRevision(r => r + 1)}>重新加载视频</button></div>
-    : <div className="video-viewport"><video key={preview.url} className="preview-video" src={preview.url} controls preload="metadata" playsInline aria-label="视频预览" onError={() => setVideoError(true)} /></div>;
+    ? <div className="file-preview-message" role="status"><FilmStrip size={28} /><p>{t('当前视频编码无法在应用中播放，或文件尚未生成完整。')}</p><button className="button secondary small" onClick={openVideo}>{t('用系统播放器打开')}</button><button className="text-button" onClick={() => setRevision(r => r + 1)}>{t('重新加载视频')}</button></div>
+    : <div className="video-viewport"><video key={preview.url} className="preview-video" src={preview.url} controls preload="metadata" playsInline aria-label={t('视频预览')} onError={() => setVideoError(true)} /></div>;
   else if (text !== null) body = <TextContent key={`${key}:${revision}`} content={text} />;
-  else body = <div className="file-preview-message"><FileText size={28} /><p>{preview?.kind === 'unsupported' ? preview.reason : '无法预览此文件。'}</p></div>;
+  else body = <div className="file-preview-message"><FileText size={28} /><p>{preview?.kind === 'unsupported' ? t(preview.reason) : t('无法预览此文件。')}</p></div>;
 
-  return <section className="file-preview" aria-label="文件预览" onKeyDown={event => { if (editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); } }}>
-    <div className="file-tabs"><button className="terminal-tab" onClick={onClose}><Terminal size={15} />返回终端</button><div className="selected-file-tab"><Icon size={15} /><span>{filePath.split('/').at(-1)}{dirty ? ' •' : ''}</span><button className="icon-button" title="关闭文件预览" aria-label="关闭文件预览" onClick={onClose}><X size={14} /></button></div><span className="preview-readonly">{markdown && mode === 'preview' ? dirty ? '预览 · 未保存' : 'Markdown 预览' : editing ? dirty ? '未保存' : '编辑中' : preview?.kind === 'image' ? '图片预览' : preview?.kind === 'video' ? '视频预览' : preview?.kind === 'html' ? '网页预览' : '文本预览'}</span></div>
+  return <section className="file-preview" aria-label={t('文件预览')} onKeyDown={event => { if (editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); } }}>
+    <div className="file-tabs"><button className="terminal-tab" onClick={onClose}><Terminal size={15} />{t('返回终端')}</button><div className="selected-file-tab"><Icon size={15} /><span>{filePath.split('/').at(-1)}{dirty ? ' •' : ''}</span><button className="icon-button" title={t('关闭文件预览')} aria-label={t('关闭文件预览')} onClick={onClose}><X size={14} /></button></div><span className={`preview-readonly ${editing && dirty ? 'is-dirty' : ''}`} role="status">{t(markdown && mode === 'preview' ? dirty ? '预览 · 未保存' : 'Markdown 预览' : editing ? saving ? '编辑模式 · 保存中…' : dirty ? '编辑模式 · 未保存，Ctrl+S 保存' : '编辑模式' : preview?.kind === 'image' ? '图片预览' : preview?.kind === 'video' ? '视频预览' : preview?.kind === 'html' ? '网页预览' : '文本预览')}</span></div>
     <div className="file-preview-toolbar"><span title={filePath}>{filePath.split('/').join('  /  ')}</span><div>
       {preview?.kind === 'image' && <div className="image-controls">
-        <button className="preview-option" aria-pressed={zoom === 'fit'} onClick={() => setZoom('fit')}>适应窗口</button>
-        <button className="preview-option" aria-pressed={zoom === 1} onClick={() => setZoom(1)}>原始尺寸</button>
-        <button className="icon-button" title="缩小图片" aria-label="缩小图片" onClick={() => changeZoom(-.25)}><MagnifyingGlassMinus size={16} /></button>
-        <span className="zoom-label">{zoom === 'fit' ? '自动' : `${Math.round(zoom * 100)}%`}</span>
-        <button className="icon-button" title="放大图片" aria-label="放大图片" onClick={() => changeZoom(.25)}><MagnifyingGlassPlus size={16} /></button>
+        <button className="preview-option" aria-pressed={zoom === 'fit'} onClick={() => setZoom('fit')}>{t('适应窗口')}</button>
+        <button className="preview-option" aria-pressed={zoom === 1} onClick={() => setZoom(1)}>{t('原始尺寸')}</button>
+        <button className="icon-button" title={t('缩小图片')} aria-label={t('缩小图片')} onClick={() => changeZoom(-.25)}><MagnifyingGlassMinus size={16} /></button>
+        <span className="zoom-label">{zoom === 'fit' ? t('自动') : `${Math.round(zoom * 100)}%`}</span>
+        <button className="icon-button" title={t('放大图片')} aria-label={t('放大图片')} onClick={() => changeZoom(.25)}><MagnifyingGlassPlus size={16} /></button>
       </div>}
-      {preview?.kind === 'html' && <div className="preview-mode"><button className="preview-option" aria-pressed={mode === 'preview' && !editing} onClick={() => void navigate(() => setMode('preview'))}>页面</button><button className="preview-option" aria-pressed={mode === 'source' || editing} onClick={beginEditing}>源码</button></div>}
-      {markdown && <div className="preview-mode"><button className="preview-option" aria-pressed={mode === 'source'} onClick={beginEditing}>编辑</button><button className="preview-option" aria-pressed={mode === 'preview'} onClick={() => setMode('preview')}>预览</button></div>}
-      {text !== null && (!editing ? !markdown && preview?.kind !== 'html' && <button className="preview-option editor-action" disabled={loading} onClick={beginEditing}><PencilSimple size={15} />{textPage && textPage.count > 1 ? '编辑当前段' : '编辑'}</button> : <><button className="preview-option editor-action" disabled={!dirty || saving} onClick={() => void save()} title="保存文件 · Ctrl+S"><FloppyDisk size={15} />{saving ? '保存中…' : '保存'}</button>{!markdown && <button className="preview-option" disabled={saving} onClick={() => void navigate(() => {})}>结束编辑</button>}</>)}
-      <button className="icon-button" disabled={saving} title="刷新文件" aria-label="刷新文件" onClick={() => void navigate(() => setRevision(r => r + 1))}><ArrowClockwise size={16} /></button>
-      {text !== null && <button className="icon-button" title={textPage && textPage.count > 1 ? '复制当前页内容' : '复制文件内容'} aria-label={textPage && textPage.count > 1 ? '复制当前页内容' : '复制文件内容'} onClick={async () => { const result = await window.projectGrid.copy(editing ? draft : text); if (!result.ok) onError(result.error); }}><Copy size={16} /></button>}
+      {preview?.kind === 'html' && <div className="preview-mode"><button className="preview-option" aria-pressed={mode === 'preview' && !editing} onClick={() => void navigate(() => setMode('preview'))}>{t('页面')}</button><button className="preview-option" aria-pressed={mode === 'source' || editing} onClick={beginEditing}>{t('源码')}</button></div>}
+      {markdown && <div className="preview-mode"><button className="preview-option" aria-pressed={mode === 'source'} onClick={beginEditing}>{t('编辑')}</button><button className="preview-option" aria-pressed={mode === 'preview'} onClick={() => setMode('preview')}>{t('预览')}</button></div>}
+      {text !== null && (!editing ? !markdown && preview?.kind !== 'html' && <button className="preview-option editor-action" disabled={loading} onClick={beginEditing}><PencilSimple size={15} />{textPage && textPage.count > 1 ? t('编辑当前段') : t('编辑')}</button> : null)}
+      {!editing && <button className="icon-button" disabled={saving} title={t('刷新文件')} aria-label={t('刷新文件')} onClick={() => void navigate(() => setRevision(r => r + 1))}><ArrowClockwise size={16} /></button>}
+      {text !== null && !editing && <button className="icon-button" title={textPage && textPage.count > 1 ? t('复制当前页内容') : t('复制文件内容')} aria-label={textPage && textPage.count > 1 ? t('复制当前页内容') : t('复制文件内容')} onClick={async () => { const result = await window.projectGrid.copy(editing ? draft : text); if (!result.ok) onError(result.error); }}><Copy size={16} /></button>}
     </div></div>
     {body}
-    {saveMessage && <div className={`editor-message ${saveMessage === '已保存' ? '' : 'editor-error'}`} role="status">{saveMessage}</div>}
+    {saveMessage && <div className={`editor-message ${saveMessage === t('已保存') ? '' : 'editor-error'}`} role="status">{saveMessage}</div>}
     {showingText && textPage && textPage.count > 1 && <form className="text-pagination" onSubmit={event => { event.preventDefault(); const value = Number(pageInput); if (Number.isSafeInteger(value)) void navigate(() => setPageIndex(Math.max(0, Math.min(textPage.count - 1, value - 1)))); }}>
-      <span>分段读取 · 编辑仅影响当前段</span><button type="button" className="preview-option" disabled={!textPage.index || loading || saving} onClick={() => void navigate(() => setPageIndex(0))}>首页</button>
-      <button type="button" className="icon-button" aria-label="上一页" disabled={!textPage.index || loading || saving} onClick={() => void navigate(() => setPageIndex(textPage.index - 1))}><CaretLeft size={15} /></button>
-      <label>第 <input aria-label="文件页码" type="number" min={1} max={textPage.count} value={pageInput} onChange={event => setPageInput(event.target.value)} /> / {textPage.count} 页</label><button type="submit" className="preview-option" disabled={loading}>跳转</button>
-      <button type="button" className="icon-button" aria-label="下一页" disabled={textPage.index === textPage.count - 1 || loading || saving} onClick={() => void navigate(() => setPageIndex(textPage.index + 1))}><CaretRight size={15} /></button>
-      <button type="button" className="preview-option" disabled={textPage.index === textPage.count - 1 || loading || saving} onClick={() => void navigate(() => setPageIndex(textPage.count - 1))}>末页</button>
+      <span>{t('分段读取 · 编辑仅影响当前段')}</span><button type="button" className="preview-option" disabled={!textPage.index || loading || saving} onClick={() => void navigate(() => setPageIndex(0))}>{t('首页')}</button>
+      <button type="button" className="icon-button" aria-label={t('上一页')} disabled={!textPage.index || loading || saving} onClick={() => void navigate(() => setPageIndex(textPage.index - 1))}><CaretLeft size={15} /></button>
+      <label>{t('第')} <input aria-label={t('文件页码')} type="number" min={1} max={textPage.count} value={pageInput} onChange={event => setPageInput(event.target.value)} /> {t('/ {count} 页', { count: textPage.count })}</label><button type="submit" className="preview-option" disabled={loading}>{t('跳转')}</button>
+      <button type="button" className="icon-button" aria-label={t('下一页')} disabled={textPage.index === textPage.count - 1 || loading || saving} onClick={() => void navigate(() => setPageIndex(textPage.index + 1))}><CaretRight size={15} /></button>
+      <button type="button" className="preview-option" disabled={textPage.index === textPage.count - 1 || loading || saving} onClick={() => void navigate(() => setPageIndex(textPage.count - 1))}>{t('末页')}</button>
     </form>}
-    <div className="file-preview-footer"><span>{preview ? fileSize(preview.size) : ''}{preview?.kind === 'image' && dimensions.width > 0 ? ` · ${dimensions.width} × ${dimensions.height}` : ''}{showingText && textPage ? ` · ${textPage.encoding.toUpperCase()}` : ''}{markdown ? ' · Markdown' : ''}</span><span>{markdown && mode === 'preview' && dirty ? '正在预览未保存的修改' : '查看与编辑文件时，终端任务继续运行'}</span></div>
+    <div className="file-preview-footer"><span>{preview ? fileSize(preview.size) : ''}{preview?.kind === 'image' && dimensions.width > 0 ? ` · ${dimensions.width} × ${dimensions.height}` : ''}{showingText && textPage ? ` · ${textPage.encoding.toUpperCase()}` : ''}{markdown ? ' · Markdown' : ''}</span><span>{markdown && mode === 'preview' && dirty ? t('正在预览未保存的修改') : t('查看与编辑文件时，终端任务继续运行')}</span></div>
   </section>;
 }
