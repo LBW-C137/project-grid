@@ -87,7 +87,7 @@ try {
   await guide.getByRole('heading', { name: `本次更新 v${version}`, exact: true }).waitFor();
   await guide.getByRole('button', { name: '上一步', exact: true }).click();
   await guide.getByRole('heading', { name: '常用快捷键', exact: true }).waitFor();
-  assert.equal(await guide.locator('.guide-keys div', { hasText: '添加项目' }).locator('kbd').innerText(), 'Ctrl+A', 'the guide shows the shortcuts in use');
+  assert.equal(await guide.locator('.guide-keys div', { hasText: '添加项目' }).locator('kbd').innerText(), 'Ctrl+Shift+N', 'the guide shows the shortcuts in use');
   await page.screenshot({ path: path.join(output, 'guide-shortcuts.png') });
   await guide.getByRole('button', { name: '跳过', exact: true }).click();
   await guide.waitFor({ state: 'detached' });
@@ -222,7 +222,7 @@ try {
   await page.locator('dialog.project-dialog').waitFor({ state: 'detached' });
   await waitFor(async () => { const state = (await page.evaluate(() => window.projectGrid.getState())).value; return state.projects.length === 1 && state.projects[0].name === project.name; }, 'recent project is added again');
   await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[0].shellReady, 'its terminal starts');
-  await page.evaluate(() => document.activeElement?.blur()); await page.keyboard.press('Control+a');
+  await page.evaluate(() => document.activeElement?.blur()); await page.keyboard.press('Control+Shift+N');
   await page.locator('dialog.project-dialog').waitFor();
   assert.deepEqual((await page.evaluate(() => window.projectGrid.getRecentProjects())).value, [], 'an open project is not listed as recent');
   assert.equal(await recent.count(), 0);
@@ -233,7 +233,7 @@ try {
   await page.keyboard.press('Control+,');
   await page.getByRole('heading', { name: '工作台设置', exact: true }).waitFor();
   const searchKey = page.getByRole('button', { name: '搜索项目的快捷键', exact: true });
-  assert.equal(await searchKey.innerText(), 'Ctrl+F');
+  assert.equal(await searchKey.innerText(), 'Ctrl+Shift+F');
   await searchKey.click(); await page.keyboard.press('Control+Shift+K');
   await waitFor(async () => (await searchKey.innerText()) === 'Ctrl+Shift+K', 'a new key is recorded');
   await searchKey.click(); await page.keyboard.press('Control+t');
@@ -242,14 +242,14 @@ try {
   assert.equal(await page.locator('dialog[open]').count(), 1, 'Escape while recording cancels the recording, not the dialog');
   assert.deepEqual((await page.evaluate(() => window.projectGrid.getState())).value.settings.shortcuts, { search: 'Ctrl+Shift+K' });
   await page.getByRole('button', { name: '完成', exact: true }).click();
-  await page.keyboard.press('Control+f');
+  await page.keyboard.press('Control+Shift+F');
   assert.equal(await page.getByRole('textbox', { name: '搜索项目', exact: true }).count(), 0, 'the old key no longer searches');
   await page.keyboard.press('Control+Shift+K');
   await page.getByRole('textbox', { name: '搜索项目', exact: true }).waitFor();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+,');
   await page.getByRole('button', { name: '恢复默认', exact: true }).click();
-  await waitFor(async () => (await searchKey.innerText()) === 'Ctrl+F', 'restore defaults');
+  await waitFor(async () => (await searchKey.innerText()) === 'Ctrl+Shift+F', 'restore defaults');
   assert.deepEqual((await page.evaluate(() => window.projectGrid.getState())).value.settings.shortcuts, {});
   await page.getByRole('button', { name: '完成', exact: true }).click();
   console.log('PASS: shortcuts are recorded in settings, conflicts are refused, the new key works and defaults come back');

@@ -140,7 +140,7 @@ Windows 安装版会自动检查新版本，在后台下载更新。设置中可
 **Windows 10 / 11 · x64。Codex CLI 或 Claude Code 安装在实际运行项目的本机或远程主机上（Claude Code 目前支持本地项目）。**
 
 1. 从 [Releases 下载最新版](https://github.com/noeigenstate/project-manager/releases/latest)，运行 `Project-Grid-Setup-版本号-x64.exe` 完成安装，后续可自动检查和下载更新。临时使用也可选择免安装的 `Project-Grid-版本号-win-x64.exe`。
-2. 按 **Ctrl+A**（可在设置中改）打开「添加项目」，选择「本地项目」或「SSH 远程项目」。远程项目填写主机别名与 Linux 目录；服务器需要 Python 3.6+、Bash。移除过的本地项目会留在「最近的项目」里，点击即可重新添加，也可逐个删除或清空。在终端输入 `codex`，或点击 **启动 Codex**。
+2. 按 **Ctrl+Shift+N**（可在设置中改）打开「添加项目」，选择「本地项目」或「SSH 远程项目」。远程项目填写主机别名与 Linux 目录；服务器需要 Python 3.6+、Bash。移除过的本地项目会留在「最近的项目」里，点击即可重新添加，也可逐个删除或清空。在终端输入 `codex`，或点击 **启动 Codex**。
 3. 红框亮起后点开，查看结果并继续对话。完成后点击 **返回总览**。
 4. 查看本轮结果后，直接输入下一条指令；不需要人工标记项目完成。
 
@@ -148,8 +148,8 @@ Windows 安装版会自动检查新版本，在后台下载更新。设置中可
 
 | 快捷操作 | 功能 |
 | --- | --- |
-| `Ctrl + F` | 总览中搜索项目 |
-| `Ctrl + A` | 添加项目（在文本框和编辑器里仍是全选） |
+| `Ctrl + Shift + F` | 总览中搜索项目 |
+| `Ctrl + Shift + N` | 添加项目 |
 | `Ctrl + Tab` / `Ctrl + Shift + Tab` | 切到下一个 / 上一个项目；总览中只移动输入焦点，不放大 |
 | `Ctrl + Shift + Enter` | 放大或还原当前项目 |
 | `Ctrl + Shift + T` | 在当前项目新建终端并分屏 |

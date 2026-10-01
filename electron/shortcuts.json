@@ -1,6 +1,6 @@
 {
-  "search": "Ctrl+F",
-  "addProject": "Ctrl+A",
+  "search": "Ctrl+Shift+F",
+  "addProject": "Ctrl+Shift+N",
   "voice": "Ctrl+T",
   "overview": "Ctrl+Shift+G",
   "explorer": "Ctrl+B",

@@ -370,7 +370,8 @@ export function App() {
       </div>}
       <div className="titlebar-space" />
       <div className="titlebar-tools">
-        {/* Search and add project open from their shortcuts (Ctrl+F, Ctrl+A by default); the search box shows while in use. */}
+        {/* Search and add project open from their shortcuts (Ctrl+Shift+F and Ctrl+Shift+N by default, configurable);
+            the search box shows while in use. */}
         {!focusedId && (searchOpen || query) && <div className="search-input"><MagnifyingGlass size={15} /><input ref={queryInput} placeholder={t('搜索项目或路径…')} aria-label={t('搜索项目')} value={query} onChange={e => setQuery(e.target.value)} onBlur={() => { if (!query) setSearchOpen(false); }} onKeyDown={event => { if (event.key === 'Escape') { setQuery(''); setSearchOpen(false); } }} />{query ? <IconButton label={t('清除搜索')} onClick={() => setQuery('')}><X size={13} /></IconButton> : <kbd>{shortcut('search')}</kbd>}</div>}
         <IconButton label={t('工作台设置')} className={updates?.status === 'ready' ? 'update-ready' : ''} onClick={() => setSettingsOpen(true)}><GearSix size={16} /></IconButton>
       </div>

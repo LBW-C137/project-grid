@@ -160,13 +160,13 @@ try {
   await waitFor(async () => (await receivedKeys()).some(key => key.key === 'Enter' && key.modifiers === '0'), 'ordinary Enter remains a submission key');
   console.log('PASS: native Windows CLI receives a real Shift+Enter, ordinary Enter stays distinct, and input stays in the small card');
 
-  await page.keyboard.press('Control+f');
+  await page.keyboard.press('Control+Shift+F');
   const search = page.getByRole('textbox', { name: '搜索项目', exact: true });
   await setClipboard('输入框粘贴 中文🙂');
   await search.focus(); await page.keyboard.press('Control+v');
   await waitFor(async () => (await search.inputValue()) === '输入框粘贴 中文🙂', 'native input paste');
   await search.fill(''); await page.evaluate(() => document.activeElement?.blur());
-  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Control+Shift+N');
   await page.getByRole('button', { name: /SSH 远程项目/ }).click();
   const sshHost = page.getByLabel('SSH 主机', { exact: true });
   await setClipboard('fixture'); await sshHost.focus(); await page.keyboard.press('Control+v');
@@ -216,10 +216,14 @@ try {
   await waitFor(async () => application.evaluate(() => globalThis.testInputs.some(item => item.data === '\x1b[13;2u')), 'SSH receives modified Enter without an ordinary carriage return');
   await page.keyboard.press('Control+c');
   await waitFor(async () => application.evaluate(() => globalThis.testInputs.some(item => item.data === '\x03')), 'Ctrl+C without selection still interrupts');
+  // App shortcuts avoid the shell's own keys: Ctrl+A (line start) and Ctrl+F (forward a character) reach the terminal.
+  await page.keyboard.press('Control+a'); await page.keyboard.press('Control+f');
+  await waitFor(async () => application.evaluate(() => ['\x01', '\x06'].every(key => globalThis.testInputs.some(item => item.data === key))), 'terminal Ctrl+A and Ctrl+F reach the shell');
+  assert.equal(await page.locator('dialog[open]').count(), 0, 'Ctrl+A in a terminal does not open add project');
   await restoreClipboard();
   assert.equal((await fs.readFile(path.join(dataDir, 'workspace.json'), 'utf8')).includes(fixture.secret), false);
   assert.deepEqual(errors, []);
-  console.log('PASS: native input paste; terminal selection, copy all and paste shortcuts; Ctrl+C interrupt preserved');
+  console.log('PASS: native input paste; terminal selection, copy all and paste shortcuts; Ctrl+C interrupt, Ctrl+A and Ctrl+F reach the shell');
   console.log('PASS: SSH add/authentication UI, text/PNG/HTML/video previews and seeking through native SSH');
   console.log(`Screenshots: ${output}`);
 } catch (error) {
