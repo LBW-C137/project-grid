@@ -101,6 +101,8 @@ function publicState() {
     warning: store.warning,
     platform: process.platform,
     version: app.getVersion(),
+    // The usage guide opens on first use and after each update. Isolated test profiles skip it unless asked.
+    guide: store.settings.guideVersion !== app.getVersion() && (!process.env.PROJECT_GRID_DATA_DIR || process.env.PROJECT_GRID_TEST_GUIDE === '1'),
   };
 }
 

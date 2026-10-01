@@ -20,7 +20,7 @@ await fs.writeFile(path.join(output, 'external', 'external.txt'), 'PASTE_IN_CONT
 await fs.mkdir(path.join(output, 'external', '外部文件夹'));
 await fs.writeFile(path.join(output, 'external', '外部文件夹', 'nested.txt'), 'NESTED_PASTE_CONTENT');
 await fs.mkdir(path.join(project.path, '目标目录'));
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { notifications: false, closeToTray: false } }));
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { notifications: false, closeToTray: false, guideVersion: '0.5.0' } }));
 const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
 const speech = path.join(output, 'speech.wav');
 try { await exec(powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'scripts/voice-fixture.ps1'), '-Destination', speech], { windowsHide: true }); }
@@ -40,7 +40,7 @@ if (assets) {
   for (const file of MODEL_FILES) await fs.copyFile(path.join(assets, file.name), path.join(dataDir, 'voice', MODEL_DIRECTORY, file.name));
 }
 const packaged = process.argv.includes('--packaged');
-const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
+const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir, PROJECT_GRID_TEST_GUIDE: '1' }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 let application, page;
 async function filesFinished() { await waitFor(async () => { const result = await page.evaluate(() => window.projectGrid.getFileProgress()); return result.ok && result.value === null; }, 'all files in the paste operation finish'); }
 async function backupClipboard() { await application.evaluate(async ({ clipboard, ClipboardItem }) => { globalThis.clipboardBackup = await Promise.all((await clipboard.read()).filter(item => item.types.length).map(async item => new ClipboardItem(Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)])))))); }); }
@@ -80,6 +80,26 @@ try {
     ipcMain.removeHandler('voice:state'); ipcMain.handle('voice:state', () => ({ ok: true, value: { phase: 'ready', ready: true, percent: 100, model: 'test stub', error: null } }));
     ipcMain.removeHandler('voice:transcribe'); ipcMain.handle('voice:transcribe', (_event, audio) => { if (audio.byteLength < 16000) return { ok: false, error: 'Missing recorded microphone samples' }; return { ok: true, value: 'Please open the project folder and continue the task.' }; });
   });
+  // Updating from an older version opens the usage guide on what is new; it can be paged and is shown once.
+  const guide = page.locator('dialog.guide-dialog[open]');
+  await guide.waitFor();
+  const version = (await page.evaluate(() => window.projectGrid.getState())).value.version;
+  await guide.getByRole('heading', { name: `本次更新 v${version}`, exact: true }).waitFor();
+  await guide.getByRole('button', { name: '上一步', exact: true }).click();
+  await guide.getByRole('heading', { name: '常用快捷键', exact: true }).waitFor();
+  assert.equal(await guide.locator('.guide-keys div', { hasText: '添加项目' }).locator('kbd').innerText(), 'Ctrl+A', 'the guide shows the shortcuts in use');
+  await page.screenshot({ path: path.join(output, 'guide-shortcuts.png') });
+  await guide.getByRole('button', { name: '跳过', exact: true }).click();
+  await guide.waitFor({ state: 'detached' });
+  await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.settings.guideVersion === version, 'the guide is marked as seen for this version');
+  assert.equal((await page.evaluate(() => window.projectGrid.getState())).value.guide, false);
+  await page.keyboard.press('Control+,');
+  await page.getByRole('button', { name: '使用指南', exact: true }).click();
+  await guide.getByRole('heading', { name: '欢迎使用 Project Grid', exact: true }).waitFor();
+  for (const title of ['第一步：添加项目', '第二步：开始一轮任务', '第三步：等提醒，再继续']) { await guide.getByRole('button', { name: '下一步', exact: true }).click(); await guide.getByRole('heading', { name: title, exact: true }).waitFor(); }
+  await page.screenshot({ path: path.join(output, 'guide-step.png') });
+  await page.keyboard.press('Escape'); await guide.waitFor({ state: 'detached' });
+  console.log('PASS: the usage guide opens on what is new after an update, pages through the steps and shortcuts, and reopens from settings');
   await page.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[0].shellReady, 'terminal ready');
   await page.getByRole('button', { name: `全屏查看 ${project.name}`, exact: true }).click();

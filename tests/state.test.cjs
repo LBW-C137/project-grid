@@ -159,8 +159,10 @@ test('corrupt workspace is copied aside before a new workspace can be saved', t 
 });
 
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'forest', language: 'zh', shortcuts: {}, announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true });
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'forest', language: 'zh', shortcuts: {}, guideVersion: '', announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true });
   assert.equal(cleanSettings({ language: 'fr' }).language, 'zh');
+  assert.equal(cleanSettings({ guideVersion: '0.5.16' }).guideVersion, '0.5.16');
+  assert.equal(cleanSettings({ guideVersion: '<script>' }).guideVersion, '', 'only a version number marks the guide as seen');
   assert.deepEqual(cleanSettings({ shortcuts: { search: 'Ctrl+Shift+K', addProject: 'A', voice: 'Alt+V', overview: 'F6', settings: 'Ctrl+rm', nextProject: 'Ctrl+Tab', unknown: 'Ctrl+Q' } }).shortcuts, { search: 'Ctrl+Shift+K', voice: 'Alt+V', overview: 'F6', nextProject: 'Ctrl+Tab' }, 'only valid combinations for known actions are kept');
   assert.equal(cleanSettings({ language: 'en' }).language, 'en');
   assert.equal(cleanSettings({ announce: 'loud' }).announce, true);

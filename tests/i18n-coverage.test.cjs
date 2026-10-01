@@ -19,10 +19,11 @@ test('every interface phrase has an English translation', () => {
   assert.deepEqual([...missing], []);
 });
 
-test('shortcut action names and theme names are translated too', () => {
+test('shortcut action names, theme names and the guide release notes are translated too', () => {
   const shortcuts = fs.readFileSync(path.join(__dirname, '..', 'src', 'shortcuts.ts'), 'utf8');
   const themes = fs.readFileSync(path.join(__dirname, '..', 'src', 'themes.ts'), 'utf8');
-  const labels = [...shortcuts.matchAll(/label: '([^']+)'/g), ...themes.matchAll(/(?:name|description): '([^']+)'/g)].map(match => match[1]);
+  const guide = fs.readFileSync(path.join(__dirname, '..', 'src', 'guide.ts'), 'utf8');
+  const labels = [...shortcuts.matchAll(/label: '([^']+)'/g), ...themes.matchAll(/(?:name|description): '([^']+)'/g), ...guide.matchAll(/^\s*'([^']+)',$/gm)].map(match => match[1]);
   assert.ok(labels.length >= 15);
   assert.deepEqual(labels.filter(label => !Object.prototype.hasOwnProperty.call(en, label)), []);
 });

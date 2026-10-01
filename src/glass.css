@@ -169,6 +169,24 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .dropdown { background: var(--glass-sheen), var(--glass-strong); border-color: #e8f5ff80; border-radius: 14px; box-shadow: inset 0 1px 0 #ffffff96, inset 0 -1px 0 #0b1a2855, 0 12px 28px #07131e40; backdrop-filter: blur(6px) saturate(135%); animation: glass-appear .16s cubic-bezier(.2,.8,.2,1); transform-origin: top center; }
 .dropdown button { color: #e5f0fa; border-radius: 9px; }
 .panel-menu { width: 224px; }
+/* Usage guide: one page at a time, an icon badge, a few lines of text and page dots. */
+.guide-dialog { width: 560px; }
+.guide-head { display: flex; align-items: center; gap: 16px; }
+.guide-head h2 { margin: 4px 0 0; }
+.guide-icon { display: grid; place-items: center; width: 52px; height: 52px; flex: none; border-radius: 16px; color: #ffffff; background: linear-gradient(150deg, #8fcbffb0, #5d7cf0a0); box-shadow: inset 0 1px 0 #ffffff70, 0 6px 18px #0b1a2a40; }
+.guide-body { min-height: 190px; margin: 20px 0 6px; font-size: 13px; line-height: 1.8; color: #e7f1fa; }
+.guide-body p { margin: 0 0 10px; }
+.guide-body ul { margin: 6px 0 0; padding-left: 20px; }
+.guide-body li { margin: 4px 0; }
+.guide-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; margin: 0; }
+.guide-keys > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.guide-keys dt { font-size: 12px; } .guide-keys dd { margin: 0; }
+.guide-keys kbd { font-size: 11px; padding: 2px 8px; }
+.guide-note { margin-top: 14px !important; font-size: 11px; color: #c0d1e3; }
+.guide-dots { display: flex; justify-content: center; gap: 7px; margin: 8px 0 4px; }
+.guide-dots i { width: 7px; height: 7px; border-radius: 50%; background: #dcedff40; transition: width .2s ease, background .2s ease; }
+.guide-dots i.is-current { width: 20px; border-radius: 4px; background: #e9f6ffd0; }
+.guide-actions { display: inline-flex; align-items: center; gap: 10px; }
 .panel-menu .menu-shortcut { margin-left: auto; color: #a9bfd4; font-size: 10px; white-space: nowrap; }.dropdown button:hover { background: #e3f2ff19; box-shadow: inset 0 1px 0 #ffffff15; }.menu-divider { background: #e1efff21; }
 .empty-workspace p { color: #a2b4ca; }.empty-workspace h2 { color: #e3edf9; }.empty-workspace > .eyebrow { color: #a9bdd5; }
 .empty-hints { color: #a1b6cf; }.empty-illustration .illustration-tile { background: #d2e9ff0d; border-color: #dfedff38; box-shadow: inset 0 1px 0 #ffffff0c; }

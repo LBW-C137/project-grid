@@ -3,7 +3,7 @@ import {
   SquaresFour, FolderSimplePlus, Bell, MagnifyingGlass, ArrowsOutSimple,
   Play, Plus, Terminal as TerminalIcon, Check, DotsThree, GitBranch, X, Minus, Square,
   GearSix, CheckCircle, FolderOpen, Power, ArrowCounterClockwise,
-  Monitor, Info, Circle, SpeakerHigh, Globe, Microphone, Waveform,
+  Monitor, Info, Circle, SpeakerHigh, Globe, Microphone, Waveform, BookOpen,
 } from '@phosphor-icons/react';
 import type { AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
 import { ProjectTerminals } from './ProjectTerminals';
@@ -21,6 +21,7 @@ import { applyLanguage, currentLanguage, t } from './i18n';
 import { actionFor, applyShortcuts, editingKeyInField, shortcut } from './shortcuts';
 import { quickDictation } from './voice-input';
 import { ShortcutSettings } from './ShortcutSettings';
+import { UsageGuide } from './UsageGuide';
 const FilePreview = lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
 
 const api = window.projectGrid;
@@ -158,8 +159,8 @@ function AnnounceSettings({ settings, update }: { settings: Settings; update: (p
     </div>}
   </div>;
 }
-function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, close, update, quit }: {
-  settings: Settings; close: () => void; update: (patch: Partial<Settings>) => void; quit: () => void;
+function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, onGuide, close, update, quit }: {
+  settings: Settings; close: () => void; update: (patch: Partial<Settings>) => void; quit: () => void; onGuide: () => void;
   updates: AppUpdateState | null; onCheckUpdate: () => void; onInstallUpdate: () => void; onDownloadPage: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -200,7 +201,7 @@ function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onD
           : <button className="button secondary small" disabled={updates.status === 'checking' || updates.status === 'downloading'} onClick={onCheckUpdate}>{updates.status === 'error' ? t('重试更新') : t('检查更新')}</button>}</div>
       </section>}
       <div className="settings-note"><Info size={15} /><p>{t('一轮结束时，方框从边缘缓缓呼吸三次，之后留一层柔光等你查看；在终端里发送新指令也算已查看。绿色常亮表示已查看的本轮完成。没有新指令时不会重复提醒。')}</p></div>
-      <div className="dialog-footer"><button className="text-button danger-text" onClick={quit}><Power size={15} />{t('退出应用')}</button><button className="button primary" onClick={close}>{t('完成')}</button></div>
+      <div className="dialog-footer"><span className="guide-actions"><button className="text-button danger-text" onClick={quit}><Power size={15} />{t('退出应用')}</button><button className="text-button" onClick={onGuide}><BookOpen size={15} />{t('使用指南')}</button></span><button className="button primary" onClick={close}>{t('完成')}</button></div>
     </div>
   </dialog>;
 }
@@ -216,6 +217,13 @@ export function App() {
   useEffect(() => { if (searchOpen) queryInput.current?.focus(); }, [searchOpen]);
   const { root: focusMotionRoot, focusedId, focus: setFocusedId } = useProjectFocusMotion(workspace?.settings.focusAnimation || 'smooth');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The usage guide: welcome page on first use, "what's new" after an update, or opened from settings.
+  const [guide, setGuide] = useState<'intro' | 'news' | null>(null);
+  const guideShown = useRef(false);
+  useEffect(() => {
+    if (!workspace?.guide || guideShown.current) return;
+    guideShown.current = true; setGuide(workspace.settings.guideVersion ? 'news' : 'intro');
+  }, [workspace?.guide, workspace?.settings.guideVersion]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [addOpen, setAddOpen] = useState(false);
@@ -399,7 +407,8 @@ export function App() {
       </main>
     </div>
     {error && <div className="error-toast" role="alert"><Info size={18} /><span>{error}</span><IconButton label={t('关闭提示')} onClick={() => setError(null)}><X size={16} /></IconButton></div>}
-    {settingsOpen && <SettingsDialog settings={settings} updates={updates} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => setSettingsOpen(false)} update={setPreference} quit={() => perform(api.quit())} />}
+    {guide && <UsageGuide version={workspace.version} start={guide} onClose={() => { setGuide(null); if (settings.guideVersion !== workspace.version) setPreference({ guideVersion: workspace.version }); }} />}
+    {settingsOpen && <SettingsDialog settings={settings} updates={updates} onGuide={() => { setSettingsOpen(false); setGuide('intro'); }} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => setSettingsOpen(false)} update={setPreference} quit={() => perform(api.quit())} />}
     {addOpen && <AddProjectDialog onClose={() => setAddOpen(false)} onAdded={() => setQuery('')} onError={reportError} />}
     {sshAuth[0] && <SSHAuthDialog key={sshAuth[0].id} request={sshAuth[0]} />}
     <VoiceOverlay />
