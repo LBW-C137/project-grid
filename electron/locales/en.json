@@ -10,6 +10,7 @@
   "从最近列表删除": "Remove from recent",
   "从最近列表删除 {name}": "Remove {name} from recent",
   "添加项目": "Add project",
+  "添加项目 · {key}": "Add project · {key}",
   "关闭添加项目": "Close add project",
   "本地项目": "Local project",
   "这台电脑上的文件夹": "A folder on this computer",

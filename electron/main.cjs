@@ -824,7 +824,7 @@ else {
     // standard editing shortcuts for inputs, including SSH password fields.
     window.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown' || activeTerminal || input.alt) return;
-      // An app shortcut (Ctrl+A adds a project by default) reaches the window, which keeps the usual
+      // An app shortcut (Ctrl+Shift+N adds a project by default) reaches the window, which keeps the usual
       // editing meaning inside text boxes and runs the action elsewhere.
       if (isAppShortcut(input)) return;
       const key = input.key.toLowerCase();

@@ -60,7 +60,7 @@ try {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 900));
   await page.waitForSelector('.project-panel');
-  await page.keyboard.press('Control+f');
+  await page.keyboard.press('Control+Shift+F');
   const search = page.getByRole('textbox', { name: '搜索项目', exact: true }); await search.fill('运行样例');
   await checkEdges('overview');
   await checkGaps('overview');

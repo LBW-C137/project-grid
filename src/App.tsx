@@ -350,8 +350,10 @@ export function App() {
       </div>}
       <div className="titlebar-space" />
       <div className="titlebar-tools">
-        {/* Search and add project open from their shortcuts (Ctrl+F, Ctrl+A by default); the search box shows while in use. */}
+        {/* Search opens from its shortcut (Ctrl+Shift+F by default) and shows while in use. Add project keeps a small button
+            beside its shortcut (Ctrl+Shift+N), so it stays discoverable once the grid has projects. */}
         {!focusedId && (searchOpen || query) && <div className="search-input"><MagnifyingGlass size={15} /><input ref={queryInput} placeholder={t('搜索项目或路径…')} aria-label={t('搜索项目')} value={query} onChange={e => setQuery(e.target.value)} onBlur={() => { if (!query) setSearchOpen(false); }} onKeyDown={event => { if (event.key === 'Escape') { setQuery(''); setSearchOpen(false); } }} />{query ? <IconButton label={t('清除搜索')} onClick={() => setQuery('')}><X size={13} /></IconButton> : <kbd>{shortcut('search')}</kbd>}</div>}
+        {!focusedId && <button className="icon-button add-project-button" type="button" title={t('添加项目 · {key}', { key: shortcut('addProject') })} aria-label={t('添加项目')} onClick={() => setAddOpen(true)}><FolderSimplePlus size={16} /></button>}
         <IconButton label={t('工作台设置')} className={updates?.status === 'ready' ? 'update-ready' : ''} onClick={() => setSettingsOpen(true)}><GearSix size={16} /></IconButton>
       </div>
       <div className="window-actions"><IconButton label={t('最小化')} onClick={() => api.minimize()}><Minus size={16} /></IconButton><IconButton label={t('最大化或还原')} onClick={() => api.maximize()}><Square size={12} /></IconButton><IconButton label={t('关闭窗口')} className="window-close" onClick={() => api.close()}><X size={17} /></IconButton></div>

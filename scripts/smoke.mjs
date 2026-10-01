@@ -85,17 +85,18 @@ try {
   assert.equal(await page.locator('.project-panel').count(), 6);
   assert.equal(await page.locator('aside').count(), 0, 'overview has no sidebar');
   assert.equal(await page.locator('.workspace-header, .grid-toolbar, .project-filters, .layout-selector').count(), 0);
-  // The title bar has no search or add buttons: Ctrl+A adds a project and Ctrl+F searches (both configurable).
+  // The title bar keeps a small add button; Ctrl+Shift+N also adds a project and Ctrl+Shift+F searches (both configurable).
   const titlebar = page.locator('.titlebar');
-  assert.equal(await titlebar.getByRole('button', { name: '添加项目', exact: true }).count(), 0);
   assert.equal(await titlebar.getByRole('textbox', { name: '搜索项目', exact: true }).count(), 0, 'search shows only when asked for');
-  await page.keyboard.press('Control+a');
-  await page.getByRole('button', { name: '选择本地文件夹', exact: true }).click();
-  assert.equal(await application.evaluate(() => globalThis.addDialogCount), 1, 'Ctrl+A opens add project');
+  await titlebar.getByRole('button', { name: '添加项目', exact: true }).click();
   await page.getByRole('button', { name: '关闭添加项目', exact: true }).click();
-  await page.keyboard.press('Control+f');
+  await page.keyboard.press('Control+Shift+N');
+  await page.getByRole('button', { name: '选择本地文件夹', exact: true }).click();
+  assert.equal(await application.evaluate(() => globalThis.addDialogCount), 1, 'Ctrl+Shift+N opens add project');
+  await page.getByRole('button', { name: '关闭添加项目', exact: true }).click();
+  await page.keyboard.press('Control+Shift+F');
   const searchBox = page.getByRole('textbox', { name: '搜索项目', exact: true });
-  assert.equal(await searchBox.evaluate(input => input === document.activeElement), true, 'Ctrl+F opens and focuses search');
+  assert.equal(await searchBox.evaluate(input => input === document.activeElement), true, 'Ctrl+Shift+F opens and focuses search');
   await page.keyboard.type('abc'); await page.keyboard.press('Control+a');
   assert.deepEqual(await searchBox.evaluate(input => [input.selectionStart, input.selectionEnd]), [0, 3], 'inside a text box Ctrl+A still selects all');
   assert.equal(await page.locator('dialog[open]').count(), 0, 'and does not open add project');
@@ -503,7 +504,7 @@ try {
   await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[2].shellReady, 'idle notification fixture command completes');
   await runDesktopTask(page, projects[2], path.join(output, 'codex-home'), 'other-project-turn', waitFor);
   await complete('other-project-turn', target);
-  await page.keyboard.press('Control+f'); await page.getByRole('textbox', { name: '搜索项目' }).fill('不存在');
+  await page.keyboard.press('Control+Shift+F'); await page.getByRole('textbox', { name: '搜索项目' }).fill('不存在');
   await page.waitForSelector('.no-results');
   await page.getByRole('button', { name: '清除搜索' }).click();
   await page.waitForSelector('.project-panel');
