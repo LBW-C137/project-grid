@@ -62,4 +62,30 @@ function acceptShellEvent(session, event) {
   return true;
 }
 
-module.exports = { isTerminalResponse, acceptShellEvent, SubmissionTracker };
+// Command Prompt has no prompt hook, so its PROMPT prints an invisible OSC marker before each
+// prompt: ESC ] 6973;ProjectGrid;prompt;<current directory> ESC \  (see integration/bootstrap.cmd).
+// Output arrives in arbitrary chunks, so a marker split across chunks is held until it completes.
+const PROMPT_MARKER = '\x1b]6973;ProjectGrid;prompt;';
+class PromptMarkers {
+  constructor() { this.tail = ''; }
+  write(data) {
+    const text = this.tail + data, found = [];
+    let from = 0;
+    for (;;) {
+      const start = text.indexOf(PROMPT_MARKER, from);
+      if (start < 0) { this.tail = ''; break; }
+      const body = start + PROMPT_MARKER.length;
+      const end = text.slice(body).search(/\x1b\\|\x07/);
+      if (end < 0) { this.tail = text.length - start > 8192 ? '' : text.slice(start); break; }
+      found.push(text.slice(body, body + end));
+      from = body + end + 1;
+    }
+    // A partial marker prefix at the very end (e.g. "\x1b]69") is kept for the next chunk.
+    if (!this.tail) for (let length = Math.min(PROMPT_MARKER.length - 1, text.length); length > 0; length--) {
+      if (PROMPT_MARKER.startsWith(text.slice(-length))) { this.tail = text.slice(-length); break; }
+    }
+    return found;
+  }
+}
+
+module.exports = { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, PROMPT_MARKER };

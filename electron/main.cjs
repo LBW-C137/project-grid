@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, Notification, clipboard, shell, protocol, net: electronNet } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { execFileSync } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
@@ -11,7 +12,7 @@ const { createEventServer } = require('./events.cjs');
 const { listDirectory, readProjectFile, saveProjectFile, resolveProjectPath, VIDEO_TYPES } = require('./project-files.cjs');
 const { projectPaths } = require('./project-paths.cjs');
 const { ProjectGit } = require('./project-git.cjs');
-const { isTerminalResponse, acceptShellEvent, SubmissionTracker } = require('./terminal-input.cjs');
+const { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers } = require('./terminal-input.cjs');
 const { createTerminalEnvironment } = require('./terminal-env.cjs');
 const { PreviewResources, resourceResponse } = require('./preview-resources.cjs');
 const { resolveTerminalLink } = require('./terminal-links.cjs');
@@ -66,6 +67,12 @@ let editorDirty = false, editorCloseRequest = null, editorFile = null;
 const fileSaves = new Set();
 const clipboardWrites = new ClipboardWrites();
 const powershellPath = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+const cmdPath = process.env.ComSpec || path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
+// Whether a command resolves on this PATH, for Command Prompt terminals (PowerShell checks for itself).
+function onPath(name, env) {
+  const folders = String(Object.entries(env).find(([key]) => key.toLowerCase() === 'path')?.[1] || '').split(';').filter(Boolean);
+  return folders.some(folder => ['.exe', '.cmd', '.bat', '.ps1'].some(extension => { try { return fs.statSync(path.join(folder.replace(/"/g, ''), name + extension)).isFile(); } catch { return false; } }));
+}
 
 function send(channel, data) { if (window && !window.isDestroyed()) window.webContents.send(channel, data); }
 function findProject(id) {
@@ -79,7 +86,7 @@ function publicState() {
     projects: store.projects.map(p => {
       const terminals = terminalIds(p).map((id, index) => {
         const s = sessions.get(id);
-        return { id, title: t('终端 {n}', { n: index + 1 }), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
+        return { id, title: t('终端 {n}', { n: index + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : store.settings.shell), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
           codexActivity: s?.codexActivity || 'unknown', shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null };
       });
@@ -358,6 +365,8 @@ function startTerminal(id) {
   const sessionId = randomUUID();
   const sessionKey = randomUUID();
   const startPath = restorePlans.get(id)?.cwd || store.findTerminal(id)?.record.restore?.cwd || project.path;
+  // Local terminals use the shell chosen in settings; SSH projects always run Bash on the server.
+  const shellKind = project.kind === 'ssh' ? 'bash' : store.settings.shell === 'cmd' ? 'cmd' : 'powershell';
   const bootstrapFile = project.kind === 'ssh' ? null : path.join(runtimeDir, `${sessionId}.json`);
   if (bootstrapFile) fs.writeFileSync(bootstrapFile, JSON.stringify({
     projectId: id, projectPath: startPath, sessionKey, pipeName: eventServer.name,
@@ -376,11 +385,16 @@ function startTerminal(id) {
   }
   const terminal = project.kind === 'ssh' ? new RemoteConnection({ ...project, id }, { integrationDir, auth: sshAuth, sessionKey, onEvent, codingPath: startPath, askpassPath: sshAskpassPath,
     onReady: info => { branches.set(project.id, String(info.branch || '').slice(0, 120)); broadcast(); },
+  }) : shellKind === 'cmd' ? pty.spawn(cmdPath, ['/D', '/Q', '/K', path.join(integrationDir, 'bootstrap.cmd')], {
+    name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env, useConpty: true, useConptyDll: true,
   }) : pty.spawn(powershellPath, ['-NoLogo', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', path.join(integrationDir, 'bootstrap.ps1')], {
     name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env, useConpty: true, useConptyDll: true,
   });
   const s = {
-    terminal, terminalId: id, projectId: project.id, sessionId, sessionKey, bootstrapFile, status: 'starting', ready: false,
+    terminal, terminalId: id, projectId: project.id, sessionId, sessionKey, bootstrapFile, status: 'starting', ready: false, shellKind,
+    // Command Prompt reports its prompts through markers in its output instead of the event pipe.
+    prompts: shellKind === 'cmd' ? new PromptMarkers() : null,
+    tools: shellKind === 'cmd' ? { codex: onPath('codex', env), claude: onPath('claude', env) } : null,
     titles: new TerminalTitleTracker(), reportedThreadId: null,
     codexActive: false, codexAvailable: null, seq: 0, chunks: [], bytes: 0, pending: '',
     flushTimer: null, lastActivityAt: Date.now(), error: null, submissions: new SubmissionTracker(),
@@ -397,6 +411,10 @@ function startTerminal(id) {
   s.flush = flush;
   terminal.onData(data => {
     if (sessions.get(id) !== s) return;
+    if (s.prompts) for (const cwd of s.prompts.write(data)) {
+      onEvent({ projectId: id, sessionKey, type: 'shell-prompt', sequence: (s.lastShellEventSequence || 0) + 1, cwd, codexAvailable: s.tools.codex, claudeAvailable: s.tools.claude,
+        codexHome: env.CODEX_HOME || path.join(os.homedir(), '.codex') });
+    }
     for (const threadId of s.titles.write(data)) {
       if (s.reportedThreadId !== threadId) {
         s.reportedThreadId = threadId;

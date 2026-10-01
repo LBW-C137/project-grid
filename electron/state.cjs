@@ -18,7 +18,7 @@ function cleanHistory(input) {
 // Claude turn was left unfinished. Only non-default values are stored.
 const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'claude' } : {}), ...(restore?.interrupted === true ? { interrupted: true } : {}) });
 
-const defaults = { columns: 0, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'forest' };
+const defaults = { columns: 0, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'forest' };
 
 // Keyboard shortcuts the user changed, by action; defaults live in the window (src/shortcuts.ts).
 // "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
@@ -37,6 +37,8 @@ function cleanSettings(input = {}) {
     theme: ['forest', 'mountain-blue', 'wild-red'].includes(input.theme) ? input.theme : defaults.theme,
     language: ['zh', 'en'].includes(input.language) ? input.language : defaults.language,
     shortcuts: cleanShortcuts(input.shortcuts),
+    // Shell for local terminals; SSH projects always use Bash on the server.
+    shell: input.shell === 'cmd' ? 'cmd' : 'powershell',
     // The app version whose usage guide was last shown; a newer version shows it again.
     guideVersion: typeof input.guideVersion === 'string' && /^\d+\.\d+\.\d+(-[\w.-]+)?$/.test(input.guideVersion) ? input.guideVersion : '',
     // Spoken completion phrase; empty uses the built-in phrases. {项目} or {project} is the project name.

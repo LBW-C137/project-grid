@@ -1,0 +1,16 @@
+# Command Prompt terminals run codex and claude through this script (doskey macros in bootstrap.cmd),
+# so they get the same wrappers as PowerShell terminals: turn status, Claude hooks and session restore.
+# bootstrap.ps1 loads only those wrappers here; the working directory stays the one cmd was in.
+# Usage: agent.ps1 codex|claude [arguments...]. There is no param() block: an advanced script would
+# refuse the agent's own arguments (resume, --continue, ...), which pass through untouched.
+$agent = [string]$args[0]
+if ($agent -notin @('codex', 'claude')) { Write-Error 'agent.ps1 runs codex or claude.'; exit 2 }
+$forward = @($args | Select-Object -Skip 1)
+$here = (Get-Location).Path
+$env:PROJECT_GRID_AGENT_ONLY = '1'
+. (Join-Path $PSScriptRoot 'bootstrap.ps1')
+Set-Location -LiteralPath $here
+# Events from this short-lived process must sort after the prompt events of the terminal.
+$global:ProjectGridEventSequence = [long][DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+& $agent @forward
+exit $global:LASTEXITCODE

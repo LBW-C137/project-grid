@@ -5,7 +5,9 @@ $OutputEncoding = [Console]::OutputEncoding
 . (Join-Path $PSScriptRoot 'refresh-path.ps1')
 $global:ProjectGridSession = Get-Content -LiteralPath $env:PROJECT_GRID_BOOTSTRAP -Raw -Encoding UTF8 | ConvertFrom-Json
 $global:ProjectGridEventSequence = 0
-Set-Location -LiteralPath $global:ProjectGridSession.projectPath
+# agent.ps1 (Command Prompt terminals) loads only the codex and claude wrappers below and keeps its own directory.
+$global:ProjectGridAgentOnly = $env:PROJECT_GRID_AGENT_ONLY -eq '1'
+if (-not $global:ProjectGridAgentOnly) { Set-Location -LiteralPath $global:ProjectGridSession.projectPath }
 $global:ProjectGridCodexCommand = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
 $global:ProjectGridCodexExecutable = $global:ProjectGridCodexCommand
 $global:ProjectGridCodexPrefix = @()
@@ -151,6 +153,8 @@ function global:claude {
         $global:LASTEXITCODE = $claudeExit
     }
 }
+
+if ($global:ProjectGridAgentOnly) { return }
 
 function global:prompt {
     Send-ProjectGridEvent 'shell-prompt'

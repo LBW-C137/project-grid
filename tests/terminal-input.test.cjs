@@ -55,3 +55,15 @@ test('split multiline paste and editing newlines wait for an explicit submission
   assert.equal(tracker.write('A'), false, 'history selection alone is not a submission');
   assert.equal(tracker.write('\r'), true, 'submitting a recalled prompt is new input');
 });
+
+test('Command Prompt prompt markers report the directory, even when split across output chunks', () => {
+  const { PromptMarkers, PROMPT_MARKER } = require('../electron/terminal-input.cjs');
+  const markers = new PromptMarkers();
+  const prompt = directory => `${PROMPT_MARKER}${directory}\x1b\\${directory}>`;
+  assert.deepEqual(markers.write(`hello\r\n${prompt('C:\\项目 a')}`), ['C:\\项目 a']);
+  const split = prompt('D:\\work\\(x) & y');
+  assert.deepEqual(markers.write(split.slice(0, 3)), []);
+  assert.deepEqual(markers.write(split.slice(3, 20)), []);
+  assert.deepEqual(markers.write(split.slice(20) + 'dir\r\n' + prompt('E:\\')), ['D:\\work\\(x) & y', 'E:\\']);
+  assert.deepEqual(markers.write('\x1b]0;title\x07plain output'), [], 'other OSC sequences are ignored');
+});
