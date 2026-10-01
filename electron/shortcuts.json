@@ -7,5 +7,6 @@
   "settings": "Ctrl+,",
   "nextProject": "Ctrl+Tab",
   "previousProject": "Ctrl+Shift+Tab",
-  "maximize": "Ctrl+Shift+Enter"
+  "maximize": "Ctrl+Shift+Enter",
+  "newTerminal": "Ctrl+Shift+T"
 }

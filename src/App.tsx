@@ -31,6 +31,12 @@ function IconButton({ label, children, onClick, className = '', disabled = false
   return <button className={`icon-button ${className}`} type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick}>{children}</button>;
 }
 
+// A terminal added by shortcut appears after the next state update; focus it once its input exists.
+function focusTerminalWhenReady(id: string, tries = 60) {
+  const input = document.querySelector<HTMLElement>(`[data-terminal-id="${CSS.escape(id)}"] .xterm-helper-textarea`);
+  if (input) input.focus(); else if (tries > 0) requestAnimationFrame(() => focusTerminalWhenReady(id, tries - 1));
+}
+
 function relativeTime(timestamp: number | null, now: number) {
   if (!timestamp) return '';
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
@@ -118,7 +124,7 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, onFocus,
       <div className="panel-menu-anchor" ref={menu}>
         <IconButton label={t('{name} 的更多操作', { name: project.name })} onClick={() => setMenuOpen(!menuOpen)}><DotsThree size={20} weight="bold" /></IconButton>
         {menuOpen && <div className="dropdown panel-menu" role="menu">
-          <button role="menuitem" onClick={() => action(() => void addTerminal())}><Plus size={16} />{t('新建终端并分屏')}</button>
+          <button role="menuitem" onClick={() => action(() => void addTerminal())}><Plus size={16} />{t('新建终端并分屏')}<span className="menu-shortcut" aria-hidden="true">{shortcut('newTerminal')}</span></button>
           <button role="menuitem" onClick={() => action(() => onRevealProject(project.id))}><FolderOpen size={16} />{t('打开项目目录')}</button>
           <button role="menuitem" onClick={() => action(() => { onAction(api.restartTerminal(currentTerminal.id)); })}><ArrowCounterClockwise size={16} />{project.kind === 'ssh' ? t('重新连接 SSH') : t('重启当前终端')}</button>
           <div className="menu-divider" />
@@ -306,6 +312,12 @@ export function App() {
       else if (action === 'overview') void returnToGrid();
       else if (action === 'explorer' && focusedId) perform(api.settings({ explorerCollapsed: !workspace?.settings.explorerCollapsed }));
       else if (action === 'settings') setSettingsOpen(true);
+      else if (action === 'newTerminal') {
+        // A new split in the current project, ready to type in.
+        const id = currentProject();
+        if (!id) { reportError(t('先点一下要分屏的项目，再按 {key}。', { key: shortcut('newTerminal') })); return; }
+        void perform(api.addTerminal(id)).then(terminal => { if (terminal) focusTerminalWhenReady(terminal); });
+      }
       else if (action === 'maximize') { if (focusedId) void returnToGrid(); else { const id = currentProject(); if (id) void focusProject(id); } }
       else if (action === 'nextProject' || action === 'previousProject') {
         const ids = navigation.current, current = currentProject();

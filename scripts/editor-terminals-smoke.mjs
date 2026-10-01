@@ -49,9 +49,11 @@ try {
   await page.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await state()).shellReady, 'first terminal');
   const primarySession = (await state()).sessionId;
-  await page.getByRole('button', { name: `${project.name} 的更多操作`, exact: true }).click(); await page.getByRole('menuitem', { name: '新建终端并分屏', exact: true }).click();
+  // Ctrl+Shift+T adds a split to the project being typed in and focuses it (the SSH project below uses the menu).
+  await page.locator('.xterm-helper-textarea').first().focus(); await page.keyboard.press('Control+Shift+T');
   await waitFor(async () => (await state()).terminals.length === 2 && (await state()).terminals.every(item => item.shellReady), 'two ready terminals');
   const ids = (await state()).terminals.map(item => item.id);
+  await waitFor(async () => page.evaluate(id => document.activeElement?.closest('[data-terminal-id]')?.dataset.terminalId === id, ids[1]), 'the new split has keyboard focus');
   assert.equal((await state()).terminals[0].sessionId, primarySession);
   for (const [index, id] of ids.entries()) {
     await page.locator(`[data-terminal-id="${id}"] .terminal-split-body`).click({ position: { x: 30, y: 60 } });

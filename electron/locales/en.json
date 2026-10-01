@@ -518,5 +518,6 @@
   "按下新的组合键…": "Press the new keys…",
   "请按包含 Ctrl 或 Alt 的组合键，或 F1–F12。": "Use a combination with Ctrl or Alt, or F1–F12.",
   "{key} 已用于「{action}」": "{key} is already used for “{action}”",
-  "在文本框和编辑器里，Ctrl+A、Ctrl+C 等编辑键保持原有作用。": "In text boxes and the editor, editing keys such as Ctrl+A and Ctrl+C keep their usual meaning."
+  "在文本框和编辑器里，Ctrl+A、Ctrl+C 等编辑键保持原有作用。": "In text boxes and the editor, editing keys such as Ctrl+A and Ctrl+C keep their usual meaning.",
+  "先点一下要分屏的项目，再按 {key}。": "Click the project to split first, then press {key}."
 }
