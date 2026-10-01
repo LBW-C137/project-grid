@@ -9,6 +9,11 @@ import { useExplorerFileActions } from './ExplorerFileActions';
 import { GitBadge, GitPanel } from './GitPanel';
 import { gitDecorations, gitMark, type GitDecoration } from './git-status';
 import { useGitStatus } from './useGitStatus';
+import { t } from './i18n';
+import { shortcut } from './shortcuts';
+
+// Git titles come from git-status.ts in Chinese, joined with " · " (status · staged · rename); each part is translated.
+const gitTitle = (title: string) => title.split(' · ').map(part => t(part)).join(' · ');
 
 export function FileIcon({ entry, open = false }: { entry: FileEntry; open?: boolean }) {
   if (entry.kind === 'directory') return open ? <FolderOpen className="file-icon folder-icon" size={16} weight="duotone" /> : <Folder className="file-icon folder-icon" size={16} weight="duotone" />;
@@ -87,7 +92,7 @@ function TreeNode(props: NodeProps) {
           if (!response.ok) throw new Error(response.error);
           result = response.value;
           entries.push(...result.entries);
-          if (result.nextOffset !== null && result.nextOffset <= offset) throw new Error('目录分页未前进，请刷新重试。');
+          if (result.nextOffset !== null && result.nextOffset <= offset) throw new Error(t('目录分页未前进，请刷新重试。'));
           offset = result.nextOffset;
         }
         if (active && result) { setListing({ ...result, entries }); setError(''); }
@@ -106,7 +111,7 @@ function TreeNode(props: NodeProps) {
   return <div className="tree-node" data-directory-path={isDirectory ? entry.path : undefined}>
     {!root && <button className={`tree-row ${selected.has(entry.path) || !selected.size && !isDirectory && selectedFile === entry.path ? 'file-selected' : ''}`}
       role="treeitem" aria-expanded={isDirectory ? open : undefined} aria-selected={selected.has(entry.path)}
-      aria-level={depth + 1} aria-label={entry.name} title={`${entry.path || entry.name}${decoration ? ` · ${decoration.title}` : ''}`} data-node-path={entry.path} data-node-kind={entry.kind} data-git-tone={decoration ? gitMark(decoration.code).tone : undefined}
+      aria-level={depth + 1} aria-label={entry.name} title={`${entry.path || entry.name}${decoration ? ` · ${gitTitle(decoration.title)}` : ''}`} data-node-path={entry.path} data-node-kind={entry.kind} data-git-tone={decoration ? gitMark(decoration.code).tone : undefined}
       style={{ paddingLeft: indent(depth) }}
       onClick={event => { if (!choose(entry, event)) { if (isDirectory) onToggle(entry.path); else onSelect(entry.path); } }}
       onContextMenu={event => contextMenu(entry, event)}
@@ -114,15 +119,15 @@ function TreeNode(props: NodeProps) {
       <span className="tree-chevron">{isDirectory && (open ? <CaretDown size={12} /> : <CaretRight size={12} />)}</span>
       <FileIcon entry={entry} open={open} />
       <span className="tree-filename">{entry.name}</span>
-      {decoration && (isDirectory ? <span className={`git-badge git-${gitMark(decoration.code).tone}`} aria-hidden="true" title={decoration.title}>•</span> : <GitBadge code={decoration.code} />)}
+      {decoration && (isDirectory ? <span className={`git-badge git-${gitMark(decoration.code).tone}`} aria-hidden="true" title={gitTitle(decoration.title)}>•</span> : <GitBadge code={decoration.code} />)}
       {loading && !listing && <SpinnerGap size={12} className="loading-spinner" />}
     </button>}
     {open && <div role="group" className="tree-children">
       {error ? <div className="tree-error" role="status" style={{ marginLeft: indent(depth + 1) + 18 }}>{error}</div> : <>
         {listing?.entries.map(child => <TreeNode key={child.path} {...props} entry={child} depth={depth + 1} />)}
-        {listing && !listing.entries.length && <div className="tree-placeholder" style={{ paddingLeft: indent(depth + 1) + 36 }}>空文件夹</div>}
-        {!listing && !loading && <div className="tree-placeholder" style={{ paddingLeft: indent(depth + 1) + 36 }}>正在读取目录…</div>}
-        {listing?.nextOffset !== null && listing?.nextOffset !== undefined && <button className="tree-load-more" disabled={loading} onClick={() => setPages(p => p + 1)} style={{ marginLeft: indent(depth + 1) + 18 }}>加载更多（{listing.entries.length} / {listing.total}）</button>}
+        {listing && !listing.entries.length && <div className="tree-placeholder" style={{ paddingLeft: indent(depth + 1) + 36 }}>{t('空文件夹')}</div>}
+        {!listing && !loading && <div className="tree-placeholder" style={{ paddingLeft: indent(depth + 1) + 36 }}>{t('正在读取目录…')}</div>}
+        {listing?.nextOffset !== null && listing?.nextOffset !== undefined && <button className="tree-load-more" disabled={loading} onClick={() => setPages(p => p + 1)} style={{ marginLeft: indent(depth + 1) + 18 }}>{t('加载更多（{shown} / {total}）', { shown: listing.entries.length, total: listing.total })}</button>}
       </>}
     </div>}
   </div>;
@@ -153,32 +158,32 @@ export function ProjectExplorer({ project, collapsed, expandedPaths, selectedFil
 
   const openGit = (open: boolean) => { window.projectGrid.fileTreeFocus(project.id, false); setGitOpen(open); if (collapsed) onCollapse(); };
   const changes = git.status?.total || 0;
-  return <aside className={`focus-sidebar ${collapsed ? 'is-collapsed' : ''}`} aria-label="项目侧边栏">
+  return <aside className={`focus-sidebar ${collapsed ? 'is-collapsed' : ''}`} aria-label={t('项目侧边栏')}>
     <div className="explorer-navigation">
-      <button className="explorer-back" onClick={onReturn} title="返回总览 · Ctrl+Shift+G" aria-label="返回总览"><CaretLeft size={14} weight="bold" /><span>总览</span></button>
-      <button className="icon-button sidebar-toggle" onClick={onCollapse} title={collapsed ? '展开目录栏 · Ctrl+B' : '收起目录栏 · Ctrl+B'} aria-label={collapsed ? '展开目录栏' : '收起目录栏'} aria-expanded={!collapsed}><SidebarSimple size={17} /></button>
+      <button className="explorer-back" onClick={onReturn} title={t('返回总览 · {key}', { key: shortcut('overview') })} aria-label={t('返回总览')}><CaretLeft size={14} weight="bold" /><span>{t('总览')}</span></button>
+      <button className="icon-button sidebar-toggle" onClick={onCollapse} title={collapsed ? t('展开目录栏 · {key}', { key: shortcut('explorer') }) : t('收起目录栏 · {key}', { key: shortcut('explorer') })} aria-label={collapsed ? t('展开目录栏') : t('收起目录栏')} aria-expanded={!collapsed}><SidebarSimple size={17} /></button>
     </div>
     {collapsed && <div className="explorer-rail">
-      <button className="icon-button" onClick={() => openGit(false)} title="文件" aria-label="资源管理器"><Folder size={18} /></button>
-      <button className="icon-button" onClick={() => openGit(true)} title="Git 历史与未提交更改" aria-label="Git 历史"><GitBranch size={18} />{!!changes && <span className="rail-dot" aria-hidden="true" />}</button>
+      <button className="icon-button" onClick={() => openGit(false)} title={t('文件')} aria-label={t('资源管理器')}><Folder size={18} /></button>
+      <button className="icon-button" onClick={() => openGit(true)} title={t('Git 历史与未提交更改')} aria-label={t('Git 历史')}><GitBranch size={18} />{!!changes && <span className="rail-dot" aria-hidden="true" />}</button>
     </div>}
     <div className="explorer-content" hidden={collapsed}>
       <header className="explorer-title">
         <h2 title={project.name}>{project.name}</h2>
         <span className="explorer-path" title={location}>{shortPath(location)}</span>
       </header>
-      <div className="explorer-tabs" role="group" aria-label="侧边栏内容">
-        <button aria-label="资源管理器" aria-pressed={!gitOpen} onClick={() => openGit(false)}>文件</button>
-        <button aria-label="Git 历史" title="Git 历史与未提交更改" aria-pressed={gitOpen} onClick={() => openGit(true)}>Git{!!changes && <span className="explorer-tab-count">{changes > 999 ? '999+' : changes}</span>}</button>
+      <div className="explorer-tabs" role="group" aria-label={t('侧边栏内容')}>
+        <button aria-label={t('资源管理器')} aria-pressed={!gitOpen} onClick={() => openGit(false)}>{t('文件')}</button>
+        <button aria-label={t('Git 历史')} title={t('Git 历史与未提交更改')} aria-pressed={gitOpen} onClick={() => openGit(true)}>Git{!!changes && <span className="explorer-tab-count">{changes > 999 ? '999+' : changes}</span>}</button>
       </div>
       {!gitOpen && <div className="explorer-tools" onPointerDown={() => window.projectGrid.fileTreeFocus(project.id, false)}>
-        <button className="icon-button" aria-label="新建文件" title="新建文件" onClick={() => files.openCreate('file')}><FilePlus size={15} /></button>
-        <button className="icon-button" aria-label="新建文件夹" title="新建文件夹" onClick={() => files.openCreate('directory')}><FolderPlus size={15} /></button>
-        <button className="icon-button" aria-label="粘贴文件" title="粘贴到选中目录 · Ctrl+V" onClick={files.pasteHere}><Clipboard size={15} /></button>
-        <button className="icon-button" aria-label="刷新项目目录" title="刷新项目目录" onClick={() => setRevision(r => r + 1)}><ArrowClockwise size={15} /></button>
-        <button className="icon-button" aria-label="折叠所有文件夹" title="折叠所有文件夹" onClick={() => onExpandedChange([''])}><ArrowsInLineVertical size={15} /></button>
+        <button className="icon-button" aria-label={t('新建文件')} title={t('新建文件')} onClick={() => files.openCreate('file')}><FilePlus size={15} /></button>
+        <button className="icon-button" aria-label={t('新建文件夹')} title={t('新建文件夹')} onClick={() => files.openCreate('directory')}><FolderPlus size={15} /></button>
+        <button className="icon-button" aria-label={t('粘贴文件')} title={t('粘贴到选中目录 · Ctrl+V')} onClick={files.pasteHere}><Clipboard size={15} /></button>
+        <button className="icon-button" aria-label={t('刷新项目目录')} title={t('刷新项目目录')} onClick={() => setRevision(r => r + 1)}><ArrowClockwise size={15} /></button>
+        <button className="icon-button" aria-label={t('折叠所有文件夹')} title={t('折叠所有文件夹')} onClick={() => onExpandedChange([''])}><ArrowsInLineVertical size={15} /></button>
       </div>}
-      <div ref={files.tree} className="file-tree" hidden={gitOpen} role="tree" tabIndex={0} aria-multiselectable="true" aria-label={`${project.name} 的文件目录`} onKeyDownCapture={files.onKeyDown} onClick={files.onBackgroundClick} onContextMenu={files.onBackgroundContextMenu}
+      <div ref={files.tree} className="file-tree" hidden={gitOpen} role="tree" tabIndex={0} aria-multiselectable="true" aria-label={t('{name} 的文件目录', { name: project.name })} onKeyDownCapture={files.onKeyDown} onClick={files.onBackgroundClick} onContextMenu={files.onBackgroundContextMenu}
         onFocusCapture={() => window.projectGrid.fileTreeFocus(project.id, true)} onBlurCapture={event => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) window.projectGrid.fileTreeFocus(project.id, false); }}>
         <TreeNode projectId={project.id} entry={{ name: project.name, path: '', kind: 'directory' }} depth={-1} expanded={expanded} revision={revision} enabled={!collapsed && !gitOpen} selectedFile={selectedFile} onToggle={toggle} onSelect={onSelectFile} selected={files.selected} choose={files.choose} contextMenu={files.contextMenu} decorations={decorations} />
       </div>

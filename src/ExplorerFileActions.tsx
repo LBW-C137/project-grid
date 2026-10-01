@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from
 import { createPortal } from 'react-dom';
 import { Copy, Clipboard, FilePlus, FolderPlus, PencilSimple, Trash, X, SpinnerGap } from '@phosphor-icons/react';
 import type { FileEntry, FileProgress, Project, Result } from './types';
+import { t } from './i18n';
 
 type Edit = { kind: 'file' | 'directory' | 'rename'; directory: string; entry?: FileEntry };
 const parentOf = (value: string) => value.includes('/') ? value.slice(0, value.lastIndexOf('/')) : '';
@@ -12,14 +13,14 @@ function EditDialog({ edit, save, close }: { edit: Edit; save: (name: string) =>
   const [name, setName] = useState(edit.entry?.name || '');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => { dialog.current?.showModal(); input.current?.select(); }, []);
-  const title = edit.kind === 'rename' ? '重命名' : edit.kind === 'directory' ? '新建文件夹' : '新建文件';
+  const title = edit.kind === 'rename' ? t('重命名') : edit.kind === 'directory' ? t('新建文件夹') : t('新建文件');
   return <dialog ref={dialog} className="settings-dialog file-edit-dialog" onCancel={close}><form className="dialog-content" onSubmit={async event => {
     event.preventDefault(); setBusy(true); setError('');
     try { await save(name); close(); } catch (error) { setError(String((error as Error).message || error)); } finally { setBusy(false); }
-  }}><div className="dialog-heading"><h2>{title}</h2><button className="icon-button" type="button" aria-label="关闭文件操作" onClick={close}><X size={18} /></button></div>
-    <label className="file-name-label">名称<input ref={input} autoFocus value={name} onChange={event => setName(event.target.value)} required aria-label="文件或文件夹名称" autoComplete="off" /></label>
-    <p className="project-add-note" title={edit.directory || '/'}>位置：{edit.directory || '项目根目录'}</p>{error && <p className="form-error" role="alert">{error}</p>}
-    <div className="dialog-footer"><button type="button" className="text-button" onClick={close}>取消</button><button className="button primary" disabled={busy}>{busy ? '处理中…' : edit.kind === 'rename' ? '保存' : '创建'}</button></div>
+  }}><div className="dialog-heading"><h2>{title}</h2><button className="icon-button" type="button" aria-label={t('关闭文件操作')} onClick={close}><X size={18} /></button></div>
+    <label className="file-name-label">{t('名称')}<input ref={input} autoFocus value={name} onChange={event => setName(event.target.value)} required aria-label={t('文件或文件夹名称')} autoComplete="off" /></label>
+    <p className="project-add-note" title={edit.directory || '/'}>{t('位置：{place}', { place: edit.directory || t('项目根目录') })}</p>{error && <p className="form-error" role="alert">{error}</p>}
+    <div className="dialog-footer"><button type="button" className="text-button" onClick={close}>{t('取消')}</button><button className="button primary" disabled={busy}>{busy ? t('处理中…') : edit.kind === 'rename' ? t('保存') : t('创建')}</button></div>
   </form></dialog>;
 }
 
@@ -61,16 +62,16 @@ export function useExplorerFileActions(project: Project, changed: (directory?: s
   };
   const folder = (entry: FileEntry) => entry.kind === 'directory' || !entry.path ? entry.path : parentOf(entry.path);
   const targets = (entry: FileEntry) => selected.includes(entry.path) ? selected : [entry.path];
-  const copy = (paths: string[]) => run(async () => { const result = await unwrap(window.projectGrid.copyEntries(project.id, paths)); if (!result.superseded) setMessage(`已复制 ${result.count} 项，可粘贴到其他位置`); });
+  const copy = (paths: string[]) => run(async () => { const result = await unwrap(window.projectGrid.copyEntries(project.id, paths)); if (!result.superseded) setMessage(t('已复制 {count} 项，可粘贴到其他位置', { count: result.count })); });
   const copyPaths = async (paths: string[], format: 'absolute' | 'relative') => {
     setMenu(null); setMessage('');
-    try { const result = await unwrap(window.projectGrid.copyPaths(project.id, paths, format)); if (!result.superseded) setMessage(format === 'absolute' ? '已复制绝对路径' : '已复制相对路径'); }
+    try { const result = await unwrap(window.projectGrid.copyPaths(project.id, paths, format)); if (!result.superseded) setMessage(format === 'absolute' ? t('已复制绝对路径') : t('已复制相对路径')); }
     catch (error) { setMessage(String((error as Error).message || error)); }
   };
   const paste = (directory: string) => run(async () => {
     const result = await unwrap(window.projectGrid.pasteEntries(project.id, directory));
     setSelected(result.pasted); anchor.current = result.pasted[0] || directory;
-    changed(directory); setMessage(`已粘贴 ${result.pasted.length} 项到${directory || '项目根目录'}`);
+    changed(directory); setMessage(t('已粘贴 {count} 项到{place}', { count: result.pasted.length, place: directory || t('项目根目录') }));
   });
   const remove = (paths: string[]) => run(async () => { const result = await unwrap(window.projectGrid.deleteEntries(project.id, paths)); removed(result.deleted); setSelected([]); });
   const choose = (entry: FileEntry, event: MouseEvent) => {
@@ -111,17 +112,17 @@ export function useExplorerFileActions(project: Project, changed: (directory?: s
     else { const result = await unwrap(window.projectGrid.createEntry(project.id, edit.directory, name, edit.kind)); setSelected([result.path]); anchor.current = result.path; if (edit.kind === 'file') select(result.path); }
     changed(edit.directory);
   };
-  const overlays = <>{menu && createPortal(<div ref={menuElement} className="dropdown explorer-context-menu" role="menu" aria-label="文件操作" style={{ left: menu.x, top: menu.y }}>
-    <button role="menuitem" onClick={() => void copy(menu.targets)}><Copy size={16} />复制<span>Ctrl C</span></button>
-    <button role="menuitem" onClick={() => void copyPaths(menu.targets, 'absolute')}><Copy size={16} />复制绝对路径<span>Ctrl Shift C</span></button>
-    <button role="menuitem" onClick={() => void copyPaths(menu.targets, 'relative')}><Copy size={16} />复制相对路径</button>
-    <button role="menuitem" onClick={() => void paste(folder(menu.entry))}><Clipboard size={16} />粘贴<span>Ctrl V</span></button><div className="menu-divider" />
-    <button role="menuitem" onClick={() => openCreate('file', menu.entry)}><FilePlus size={16} />新建文件</button>
-    <button role="menuitem" onClick={() => openCreate('directory', menu.entry)}><FolderPlus size={16} />新建文件夹</button>
-    <button role="menuitem" disabled={!menu.entry.path || menu.targets.length !== 1} onClick={() => { setEdit({ kind: 'rename', directory: parentOf(menu.entry.path), entry: menu.entry }); setMenu(null); }}><PencilSimple size={16} />重命名<span>F2</span></button><div className="menu-divider" />
-    <button role="menuitem" className="danger-text" disabled={menu.targets.includes('')} onClick={() => void remove(menu.targets)}><Trash size={16} />删除<span>Delete</span></button>
+  const overlays = <>{menu && createPortal(<div ref={menuElement} className="dropdown explorer-context-menu" role="menu" aria-label={t('文件操作')} style={{ left: menu.x, top: menu.y }}>
+    <button role="menuitem" onClick={() => void copy(menu.targets)}><Copy size={16} />{t('复制')}<span>Ctrl C</span></button>
+    <button role="menuitem" onClick={() => void copyPaths(menu.targets, 'absolute')}><Copy size={16} />{t('复制绝对路径')}<span>Ctrl Shift C</span></button>
+    <button role="menuitem" onClick={() => void copyPaths(menu.targets, 'relative')}><Copy size={16} />{t('复制相对路径')}</button>
+    <button role="menuitem" onClick={() => void paste(folder(menu.entry))}><Clipboard size={16} />{t('粘贴')}<span>Ctrl V</span></button><div className="menu-divider" />
+    <button role="menuitem" onClick={() => openCreate('file', menu.entry)}><FilePlus size={16} />{t('新建文件')}</button>
+    <button role="menuitem" onClick={() => openCreate('directory', menu.entry)}><FolderPlus size={16} />{t('新建文件夹')}</button>
+    <button role="menuitem" disabled={!menu.entry.path || menu.targets.length !== 1} onClick={() => { setEdit({ kind: 'rename', directory: parentOf(menu.entry.path), entry: menu.entry }); setMenu(null); }}><PencilSimple size={16} />{t('重命名')}<span>F2</span></button><div className="menu-divider" />
+    <button role="menuitem" className="danger-text" disabled={menu.targets.includes('')} onClick={() => void remove(menu.targets)}><Trash size={16} />{t('删除')}<span>Delete</span></button>
   </div>, document.body)}{edit && <EditDialog edit={edit} save={save} close={() => setEdit(null)} />}</>;
-  const status = progress?.projectId === project.id ? <div className="explorer-file-status" role="status"><SpinnerGap className="loading-spinner" size={14} /><span>{progress.text}</span><button className="icon-button" aria-label="取消文件操作" onClick={() => void window.projectGrid.cancelFileOperation()}><X size={13} /></button></div>
+  const status = progress?.projectId === project.id ? <div className="explorer-file-status" role="status"><SpinnerGap className="loading-spinner" size={14} /><span>{t(progress.text)}</span><button className="icon-button" aria-label={t('取消文件操作')} onClick={() => void window.projectGrid.cancelFileOperation()}><X size={13} /></button></div>
     : message ? <div className="explorer-file-status" role="status">{message}</div> : null;
   return { tree, selected: new Set(selected), choose, contextMenu, onKeyDown, openCreate, onBackgroundClick, onBackgroundContextMenu, pasteHere: () => void paste(folder(focused())), overlays, status };
 }

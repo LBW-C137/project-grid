@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalPacket } from './types';
 import { createTerminalLinkProvider } from './terminal-links';
 import '@xterm/xterm/css/xterm.css';
+import { t } from './i18n';
 
 export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpenLink, remote = false }: {
   id: string; sessionId: string | null; fontSize: number; focused: boolean; onError: (message: string) => void;
@@ -59,7 +60,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
       event.preventDefault();
       openLink.current(id, target);
     };
-    const hoverLink = (_event: MouseEvent, target: string) => { if (host.current) host.current.title = `Ctrl + 鼠标左键打开链接\n${target}`; };
+    const hoverLink = (_event: MouseEvent, target: string) => { if (host.current) host.current.title = `${t('Ctrl + 鼠标左键打开链接')}\n${target}`; };
     const leaveLink = () => { if (host.current) host.current.removeAttribute('title'); };
     const terminal = new Terminal({
       fontFamily: "'Cascadia Code', 'Consolas', 'Microsoft YaHei UI', monospace",
@@ -180,14 +181,14 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     }
   }, [focused, sessionId]);
   const action = (callback: () => void) => { callback(); setMenu(null); term.current?.focus(); };
-  return <><div className="terminal-host" ref={host} aria-label="项目终端" onContextMenu={event => {
+  return <><div className="terminal-host" ref={host} aria-label={t('项目终端')} onContextMenu={event => {
     event.preventDefault();
     setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 230)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)), selection: term.current?.getSelection() || '' });
-  }} />{menu && createPortal(<div ref={menuRef} className="dropdown terminal-context-menu" role="menu" aria-label="终端操作" style={{ left: menu.x, top: menu.y }}>
-    <button role="menuitem" disabled={!menu.selection} onClick={() => action(() => { void copy(menu.selection); })}>复制<span>Ctrl C</span></button>
-    <button role="menuitem" onClick={() => action(copyAll)}>复制全部终端文字</button>
-    <button role="menuitem" onClick={() => action(() => term.current?.selectAll())}>全选<span>Ctrl Shift A</span></button>
+  }} />{menu && createPortal(<div ref={menuRef} className="dropdown terminal-context-menu" role="menu" aria-label={t('终端操作')} style={{ left: menu.x, top: menu.y }}>
+    <button role="menuitem" disabled={!menu.selection} onClick={() => action(() => { void copy(menu.selection); })}>{t('复制')}<span>Ctrl C</span></button>
+    <button role="menuitem" onClick={() => action(copyAll)}>{t('复制全部终端文字')}</button>
+    <button role="menuitem" onClick={() => action(() => term.current?.selectAll())}>{t('全选')}<span>Ctrl Shift A</span></button>
     <div className="menu-divider" />
-    <button role="menuitem" onClick={() => action(() => { void paste(); })}>粘贴<span>Ctrl V</span></button>
+    <button role="menuitem" onClick={() => action(() => { void paste(); })}>{t('粘贴')}<span>Ctrl V</span></button>
   </div>, document.body)}</>;
 }

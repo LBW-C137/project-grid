@@ -49,6 +49,8 @@ class CodexActivityReader {
   record(record) {
     if (record.type !== 'event_msg') return;
     const item = record.payload || {}, turn = item.turn_id;
+    // The prompt of the round, so its completion can be announced by what it worked on.
+    if (item.type === 'user_message' && typeof item.message === 'string') { this.snapshot = { ...this.snapshot, prompt: item.message.slice(0, 2000) }; return; }
     if (['task_started', 'turn_started'].includes(item.type)) {
       if (typeof turn !== 'string' || !turn) return;
       this.snapshot = { ...this.snapshot, turnId: turn, state: 'working', updatedAt: Date.parse(record.timestamp) || 0 };

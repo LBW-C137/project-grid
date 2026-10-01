@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { motionReduced } from './motion';
 
 type Drag = { id: string; targetId: string | null };
@@ -109,7 +110,9 @@ export function useProjectReorder(enabled: boolean, context: string, ids: string
       document.removeEventListener('keydown', key, true); window.removeEventListener('blur', abort); grid.removeEventListener('lostpointercapture', abort);
       if (grid.hasPointerCapture(pointerId)) grid.releasePointerCapture(pointerId);
     };
-    const clear = () => { ended = true; landing?.cancel(); cancel.current = null; setDrag(null); setOrder(null); };
+    // The card must leave its floating position (drag state) in the same frame its landing transform is
+    // dropped; cancelling first would paint one frame back at the origin, a visible jump after release.
+    const clear = () => { ended = true; cancel.current = null; flushSync(() => { setDrag(null); setOrder(null); }); landing?.cancel(); };
     const finish = (save: boolean) => {
       if (ended || settling) return;
       detach();

@@ -60,6 +60,7 @@ function global:Send-ProjectGridEvent {
             exitCode = $ExitCode
             agent = $Agent
             codexAvailable = [bool]$global:ProjectGridCodexCommand
+            claudeAvailable = [bool]$global:ProjectGridClaudeCommand
             codexHome = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.codex' })
             cwd = (Get-Location).Path
         } | ConvertTo-Json -Compress

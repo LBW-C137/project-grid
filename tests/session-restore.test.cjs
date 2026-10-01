@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
-const { recentSession, resumeCommand } = require('../electron/session-restore.cjs');
+const { recentSession, resumeCommand, claudeResumeCommand } = require('../electron/session-restore.cjs');
 
 async function setup(t) {
   const prefix = path.join(os.tmpdir(), 'project-grid-resume-');
@@ -61,4 +61,12 @@ test('a crash after a task starts is continued, but unsafe session identifiers a
   await rollout(folder, project, [event('task_started'), event('agent_reasoning')]);
   assert.equal((await recentSession(project, folder)).state, 'interrupted');
   assert.throws(() => resumeCommand({ id: 'bad; command', state: 'interrupted' }, true));
+});
+
+test('Claude Code resumes its recorded conversation and continues only an unfinished turn', () => {
+  const id = randomUUID();
+  assert.equal(claudeResumeCommand({ agent: 'claude', threadId: id, interrupted: true }), `claude --resume ${id} "继续"\r`);
+  assert.equal(claudeResumeCommand({ agent: 'claude', threadId: id }), `claude --resume ${id}\r`);
+  assert.equal(claudeResumeCommand({ agent: 'claude' }), 'claude --continue\r', 'no recorded session continues the newest one in the folder');
+  assert.throws(() => claudeResumeCommand({ agent: 'claude', threadId: 'x; rm -rf' }), /无效/);
 });

@@ -85,14 +85,37 @@ try {
   assert.equal(await page.locator('.project-panel').count(), 6);
   assert.equal(await page.locator('aside').count(), 0, 'overview has no sidebar');
   assert.equal(await page.locator('.workspace-header, .grid-toolbar, .project-filters, .layout-selector').count(), 0);
+  // The title bar has no search or add buttons: Ctrl+A adds a project and Ctrl+F searches (both configurable).
   const titlebar = page.locator('.titlebar');
-  assert.ok(await titlebar.getByRole('textbox', { name: '搜索项目', exact: true }).isVisible());
-  await titlebar.getByRole('button', { name: '添加项目', exact: true }).click();
+  assert.equal(await titlebar.getByRole('button', { name: '添加项目', exact: true }).count(), 0);
+  assert.equal(await titlebar.getByRole('textbox', { name: '搜索项目', exact: true }).count(), 0, 'search shows only when asked for');
+  await page.keyboard.press('Control+a');
   await page.getByRole('button', { name: '选择本地文件夹', exact: true }).click();
-  assert.equal(await application.evaluate(() => globalThis.addDialogCount), 1, 'titlebar controls are clickable');
+  assert.equal(await application.evaluate(() => globalThis.addDialogCount), 1, 'Ctrl+A opens add project');
   await page.getByRole('button', { name: '关闭添加项目', exact: true }).click();
-  await page.keyboard.press('Control+k');
-  assert.equal(await page.getByRole('textbox', { name: '搜索项目', exact: true }).evaluate(input => input === document.activeElement), true);
+  await page.keyboard.press('Control+f');
+  const searchBox = page.getByRole('textbox', { name: '搜索项目', exact: true });
+  assert.equal(await searchBox.evaluate(input => input === document.activeElement), true, 'Ctrl+F opens and focuses search');
+  await page.keyboard.type('abc'); await page.keyboard.press('Control+a');
+  assert.deepEqual(await searchBox.evaluate(input => [input.selectionStart, input.selectionEnd]), [0, 3], 'inside a text box Ctrl+A still selects all');
+  assert.equal(await page.locator('dialog[open]').count(), 0, 'and does not open add project');
+  await page.keyboard.press('Escape');
+  await waitFor(async () => (await titlebar.getByRole('textbox', { name: '搜索项目', exact: true }).count()) === 0, 'Escape clears and closes search');
+  // Ctrl+Tab moves between cards without expanding them; Ctrl+Shift+Enter expands and restores.
+  const focusedCard = () => page.evaluate(() => document.activeElement?.closest('[data-project-id]')?.dataset.projectId || null);
+  await page.keyboard.press('Control+Tab');
+  const firstCard = await page.locator('.project-panel').first().getAttribute('data-project-id');
+  await waitFor(async () => (await focusedCard()) === firstCard, 'Ctrl+Tab focuses the first card');
+  await page.keyboard.press('Control+Tab');
+  const secondCard = await page.locator('.project-panel').nth(1).getAttribute('data-project-id');
+  await waitFor(async () => (await focusedCard()) === secondCard, 'Ctrl+Tab moves to the next card');
+  assert.equal(await page.locator('.focus-mode').count(), 0, 'moving between cards never expands one');
+  await page.keyboard.press('Control+Shift+Tab');
+  await waitFor(async () => (await focusedCard()) === firstCard, 'Ctrl+Shift+Tab moves back');
+  await page.keyboard.press('Control+Shift+Enter');
+  await waitFor(async () => (await page.locator(`.focus-mode [data-project-id="${firstCard}"].is-focused`).count()) === 1, 'Ctrl+Shift+Enter expands the current project');
+  await page.keyboard.press('Control+Shift+Enter');
+  await page.waitForFunction(() => !document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));
   const material = await page.locator('.project-panel').first().evaluate(el => ({ filter: getComputedStyle(el).backdropFilter, reduced: matchMedia('(prefers-reduced-transparency: reduce)').matches, background: getComputedStyle(el).backgroundColor }));
   console.log('Glass material:', JSON.stringify(material));
   assert.ok(material.filter.includes('blur') || material.reduced);
@@ -183,13 +206,13 @@ try {
   assert.equal((await page.evaluate(() => window.projectGrid.getState())).value.projects[0].lastCompletedAt, firstCompletedAt);
   const animation = await page.locator(`[data-project-id="${projects[0].id}"]`).evaluate(el => ({
     panel: getComputedStyle(el).animationName,
-    lights: ['.panel-signal', '.status-dot'].map(selector => {
+    lights: ['.panel-signal', '.status-dot', '.panel-glow'].map(selector => {
       const style = getComputedStyle(el.querySelector(selector));
       return [style.animationName, style.animationDuration, style.animationIterationCount];
     }),
   }));
   assert.equal(animation.panel, 'none', 'the reading surface never flashes');
-  assert.deepEqual(animation.lights, [['signal-breathe', '2s', '3'], ['signal-breathe', '2s', '3']]);
+  assert.deepEqual(animation.lights, Array(3).fill(['signal-breathe', '3s', '3']), 'ring, dot and inner glow slowly breathe together after a finished turn');
   console.log('PASS: parent lifecycle lights the red panel; unrelated notify callbacks are ignored');
 
   const projectOrder = () => page.locator('.project-grid > .project-slot > .project-panel').evaluateAll(panels => panels.map(panel => panel.dataset.projectId));
@@ -207,9 +230,20 @@ try {
   const sessionIds = Object.fromEntries((await page.evaluate(() => window.projectGrid.getState())).value.projects.map(project => [project.id, project.sessionId]));
   await beginProjectDrag(projects[0].id, projects[2].id);
   await page.screenshot({ path: path.join(output, 'project-drag.png') });
+  // Follow the dropped card every frame: it glides into its slot and never flashes back to where it started.
+  await page.evaluate(id => {
+    const panel = document.querySelector(`[data-project-id="${id}"]`); window.dropTrack = [];
+    const step = () => { const box = panel.getBoundingClientRect(); window.dropTrack.push([box.left, box.top]); if (window.dropTrack.length < 90) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }, projects[0].id);
   await page.mouse.up();
   const swappedOrder = [...originalOrder]; swappedOrder.splice(0, 1); swappedOrder.splice(2, 0, originalOrder[0]);
   await waitFor(async () => JSON.stringify(await projectOrder()) === JSON.stringify(swappedOrder) && await page.locator('.is-reordering').count() === 0, 'drop inserts the project and shifts neighboring positions');
+  await waitFor(async () => (await page.evaluate(() => window.dropTrack.length)) >= 90, 'drop frames recorded');
+  const landed = await page.locator(`[data-project-slot="${projects[0].id}"]`).boundingBox(), dropTrack = await page.evaluate(() => window.dropTrack);
+  const distances = dropTrack.map(([left, top]) => Math.hypot(left - landed.x, top - landed.y));
+  assert.ok(distances.every((distance, index) => !index || distance <= distances[index - 1] + 4), `the dropped card never jumps back: ${distances.map(Math.round).join(',')}`);
+  assert.ok(distances.at(-1) < 2, 'the dropped card ends in its slot');
   assert.deepEqual(JSON.parse(await fs.readFile(path.join(dataDir, 'workspace.json'), 'utf8')).projects.map(project => project.id), swappedOrder);
   const afterDrag = (await page.evaluate(() => window.projectGrid.getState())).value.projects;
   assert.deepEqual(Object.fromEntries(afterDrag.map(project => [project.id, project.sessionId])), sessionIds);
@@ -293,17 +327,18 @@ try {
   await waitFor(async () => page.locator('img.preview-image').evaluate(image => image.complete && image.naturalWidth === 256), 'image signature loads without an extension');
   await page.getByRole('button', { name: '返回终端', exact: true }).click();
   await page.getByRole('treeitem', { name: 'large.log', exact: true }).click();
-  await page.getByRole('button', { name: '结束编辑', exact: true }).click();
-  await page.getByText('LARGE_FILE_START', { exact: false }).waitFor();
+  // Large text opens straight into the editor, one page at a time, with only the visible line numbers drawn.
+  const largeEditor = page.getByRole('textbox', { name: '文件编辑器', exact: true });
+  await waitFor(async () => (await largeEditor.inputValue()).includes('LARGE_FILE_START'), 'first large page opens in the editor');
+  assert.equal(await page.getByRole('button', { name: '结束编辑', exact: true }).count(), 0, 'no save or stop-editing buttons; Ctrl+S saves');
+  assert.equal(await page.locator('.preview-readonly').innerText(), '编辑模式');
   assert.ok(await page.getByRole('button', { name: '下一页', exact: true }).isEnabled());
-  assert.ok(await page.locator('.line-numbers > span').count() < 150, 'large files only render visible lines');
-  await page.locator('.file-code-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
-  await waitFor(async () => page.locator('.line-numbers > span').first().innerText().then(value => Number(value) > 100), 'virtual text scrolls to later lines');
+  assert.ok(await page.locator('.editor-gutter span').count() < 150, 'large files only number the visible lines');
+  await largeEditor.evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await waitFor(async () => page.locator('.editor-gutter span').last().innerText().then(value => Number(value) > 100), 'line numbers follow the editor to later lines');
   await page.getByRole('button', { name: '末页', exact: true }).click();
-  await page.getByRole('button', { name: '结束编辑', exact: true }).click();
   await page.getByRole('button', { name: '首页', exact: true }).waitFor();
-  await page.locator('.file-code-scroll').evaluate(node => { node.scrollTop = node.scrollHeight; });
-  await page.getByText('LARGE_FILE_END', { exact: false }).waitFor();
+  await waitFor(async () => (await largeEditor.inputValue()).includes('LARGE_FILE_END'), 'last large page opens in the editor');
   await page.getByRole('spinbutton', { name: '文件页码', exact: true }).fill('2');
   await page.getByRole('button', { name: '跳转', exact: true }).click();
   await waitFor(async () => page.getByRole('spinbutton', { name: '文件页码', exact: true }).inputValue().then(value => value === '2'), 'jump to large text page');
@@ -468,7 +503,7 @@ try {
   await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[2].shellReady, 'idle notification fixture command completes');
   await runDesktopTask(page, projects[2], path.join(output, 'codex-home'), 'other-project-turn', waitFor);
   await complete('other-project-turn', target);
-  await page.getByRole('textbox', { name: '搜索项目' }).fill('不存在');
+  await page.keyboard.press('Control+f'); await page.getByRole('textbox', { name: '搜索项目' }).fill('不存在');
   await page.waitForSelector('.no-results');
   await page.getByRole('button', { name: '清除搜索' }).click();
   await page.waitForSelector('.project-panel');
@@ -479,7 +514,7 @@ try {
   assert.equal((await page.evaluate(() => window.projectGrid.getUpdateState())).value.supported, false, 'unpacked and development builds cannot install over an installed app');
   assert.equal((await page.evaluate(() => window.projectGrid.installUpdate())).ok, false, 'installing before a verified download is rejected');
   await page.screenshot({ path: path.join(output, 'settings.png') });
-  await page.getByRole('button', { name: '关闭设置', exact: true }).click();
+  await page.getByRole('button', { name: '完成', exact: true }).click();
   const idlePanel = page.locator(`[data-project-id="${projects[2].id}"]`);
   await waitFor(async () => idlePanel.evaluate(element => !element.classList.contains('attention-active') && element.getAnimations({ subtree: true }).every(animation => animation.animationName !== 'signal-breathe')), 'completed idle project becomes quiet after its initial alert', 13000);
   await complete('other-project-turn', target);

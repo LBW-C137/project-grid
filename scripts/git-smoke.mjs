@@ -113,7 +113,8 @@ try {
   await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]; win.setFullScreen(false); win.unmaximize(); });
   await waitFor(async () => app.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].isFullScreen() && !BrowserWindow.getAllWindows()[0].isMaximized()), 'leave native fullscreen for narrow-window check');
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(900, 620));
-  await page.waitForFunction(() => innerWidth === 900 && innerHeight === 620);
+  // Windows DPI scaling can round the client size by one CSS pixel (as in the visual test).
+  await waitFor(async () => page.evaluate(() => Math.abs(innerWidth - 900) <= 1 && Math.abs(innerHeight - 620) <= 1), `narrow window ${JSON.stringify(await page.evaluate(() => [innerWidth, innerHeight]))}`);
   await panel.getByRole('button', { name: /查看提交.*合并工具栏功能/ }).waitFor();
   const narrowViewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
   await page.screenshot({ path: path.join(output, 'git-narrow.png') });

@@ -38,11 +38,14 @@ async function launch() {
     dialog.showMessageBox = async () => ({ response: 1 });
   });
   await page.waitForSelector('.project-panel');
+  // Record spoken completion notices instead of playing them aloud during the test.
+  await page.evaluate(() => { window.spokenNotices = []; window.speechSynthesis.speak = utterance => { window.spokenNotices.push({ text: utterance.text, lang: utterance.lang, voice: utterance.voice?.name || null }); setTimeout(() => utterance.onend?.(), 0); }; });
   await page.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await state()).shellReady, 'shell ready');
   const runtime = (await fs.readdir(dataDir)).find(name => name.startsWith('runtime-'));
   bootstrap = JSON.parse(await fs.readFile(path.join(dataDir, runtime, `${(await state()).sessionId}.json`), 'utf8'));
-  await page.getByRole('button', { name: '启动 Codex', exact: true }).click();
+  // Codex is started by typing it at the prompt, as a user does; there is no launch button.
+  await input('codex\r');
   await waitFor(async () => (await state()).codexActive, 'offline Codex fixture');
 }
 try {
@@ -56,9 +59,16 @@ try {
   assert.equal(await notices(), 0); assert.equal((await state()).unread, 0);
   await waitFor(async () => page.locator('.status-badge').innerText().then(text => text.includes('正在处理')), 'visible running badge');
   await page.screenshot({ path: path.join(output, 'parent-running.png') });
+  // The round's prompt, as Codex records it; the spoken notice names this work.
+  await fs.appendFile(transcript, JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message: '给登录页加上验证码。然后跑一下测试' } }) + '\n');
   await fs.appendFile(transcript, record('task_complete', 'first')); await notify(thread, 'first');
   await waitFor(async () => (await state()).unread === 1, 'parent completes');
   assert.equal(await notices(), 1);
+  // The finished round is also announced once, in Mandarin, naming the project.
+  await waitFor(async () => (await page.evaluate(() => window.spokenNotices.length)) === 1, 'completion is announced');
+  const spoken = (await page.evaluate(() => window.spokenNotices))[0];
+  assert.ok(spoken.text.includes(project.name) && spoken.text.includes('给登录页加上验证码') && !spoken.text.includes('跑一下测试') && spoken.lang === 'zh-CN', `the notice says which project finished what: ${JSON.stringify(spoken)}`);
+  console.log(`Spoken notice: ${JSON.stringify(spoken)}`);
   await page.evaluate(id => window.projectGrid.acknowledge(id), project.id);
   await waitFor(async () => page.locator('.project-panel').evaluate(node => node.classList.contains('round-complete')), 'viewed automatic completion is steady green');
   assert.equal(await page.locator('.status-badge').innerText(), '本轮已完成');
@@ -80,6 +90,7 @@ try {
   await fs.appendFile(transcript, record('task_started', 'interrupted') + record('turn_aborted', 'interrupted'));
   await waitFor(async () => (await state()).codexActivity === 'interrupted', 'interruption is distinct from completion');
   assert.equal(await notices(), 2);
+  assert.equal(await page.evaluate(() => window.spokenNotices.length), 2, 'only real completions are spoken; child, stale and interrupted turns stay silent');
   console.log('PASS: real parent lifecycle owns working/completed/interrupted status; child and stale callbacks never finish the current task');
   await application.close(); application = null;
   await launch(); await notify(child, 'after-restart');

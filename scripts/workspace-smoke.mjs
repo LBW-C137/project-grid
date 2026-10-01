@@ -165,7 +165,7 @@ try {
   await microphone.click(); await page.keyboard.press('Escape');
   await waitFor(async () => !/is-recording/.test(await microphone.getAttribute('class')), 'Escape cancels a recording without inserting');
   console.log(`PASS: blue connected microphone, click to talk and click again to insert ${assets ? 'real SenseVoice recognition' : 'stubbed recognition'} into the terminal without submitting; Escape cancels`);
-  // Ctrl+T: a microphone appears in the middle of the window; Enter inserts the text and then sends it.
+  // Ctrl+T: a microphone appears in the middle of the project card; Enter inserts the text and then sends it.
   await page.locator('.project-panel.is-focused .xterm-helper-textarea').first().focus();
   await application.evaluate(() => { globalThis.voicePastes = []; });
   await page.keyboard.press('Control+t');
@@ -173,8 +173,9 @@ try {
   await overlay.waitFor();
   await waitFor(async () => /is-recording/.test(await microphone.getAttribute('class')), 'Ctrl+T records the focused terminal');
   await overlay.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
-  const box = await overlay.boundingBox(), viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-  assert.ok(Math.abs(box.x + box.width / 2 - viewport.width / 2) < 2 && Math.abs(box.y + box.height / 2 - viewport.height / 2) < 2, `the microphone sits in the middle of the window ${JSON.stringify({ box, viewport })}`);
+  // Centred on the project card it types into, not on the window (the sidebar shifts the card right).
+  const box = await overlay.boundingBox(), card = await page.locator('.project-panel.is-focused').boundingBox();
+  assert.ok(Math.abs(box.x + box.width / 2 - (card.x + card.width / 2)) < 2 && Math.abs(box.y + box.height / 2 - (card.y + card.height / 2)) < 2, `the microphone sits in the middle of the project card ${JSON.stringify({ box, card })}`);
   assert.equal(await application.evaluate(() => globalThis.voicePastes.some(item => item.data === '\x14')), false, 'Ctrl+T never reaches the terminal');
   await page.waitForTimeout(5500);
   await page.screenshot({ path: path.join(output, 'voice-shortcut.png') });
@@ -186,7 +187,69 @@ try {
   await page.keyboard.press('Control+t'); await overlay.waitFor(); await page.keyboard.press('Escape'); await overlay.waitFor({ state: 'detached' });
   await page.waitForTimeout(500);
   assert.equal(await application.evaluate(() => globalThis.voicePastes.some(item => item.data === '\r' || item.data === '\x1b' || /project folder/i.test(item.data))), false, 'Escape cancels without inserting, submitting or reaching the terminal');
-  console.log('PASS: Ctrl+T shows a centred microphone; Enter inserts and sends, Escape cancels');
+  console.log('PASS: Ctrl+T shows a microphone centred on the project card; Enter inserts and sends, Escape cancels');
+  // Recent projects: a removed local project is offered again in the add dialog and comes back in one click.
+  await page.getByRole('button', { name: `${project.name} 的更多操作`, exact: true }).click();
+  await page.getByRole('menuitem', { name: '移除项目', exact: true }).click();
+  await waitFor(async () => !(await page.evaluate(() => window.projectGrid.getState())).value.projects.length, 'project removed');
+  await page.getByRole('button', { name: '添加第一个项目', exact: true }).click();
+  const recent = page.getByRole('region', { name: '最近的项目', exact: true });
+  const entry = recent.getByRole('button', { name: new RegExp(`^${project.name}`) });
+  await entry.waitFor();
+  assert.equal(await entry.getAttribute('title'), `添加 ${await fs.realpath(project.path)}`);
+  await page.screenshot({ path: path.join(output, 'recent-projects.png') });
+  await entry.click();
+  await page.locator('dialog.project-dialog').waitFor({ state: 'detached' });
+  await waitFor(async () => { const state = (await page.evaluate(() => window.projectGrid.getState())).value; return state.projects.length === 1 && state.projects[0].name === project.name; }, 'recent project is added again');
+  await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[0].shellReady, 'its terminal starts');
+  await page.evaluate(() => document.activeElement?.blur()); await page.keyboard.press('Control+a');
+  await page.locator('dialog.project-dialog').waitFor();
+  assert.deepEqual((await page.evaluate(() => window.projectGrid.getRecentProjects())).value, [], 'an open project is not listed as recent');
+  assert.equal(await recent.count(), 0);
+  await page.keyboard.press('Escape');
+  console.log('PASS: a removed project is listed under recent projects and one click adds it back with a running terminal');
+  // Shortcuts are the user's to change: record a new key for search in settings, use it, then restore defaults.
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('Control+,');
+  await page.getByRole('heading', { name: '工作台设置', exact: true }).waitFor();
+  const searchKey = page.getByRole('button', { name: '搜索项目的快捷键', exact: true });
+  assert.equal(await searchKey.innerText(), 'Ctrl+F');
+  await searchKey.click(); await page.keyboard.press('Control+Shift+K');
+  await waitFor(async () => (await searchKey.innerText()) === 'Ctrl+Shift+K', 'a new key is recorded');
+  await searchKey.click(); await page.keyboard.press('Control+t');
+  await page.getByText('Ctrl+T 已用于「语音输入」', { exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('dialog[open]').count(), 1, 'Escape while recording cancels the recording, not the dialog');
+  assert.deepEqual((await page.evaluate(() => window.projectGrid.getState())).value.settings.shortcuts, { search: 'Ctrl+Shift+K' });
+  await page.getByRole('button', { name: '完成', exact: true }).click();
+  await page.keyboard.press('Control+f');
+  assert.equal(await page.getByRole('textbox', { name: '搜索项目', exact: true }).count(), 0, 'the old key no longer searches');
+  await page.keyboard.press('Control+Shift+K');
+  await page.getByRole('textbox', { name: '搜索项目', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+,');
+  await page.getByRole('button', { name: '恢复默认', exact: true }).click();
+  await waitFor(async () => (await searchKey.innerText()) === 'Ctrl+F', 'restore defaults');
+  assert.deepEqual((await page.evaluate(() => window.projectGrid.getState())).value.settings.shortcuts, {});
+  await page.getByRole('button', { name: '完成', exact: true }).click();
+  console.log('PASS: shortcuts are recorded in settings, conflicts are refused, the new key works and defaults come back');
+  // English mode: the window, settings, main-process messages and titles switch together, and back again.
+  await page.evaluate(() => window.projectGrid.settings({ language: 'en' }));
+  await page.getByRole('button', { name: 'Workspace settings', exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.lang), 'en');
+  assert.equal(await page.locator('.status-badge').first().innerText(), 'Terminal ready');
+  await page.getByRole('button', { name: 'Workspace settings', exact: true }).click();
+  await page.getByRole('heading', { name: 'Workspace settings', exact: true }).waitFor();
+  assert.equal(await page.getByRole('combobox', { name: 'Language', exact: true }).inputValue(), 'en');
+  await page.screenshot({ path: path.join(output, 'settings-english.png') });
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  assert.equal((await page.evaluate(() => window.projectGrid.addRecentProject('C:\\missing-folder'))).error, 'This project is not in the recent list. Choose the folder again.', 'main-process errors arrive in English');
+  assert.equal(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle()), 'Project Grid');
+  await page.screenshot({ path: path.join(output, 'grid-english.png') });
+  await page.evaluate(() => window.projectGrid.settings({ language: 'zh' }));
+  await page.getByRole('button', { name: '工作台设置', exact: true }).waitFor();
+  assert.equal(await page.locator('.status-badge').first().innerText(), '终端就绪');
+  console.log('PASS: English mode translates the window, settings, main-process errors and titles, and switches back');
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   console.error(error); process.exitCode = 1;

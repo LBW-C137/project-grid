@@ -3,7 +3,31 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { normalizeSSH } = require('./ssh-config.cjs');
 
-const defaults = { columns: 0, notifications: true, sound: true, closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'forest' };
+// Local folders once opened as projects, newest first, so a removed project can be added again in one click.
+const HISTORY_LIMIT = 30;
+const folderKey = folder => process.platform === 'win32' ? folder.toLowerCase() : folder;
+function cleanHistory(input) {
+  const seen = new Set();
+  return (Array.isArray(input) ? input : []).filter(item => {
+    if (!item || typeof item.path !== 'string' || item.path.length > 4096 || !path.isAbsolute(item.path) || seen.has(folderKey(item.path))) return false;
+    seen.add(folderKey(item.path)); return true;
+  }).slice(0, HISTORY_LIMIT).map(item => ({ path: item.path, name: String(item.name || path.basename(item.path) || item.path).slice(0, 120), lastOpenedAt: Number.isSafeInteger(item.lastOpenedAt) ? item.lastOpenedAt : 0 }));
+}
+
+// Which coding agent a terminal restores (Codex unless recorded as Claude Code), and whether its last
+// Claude turn was left unfinished. Only non-default values are stored.
+const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'claude' } : {}), ...(restore?.interrupted === true ? { interrupted: true } : {}) });
+
+const defaults = { columns: 0, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'forest' };
+
+// Keyboard shortcuts the user changed, by action; defaults live in the window (src/shortcuts.ts).
+// "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
+const SHORTCUT_ACTIONS = ['search', 'addProject', 'voice', 'overview', 'explorer', 'settings', 'nextProject', 'previousProject', 'maximize'];
+const SHORTCUT = /^(?:(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:F(?:[1-9]|1[0-2]))|(?=Ctrl\+|Alt\+)(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:[A-Z0-9,./;'[\]\\=`-]|Space|Tab|Enter))$/;
+function cleanShortcuts(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+  return Object.fromEntries(SHORTCUT_ACTIONS.filter(action => typeof input[action] === 'string' && SHORTCUT.test(input[action])).map(action => [action, input[action]]));
+}
 
 function cleanSettings(input = {}) {
   return {
@@ -11,7 +35,11 @@ function cleanSettings(input = {}) {
     fontSize: Number.isInteger(input.fontSize) && input.fontSize >= 10 && input.fontSize <= 20 ? input.fontSize : defaults.fontSize,
     focusAnimation: ['smooth', 'system', 'off'].includes(input.focusAnimation) ? input.focusAnimation : defaults.focusAnimation,
     theme: ['forest', 'mountain-blue', 'wild-red'].includes(input.theme) ? input.theme : defaults.theme,
-    ...Object.fromEntries(['notifications', 'sound', 'closeToTray', 'explorerCollapsed', 'restoreSessions'].map(key => [key, typeof input[key] === 'boolean' ? input[key] : defaults[key]])),
+    language: ['zh', 'en'].includes(input.language) ? input.language : defaults.language,
+    shortcuts: cleanShortcuts(input.shortcuts),
+    // Spoken completion phrase; empty uses the built-in phrases. {项目} or {project} is the project name.
+    announcePhrase: typeof input.announcePhrase === 'string' ? input.announcePhrase.replace(/[\0-\x1f\x7f]/g, ' ').trim().slice(0, 80) : defaults.announcePhrase,
+    ...Object.fromEntries(['notifications', 'sound', 'announce', 'closeToTray', 'explorerCollapsed', 'restoreSessions'].map(key => [key, typeof input[key] === 'boolean' ? input[key] : defaults[key]])),
   };
 }
 
@@ -19,6 +47,7 @@ class WorkspaceStore {
   constructor(filename) {
     this.filename = filename;
     this.projects = [];
+    this.history = [];
     this.settings = { ...defaults };
     this.warning = null;
     if (!fs.existsSync(filename)) return;
@@ -37,10 +66,10 @@ class WorkspaceStore {
         kind: p.kind === 'ssh' ? 'ssh' : 'local',
         ...(p.kind === 'ssh' ? { ssh: { host: p.ssh.host, configFile: p.ssh.configFile || null } } : {}),
         primaryTerminalClosed: typeof p.primaryTerminalClosed === 'boolean' ? p.primaryTerminalClosed : p.restore?.terminal === false && Array.isArray(p.terminals) && p.terminals.length > 0,
-        restore: p.restore && typeof p.restore === 'object' ? { terminal: p.restore.terminal === true, codex: p.restore.codex === true, cwd: typeof p.restore.cwd === 'string' && (p.kind === 'ssh' ? p.restore.cwd.startsWith('/') : path.isAbsolute(p.restore.cwd)) ? p.restore.cwd : null, ...(/^[a-f\d-]{36}$/i.test(p.restore.threadId || '') ? { threadId: p.restore.threadId } : {}) } : null,
+        restore: p.restore && typeof p.restore === 'object' ? { terminal: p.restore.terminal === true, codex: p.restore.codex === true, cwd: typeof p.restore.cwd === 'string' && (p.kind === 'ssh' ? p.restore.cwd.startsWith('/') : path.isAbsolute(p.restore.cwd)) ? p.restore.cwd : null, ...(/^[a-f\d-]{36}$/i.test(p.restore.threadId || '') ? { threadId: p.restore.threadId } : {}), ...agentFields(p.restore) } : null,
         terminals: Array.isArray(p.terminals) ? p.terminals.filter(item => item && /^[a-f\d-]{36}$/i.test(item.id || '')).map(item => ({ id: item.id, restore: { terminal: item.restore?.terminal === true, codex: item.restore?.codex === true,
           cwd: typeof item.restore?.cwd === 'string' && (p.kind === 'ssh' ? item.restore.cwd.startsWith('/') : path.isAbsolute(item.restore.cwd)) ? item.restore.cwd : null,
-          ...(/^[a-f\d-]{36}$/i.test(item.restore?.threadId || '') ? { threadId: item.restore.threadId } : {}) } })) : [],
+          ...(/^[a-f\d-]{36}$/i.test(item.restore?.threadId || '') ? { threadId: item.restore.threadId } : {}), ...agentFields(item.restore) } })) : [],
         unread: Number.isSafeInteger(p.unread) && p.unread > 0 ? p.unread : 0,
         lastCompletedAt: typeof p.lastCompletedAt === 'number' ? p.lastCompletedAt : null,
         completionArmed: p.completionArmed === true,
@@ -55,6 +84,7 @@ class WorkspaceStore {
         return project;
       });
       this.settings = cleanSettings(value.settings);
+      this.history = cleanHistory(value.history);
       const terminalIds = new Set(this.projects.map(project => project.id));
       for (const project of this.projects) project.terminals = project.terminals.filter(item => { if (terminalIds.has(item.id)) return false; terminalIds.add(item.id); return true; });
     } catch {
@@ -64,17 +94,36 @@ class WorkspaceStore {
     }
   }
 
-  add(folder) {
+  add(folder, name) {
     const canonical = fs.realpathSync(folder);
     if (!fs.statSync(canonical).isDirectory()) throw new Error('请选择项目文件夹。');
-    const key = process.platform === 'win32' ? canonical.toLowerCase() : canonical;
-    const existing = this.projects.find(p => p.kind !== 'ssh' && (process.platform === 'win32' ? p.path.toLowerCase() : p.path) === key);
+    const key = folderKey(canonical);
+    const existing = this.projects.find(p => p.kind !== 'ssh' && folderKey(p.path) === key);
     if (existing) return { project: existing, added: false };
-    const project = { id: randomUUID(), name: path.basename(canonical) || canonical, path: canonical, kind: 'local', primaryTerminalClosed: false, restore: { terminal: false, codex: false }, unread: 0, lastCompletedAt: null, completionArmed: false, seenEvents: [] };
+    const project = { id: randomUUID(), name: String(name || path.basename(canonical) || canonical).slice(0, 120), path: canonical, kind: 'local', primaryTerminalClosed: false, restore: { terminal: false, codex: false }, unread: 0, lastCompletedAt: null, completionArmed: false, seenEvents: [] };
     this.projects.push(project);
+    this.remember(project);
     this.save();
     return { project, added: true };
   }
+
+  // Record a local project as recently opened. Called when it is added and again when it is removed.
+  remember(project, now = Date.now()) {
+    if (project.kind === 'ssh') return;
+    const key = folderKey(project.path);
+    this.history = [{ path: project.path, name: project.name, lastOpenedAt: now }, ...this.history.filter(item => folderKey(item.path) !== key)].slice(0, HISTORY_LIMIT);
+  }
+
+  // Recent folders that are not open as a project right now.
+  recentProjects() {
+    const open = new Set(this.projects.filter(p => p.kind !== 'ssh').map(p => folderKey(p.path)));
+    return this.history.filter(item => !open.has(folderKey(item.path)));
+  }
+
+  recentEntry(folder) { return typeof folder === 'string' ? this.history.find(item => folderKey(item.path) === folderKey(folder)) : undefined; }
+  isRecent(folder) { return !!this.recentEntry(folder); }
+  forget(folder) { if (typeof folder !== 'string') return; this.history = this.history.filter(item => folderKey(item.path) !== folderKey(folder)); this.save(); }
+  clearHistory() { this.history = []; this.save(); }
 
   addSSH(input) {
     const connection = normalizeSSH(input);
@@ -89,12 +138,14 @@ class WorkspaceStore {
     const found = this.findTerminal(id);
     if (!found) return;
     const { project, record } = found;
-    const next = { terminal: record.restore?.terminal === true, codex: record.restore?.codex === true, cwd: record.restore?.cwd || null, ...(record.restore?.threadId ? { threadId: record.restore.threadId } : {}) };
+    const next = { terminal: record.restore?.terminal === true, codex: record.restore?.codex === true, cwd: record.restore?.cwd || null, ...(record.restore?.threadId ? { threadId: record.restore.threadId } : {}), ...agentFields(record.restore) };
     if (typeof patch.terminal === 'boolean') next.terminal = patch.terminal;
     if (typeof patch.codex === 'boolean') next.codex = patch.codex;
     if (typeof patch.cwd === 'string' && patch.cwd.length <= 4096 && !/[\0\r\n]/.test(patch.cwd) && (project.kind === 'ssh' ? patch.cwd.startsWith('/') : path.isAbsolute(patch.cwd))) next.cwd = patch.cwd;
     if (patch.threadId === null) delete next.threadId;
     else if (/^[a-f\d-]{36}$/i.test(patch.threadId || '')) next.threadId = patch.threadId;
+    if (patch.agent === 'codex' || patch.agent === 'claude') { delete next.agent; delete next.interrupted; Object.assign(next, agentFields({ ...record.restore, agent: patch.agent })); }
+    if (typeof patch.interrupted === 'boolean') { delete next.interrupted; Object.assign(next, agentFields({ interrupted: patch.interrupted })); }
     const wasClosed = project.primaryTerminalClosed;
     if (record === project) {
       if (patch.terminal === true) project.primaryTerminalClosed = false;
@@ -162,12 +213,16 @@ class WorkspaceStore {
     this.save();
   }
 
-  remove(id) { this.projects = this.projects.filter(p => p.id !== id); this.save(); }
+  remove(id) {
+    const project = this.projects.find(p => p.id === id);
+    if (project) this.remember(project);
+    this.projects = this.projects.filter(p => p.id !== id); this.save();
+  }
   updateSettings(patch) { this.settings = cleanSettings({ ...this.settings, ...patch }); this.save(); }
   save() {
     fs.mkdirSync(path.dirname(this.filename), { recursive: true });
     const tmp = `${this.filename}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ version: 2, projects: this.projects, settings: this.settings }, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify({ version: 2, projects: this.projects, settings: this.settings, history: this.history }, null, 2));
     for (let attempt = 0; ; attempt++) {
       try { fs.renameSync(tmp, this.filename); break; }
       catch (error) {
