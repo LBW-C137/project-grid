@@ -29,6 +29,7 @@ const { VoiceManager } = require('./voice.cjs');
 const { SpeechManager } = require('./speech.cjs');
 const { summarizeTask } = require('./task-summary.cjs');
 const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
+const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
 
@@ -70,13 +71,8 @@ const fileSaves = new Set();
 const clipboardWrites = new ClipboardWrites();
 const powershellPath = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 const cmdPath = process.env.ComSpec || path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
-// Whether a command resolves on this PATH, for Command Prompt terminals (PowerShell checks for itself).
-function onPath(name, env) {
-  const folders = String(Object.entries(env).find(([key]) => key.toLowerCase() === 'path')?.[1] || '').split(';').filter(Boolean);
-  return folders.some(folder => ['.exe', '.cmd', '.bat', '.ps1'].some(extension => { try { return fs.statSync(path.join(folder.replace(/"/g, ''), name + extension)).isFile(); } catch { return false; } }));
-}
-
 function send(channel, data) { if (window && !window.isDestroyed()) window.webContents.send(channel, data); }
+const agents = new AgentsManager({ onChange: state => send('agents:changed', state), translate: t });
 function findProject(id) {
   if (typeof id !== 'string') throw new Error('无效的项目。');
   const project = store.findTerminal(id)?.project;
@@ -563,6 +559,9 @@ function affectsEditor(id, paths) {
 }
 
 function registerIpc() {
+  handle('agents:status', () => agents.getState());
+  handle('agents:install', agent => agents.install(agent));
+  handle('agents:open-node', () => shell.openExternal('https://nodejs.org/'));
   handle('ssh:info', () => getSSHInfo());
   handle('ssh:auth-pending', () => sshAuth.getPending());
   handle('ssh:auth-answer', (id, answer) => sshAuth.answer(id, answer));

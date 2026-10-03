@@ -143,6 +143,8 @@ Windows 安装版会自动检查新版本，在后台下载更新。设置中可
 
 ## 开始使用
 
+Project Grid 基于 Codex CLI 和 Claude Code 这两个命令行工具，至少需要安装其中一个；可在「设置 > 编码助手」中一键安装。
+
 **Windows 10 / 11 · x64。Codex CLI 或 Claude Code 安装在实际运行项目的本机或远程主机上（Claude Code 目前支持本地项目）。**
 
 1. 从 [Releases 下载最新版](https://github.com/noeigenstate/project-manager/releases/latest)，运行 `Project-Grid-Setup-版本号-x64.exe` 完成安装，后续可自动检查和下载更新。临时使用也可选择免安装的 `Project-Grid-版本号-win-x64.exe`。

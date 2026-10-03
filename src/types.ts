@@ -37,6 +37,7 @@ export type GitDiff = { repository: boolean; binary: boolean; text: boolean; add
 export type GitCommitFiles = { files: { path: string; status: string; originalPath: string | null }[]; total: number; truncated: boolean };
 export type TextPage = { index: number; count: number; byteStart: number; byteEnd: number; encoding: string };
 export type AppUpdateState = { supported: boolean; currentVersion: string; status: 'unavailable' | 'idle' | 'checking' | 'current' | 'downloading' | 'ready' | 'error'; version: string | null; percent: number; error: string | null };
+export type AgentsState = { codex: { installed: boolean }; claude: { installed: boolean }; npm: boolean; installing: 'codex' | 'claude' | null; message: string; error: string };
 export type FilePreview = { path: string; name: string; size: number; modifiedAt: number; revision: string } & (
   { kind: 'text'; content: string; page: TextPage } | { kind: 'unsupported'; reason: string }
   | { kind: 'image' | 'video'; mimeType: string; url: string; previewId: string }
@@ -44,6 +45,10 @@ export type FilePreview = { path: string; name: string; size: number; modifiedAt
 );
 export type Bridge = {
   getState(): Promise<Result<Workspace>>;
+  getAgents(): Promise<Result<AgentsState>>;
+  installAgent(agent: 'codex' | 'claude'): Promise<Result<AgentsState>>;
+  openNode(): Promise<Result<void>>;
+  onAgents(callback: (state: AgentsState) => void): () => void;
   getUpdateState(): Promise<Result<AppUpdateState>>;
   checkForUpdates(): Promise<Result<AppUpdateState>>;
   installUpdate(): Promise<Result<boolean>>;

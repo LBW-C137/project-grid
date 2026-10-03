@@ -7,6 +7,10 @@ const listen = (channel, callback) => {
 
 contextBridge.exposeInMainWorld('projectGrid', {
   getState: () => ipcRenderer.invoke('workspace:state'),
+  getAgents: () => ipcRenderer.invoke('agents:status'),
+  installAgent: agent => ipcRenderer.invoke('agents:install', agent),
+  openNode: () => ipcRenderer.invoke('agents:open-node'),
+  onAgents: callback => listen('agents:changed', callback),
   getUpdateState: () => ipcRenderer.invoke('updates:state'),
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
   installUpdate: () => ipcRenderer.invoke('updates:install'),

@@ -5,7 +5,7 @@ import {
   GearSix, CheckCircle, FolderOpen, Power, ArrowCounterClockwise,
   Monitor, Info, Circle, SpeakerHigh, Globe, Microphone, Waveform, BookOpen, FloppyDisk, ListChecks,
 } from '@phosphor-icons/react';
-import type { AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
+import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
 import { ProjectTerminals } from './ProjectTerminals';
 import { ProjectExplorer } from './ProjectExplorer';
 import { ActivityPane, actionText } from './ActivityPane';
@@ -14,7 +14,7 @@ import { SSHAuthDialog } from './SSHAuthDialog';
 import { useProjectReorder } from './useProjectReorder';
 import { useProjectFocusMotion } from './useProjectFocusMotion';
 import { applyTheme, themes } from './themes';
-import { applyMotion } from './motion';
+import { applyMotion, motionReduced } from './motion';
 import { LiquidGlass } from './LiquidGlass';
 import { VoiceButton, VoiceModelStatus, VoiceOverlay } from './VoiceButton';
 import { announce, announcementVoice, onVoicesReady } from './announce';
@@ -22,6 +22,7 @@ import { applyLanguage, currentLanguage, t } from './i18n';
 import { actionFor, applyShortcuts, editingKeyInField, shortcut } from './shortcuts';
 import { quickDictation } from './voice-input';
 import { ShortcutSettings } from './ShortcutSettings';
+import { AgentsSettings } from './AgentsSettings';
 import { UsageGuide } from './UsageGuide';
 const FilePreview = lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
 const GitDiffView = lazy(() => import('./GitDiffView').then(module => ({ default: module.GitDiffView })));
@@ -167,16 +168,38 @@ function AnnounceSettings({ settings, update }: { settings: Settings; update: (p
     </div>}
   </div>;
 }
-function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, onGuide, close, update, quit }: {
+function SettingsDialog({ settings, agents, onAgents, initialSection, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, onGuide, close, update, quit }: {
+  agents: AgentsState | null; onAgents: (state: AgentsState) => void; initialSection: string;
   settings: Settings; close: () => void; update: (patch: Partial<Settings>) => void; quit: () => void; onGuide: () => void;
   updates: AppUpdateState | null; onCheckUpdate: () => void; onInstallUpdate: () => void; onDownloadPage: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { dialog.current?.showModal(); }, []);
-  return <dialog className="settings-dialog" ref={dialog} onCancel={close} onClick={event => { if (event.target === event.currentTarget) close(); }}>
+  const nav = useRef<HTMLElement>(null);
+  const [activeSection, setActiveSection] = useState(initialSection);
+  const sections = [{ id: 'appearance', title: t('外观') }, { id: 'notifications', title: t('提醒') }, { id: 'terminal', title: t('终端与编辑') }, { id: 'agents', title: t('编码助手') }, { id: 'shortcuts', title: t('键盘快捷键') }, { id: 'about', title: t('更新与关于') }];
+  const jump = (id: string) => { dialog.current?.querySelector<HTMLElement>(`#settings-${id}`)?.scrollIntoView({ block: 'start', behavior: motionReduced() ? 'auto' : 'smooth' }); };
+  const trackSection = () => {
+    const root = dialog.current;
+    if (!root) return;
+    const top = root.getBoundingClientRect().top + (nav.current?.offsetHeight || 0) + 18;
+    const current = [...root.querySelectorAll<HTMLElement>('.settings-section')].filter(section => section.getBoundingClientRect().top <= top).at(-1);
+    setActiveSection(root.scrollTop > 0 && root.scrollTop + root.clientHeight >= root.scrollHeight - 2 ? 'about' : current?.id.replace('settings-', '') || 'appearance');
+  };
+  useEffect(() => {
+    dialog.current?.showModal();
+    // Wrapped pills change height with language and window size; keep jumped titles below them.
+    const resize = new ResizeObserver(() => { dialog.current?.style.setProperty('--settings-nav-offset', `${(nav.current?.offsetHeight || 0) + 16}px`); trackSection(); });
+    if (nav.current) resize.observe(nav.current);
+    dialog.current?.style.setProperty('--settings-nav-offset', `${(nav.current?.offsetHeight || 0) + 16}px`);
+    if (initialSection !== 'appearance') jump(initialSection); else trackSection();
+    return () => resize.disconnect();
+  }, []);
+  return <dialog className="settings-dialog" ref={dialog} onScroll={trackSection} onCancel={close} onClick={event => { if (event.target === event.currentTarget) close(); }}>
     <div className="dialog-content">
       <div className="dialog-heading"><div><span className="eyebrow">PREFERENCES</span><h2>{t('工作台设置')}</h2></div></div>
+      <nav className="settings-nav" ref={nav} aria-label={t('设置分类')}>{sections.map(section => <button type="button" key={section.id} aria-controls={`settings-${section.id}`} aria-current={activeSection === section.id ? 'true' : undefined} onClick={() => jump(section.id)}>{section.title}</button>)}</nav>
       <p className="settings-intro">{t('按照你的开发习惯调整提醒和终端。')}</p>
+      <section className="settings-section" id="settings-appearance" aria-label={t('外观')}><h3>{t('外观')}</h3>
       <fieldset className="theme-picker"><legend>{t('外观主题')}</legend><div className="theme-options">
         {themes.map(theme => <label key={theme.id} className={`theme-option ${settings.theme === theme.id ? 'is-selected' : ''}`}>
           <input type="radio" name="theme" value={theme.id} checked={settings.theme === theme.id} aria-label={t(theme.name)} onChange={() => update({ theme: theme.id })} />
@@ -185,17 +208,26 @@ function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onD
         </label>)}
       </div></fieldset>
       <label className="setting-row"><span><Globe size={19} /><span><b>{t('语言')}</b><small>{t('界面、提示与语音播报的语言')}</small></span></span><select aria-label={t('语言')} value={settings.language} onChange={event => update({ language: event.target.value as Settings['language'] })}><option value="zh">中文</option><option value="en">English</option></select></label>
+      <label className="setting-row"><span><ArrowsOutSimple size={19} /><span><b>{t('界面动画')}</b><small>{t('窗口平滑放大与呼吸灯；默认不受 Windows“动画效果”开关影响')}</small></span></span><select aria-label={t('界面动画')} value={settings.focusAnimation} onChange={e => update({ focusAnimation: e.target.value as Settings['focusAnimation'] })}><option value="smooth">{t('开启')}</option><option value="system">{t('跟随系统')}</option><option value="off">{currentLanguage() === 'en' ? 'Off' : '关闭'}</option></select></label>
+      <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端字号')}</b><small>{t('全屏与网格共用字号')}</small></span></span><select aria-label={t('终端字号')} value={settings.fontSize} onChange={e => update({ fontSize: Number(e.target.value) })}>{[10, 11, 12, 13, 14, 16, 18, 20].map(n => <option key={n} value={n}>{n} px</option>)}</select></label>
+      </section>
+      <section className="settings-section" id="settings-notifications" aria-label={t('提醒')}><h3>{t('提醒')}</h3>
       <label className="setting-row"><span><Bell size={19} /><span><b>{t('桌面通知')}</b><small>{t('一轮结束时发送系统通知')}</small></span></span><input type="checkbox" checked={settings.notifications} onChange={e => update({ notifications: e.target.checked })} /></label>
       <label className="setting-row"><span><SpeakerHigh size={19} /><span><b>{t('通知声音')}</b><small>{t('播放系统默认提示音')}</small></span></span><input type="checkbox" checked={settings.sound} onChange={e => update({ sound: e.target.checked })} /></label>
       <AnnounceSettings settings={settings} update={update} />
-      <label className="setting-row"><span><Monitor size={19} /><span><b>{t('关闭到托盘')}</b><small>{t('关闭窗口后，终端和任务继续运行')}</small></span></span><input type="checkbox" checked={settings.closeToTray} onChange={e => update({ closeToTray: e.target.checked })} /></label>
+      </section>
+      <section className="settings-section" id="settings-terminal" aria-label={t('终端与编辑')}><h3>{t('终端与编辑')}</h3>
       <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端')}</b><small>{t('新开或重启的本地终端使用；SSH 项目始终使用 Bash')}</small></span></span><select aria-label={t('终端')} value={settings.shell} onChange={event => update({ shell: event.target.value as Settings['shell'] })}><option value="powershell">PowerShell</option><option value="cmd">{t('命令提示符 (cmd)')}</option></select></label>
-      <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端字号')}</b><small>{t('全屏与网格共用字号')}</small></span></span><select aria-label={t('终端字号')} value={settings.fontSize} onChange={e => update({ fontSize: Number(e.target.value) })}>{[10, 11, 12, 13, 14, 16, 18, 20].map(n => <option key={n} value={n}>{n} px</option>)}</select></label>
-      <label className="setting-row"><span><ArrowsOutSimple size={19} /><span><b>{t('界面动画')}</b><small>{t('窗口平滑放大与呼吸灯；默认不受 Windows“动画效果”开关影响')}</small></span></span><select aria-label={t('界面动画')} value={settings.focusAnimation} onChange={e => update({ focusAnimation: e.target.value as Settings['focusAnimation'] })}><option value="smooth">{t('开启')}</option><option value="system">{t('跟随系统')}</option><option value="off">{currentLanguage() === 'en' ? 'Off' : '关闭'}</option></select></label>
-      <label className="setting-row"><span><FloppyDisk size={19} /><span><b>{t('自动保存')}</b><small>{t('停止输入约 1 秒后、切换文件或离开窗口时保存编辑中的文件；关闭后按 Ctrl+S 保存')}</small></span></span><input type="checkbox" checked={settings.autoSave} onChange={event => update({ autoSave: event.target.checked })} /></label>
       <label className="setting-row"><span><ArrowCounterClockwise size={19} /><span><b>{t('启动时恢复工作')}</b><small>{t('恢复 Codex 与 Claude Code 的最近会话，被中断的任务自动发送“继续”')}</small></span></span><input type="checkbox" checked={settings.restoreSessions} onChange={event => update({ restoreSessions: event.target.checked })} /></label>
+      <label className="setting-row"><span><Monitor size={19} /><span><b>{t('关闭到托盘')}</b><small>{t('关闭窗口后，终端和任务继续运行')}</small></span></span><input type="checkbox" checked={settings.closeToTray} onChange={e => update({ closeToTray: e.target.checked })} /></label>
+      <label className="setting-row"><span><FloppyDisk size={19} /><span><b>{t('自动保存')}</b><small>{t('停止输入约 1 秒后、切换文件或离开窗口时保存编辑中的文件；关闭后按 Ctrl+S 保存')}</small></span></span><input type="checkbox" checked={settings.autoSave} onChange={event => update({ autoSave: event.target.checked })} /></label>
       <div className="setting-row"><span><Microphone size={19} /><span><b>{t('本地语音输入')}</b><small>{t('按 {key} 或点击终端上的麦克风说话，按回车识别并发送，Esc 取消', { key: shortcut('voice') })}</small></span></span><VoiceModelStatus /></div>
+      </section>
+      <section className="settings-section" id="settings-agents" aria-label={t('编码助手')}><h3>{t('编码助手')}</h3>
+      <AgentsSettings agents={agents} onChange={onAgents} />
+      </section>
       <ShortcutSettings settings={settings} update={update} />
+      <section className="settings-section" id="settings-about" aria-label={t('更新与关于')}><h3>{t('更新与关于')}</h3>
       {updates && <section className="update-section" aria-label={t('应用更新')}>
         <div className="update-heading"><b>{t('应用更新')}</b><span>{t('当前版本 v{version}', { version: updates.currentVersion })}</span></div>
         <p role="status">{updates.status === 'unavailable' ? t('当前为便携版或开发版。安装 Windows 版后，即可自动检查和下载更新。')
@@ -211,6 +243,7 @@ function SettingsDialog({ settings, updates, onCheckUpdate, onInstallUpdate, onD
           : <button className="button secondary small" disabled={updates.status === 'checking' || updates.status === 'downloading'} onClick={onCheckUpdate}>{updates.status === 'error' ? t('重试更新') : t('检查更新')}</button>}</div>
       </section>}
       <div className="settings-note"><Info size={15} /><p>{t('一轮结束时，方框从边缘缓缓呼吸三次，之后留一层柔光等你查看；在终端里发送新指令也算已查看。绿色常亮表示已查看的本轮完成。没有新指令时不会重复提醒。')}</p></div>
+      </section>
       <div className="dialog-footer"><span className="guide-actions"><button className="text-button danger-text" onClick={quit}><Power size={15} />{t('退出应用')}</button><button className="text-button" onClick={onGuide}><BookOpen size={15} />{t('使用指南')}</button></span><button className="button primary" onClick={close}>{t('完成')}</button></div>
     </div>
   </dialog>;
@@ -220,6 +253,9 @@ export function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   useEffect(() => { if (workspace) applyTheme(workspace.settings.theme); }, [workspace?.settings.theme]);
   useEffect(() => { applyMotion(workspace?.settings.focusAnimation || 'smooth'); }, [workspace?.settings.focusAnimation]);
+  const [agents, setAgents] = useState<AgentsState | null>(null);
+  const [agentsDismissed, setAgentsDismissed] = useState(false);
+  const [settingsSection, setSettingsSection] = useState('appearance');
   const [updates, setUpdates] = useState<AppUpdateState | null>(null);
   const [query, setQuery] = useState('');
   // With only a few projects the search box is a single icon; Ctrl+K or a click opens it.
@@ -306,13 +342,15 @@ export function App() {
     const offFocus = api.onFocusProject(focusProject);
     const offError = api.onError(reportError);
     const offUpdates = api.onUpdateState(setUpdates);
+    const offAgents = api.onAgents(setAgents);
     const offAuth = api.onSSHAuth(setSSHAuth);
     const offEditor = api.onEditorClose(id => { void allowNavigation().then(accepted => api.editorCloseResult(id, accepted), () => api.editorCloseResult(id, false)); });
     perform(api.getSSHAuth()).then(requests => { if (requests) setSSHAuth(requests); });
+    perform(api.getAgents()).then(state => { if (state) setAgents(state); });
     perform(api.getUpdateState()).then(state => { if (state) setUpdates(state); });
     perform(api.getState()).then(state => { if (state) setWorkspace(state); });
     const clock = setInterval(() => setNow(Date.now()), 5000);
-    return () => { offState(); offFocus(); offError(); offUpdates(); offAuth(); offEditor(); clearInterval(clock); if (errorTimer.current) clearTimeout(errorTimer.current); };
+    return () => { offState(); offFocus(); offError(); offUpdates(); offAgents(); offAuth(); offEditor(); clearInterval(clock); if (errorTimer.current) clearTimeout(errorTimer.current); };
   }, [focusProject, perform, reportError, allowNavigation]);
   useEffect(() => {
     if (focusedId && workspace && !workspace.projects.some(p => p.id === focusedId)) returnToGrid();
@@ -400,6 +438,7 @@ export function App() {
         onExpandedChange={paths => setExpandedByProject(value => ({ ...value, [focus.id]: paths }))}
         onSelectFile={async path => { if (previewFile?.projectId === focus.id && previewFile.path === path && !previewFile.diff) return; if (await allowNavigation()) setPreviewFile({ projectId: focus.id, path }); }} onReturn={returnToGrid} />}
       <main className="main-workspace">
+        {agents && !agents.codex.installed && !agents.claude.installed && !agentsDismissed && <div className="workspace-warning agents-warning"><Info size={15} /><span>{t('未检测到 Codex 或 Claude Code。Project Grid 基于这两个命令行工具工作，安装其中一个后才能使用任务提醒和会话恢复。')}</span><button type="button" className="button secondary small" onClick={() => { setSettingsSection('agents'); setSettingsOpen(true); }}>{t('去安装')}</button><IconButton label={t('关闭提示')} onClick={() => setAgentsDismissed(true)}><X size={14} /></IconButton></div>}
         {workspace.warning && <div className="workspace-warning"><Info size={15} />{t(workspace.warning)}</div>}
         {focusedId && previewFile?.projectId === focusedId && previewFile.diff && <Suspense fallback={null}><GitDiffView key={`${focusedId}:${previewFile.path}:${previewFile.diff}`} projectId={focusedId} filePath={previewFile.path} mode={previewFile.diff} onClose={() => setPreviewFile(null)} onOpenFile={() => setPreviewFile({ projectId: focusedId, path: previewFile.path })} onError={reportError} onChanged={() => setChangeRevision(value => value + 1)} /></Suspense>}
         {focusedId && previewFile?.projectId === focusedId && !previewFile.diff && <Suspense fallback={null}><FilePreview key={`${focusedId}:${previewFile.path}`} projectId={focusedId} filePath={previewFile.path} onClose={async () => { if (await allowNavigation()) setPreviewFile(null); }} autoSave={settings.autoSave} onOpenLink={target => openTerminalLink(focusedId, target)} onError={reportError} registerGuard={registerEditorGuard} /></Suspense>}
@@ -407,6 +446,7 @@ export function App() {
           {!projects.length ? <div className="empty-workspace">
             <div className="empty-illustration" aria-hidden="true"><div className="illustration-tile"><span /><i /><i /><i /></div><div className="illustration-tile red-tile"><span /><i /><i /><b /></div><div className="illustration-tile green-tile"><Check size={22} /></div><div className="illustration-tile"><span /><i /><i /></div></div>
             <span className="eyebrow">{t('你的多项目工作台')}</span><h2>{t('每个项目，一个方框。')}</h2><p>{t('添加项目目录，在独立终端里运行 Codex 或 Claude Code。')}<br />{t('方框亮起时，点击全屏查看，再继续下一轮。')}</p>
+            <p className="agents-empty-note">{t('需要已安装 Codex CLI 或 Claude Code；可在设置的「编码助手」里一键安装。')}</p>
             <button className="button primary" onClick={() => setAddOpen(true)}><FolderSimplePlus size={18} />{t('添加第一个项目')}</button>
             <div className="empty-hints"><span><Circle weight="fill" size={7} />{t('粉色呼吸 · 等待查看')}</span><span><CheckCircle weight="fill" size={12} />{t('绿色常亮 · 本轮完成')}</span></div>
           </div> : <>
@@ -424,7 +464,7 @@ export function App() {
     </div>
     {error && <div className="error-toast" role="alert"><Info size={18} /><span>{error}</span><IconButton label={t('关闭提示')} onClick={() => setError(null)}><X size={16} /></IconButton></div>}
     {guide && <UsageGuide version={workspace.version} start={guide} onClose={() => { setGuide(null); if (settings.guideVersion !== workspace.version) setPreference({ guideVersion: workspace.version }); }} />}
-    {settingsOpen && <SettingsDialog settings={settings} updates={updates} onGuide={() => { setSettingsOpen(false); setGuide('intro'); }} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => setSettingsOpen(false)} update={setPreference} quit={() => perform(api.quit())} />}
+    {settingsOpen && <SettingsDialog settings={settings} agents={agents} onAgents={setAgents} initialSection={settingsSection} updates={updates} onGuide={() => { setSettingsOpen(false); setSettingsSection('appearance'); setGuide('intro'); }} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => { setSettingsOpen(false); setSettingsSection('appearance'); }} update={setPreference} quit={() => perform(api.quit())} />}
     {addOpen && <AddProjectDialog onClose={() => setAddOpen(false)} onAdded={() => setQuery('')} onError={reportError} />}
     {sshAuth[0] && <SSHAuthDialog key={sshAuth[0].id} request={sshAuth[0]} />}
     <VoiceOverlay />
