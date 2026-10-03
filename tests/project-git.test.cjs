@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { promisify } = require('node:util');
 const exec = promisify(require('node:child_process').execFile);
-const { readGitRaw, parseStatus, parseHistory, parseFiles, ProjectGit, gitEnvironment } = require('../electron/project-git.cjs');
+const { readGitRaw, parseStatus, parseHistory, parseFiles, parseDiff, ProjectGit, gitEnvironment } = require('../electron/project-git.cjs');
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'project-grid-git-'));
@@ -109,4 +109,34 @@ test('history pages include empty commits and graph lanes follow real parents', 
     { path: 'src/a.txt', index: '?', worktree: '?', conflict: false, untracked: true },
   ] });
   assert.equal(decorations.get('src').count, 1);
+});
+
+test('a file\'s changes come as hunks that can be kept (staged) or reverted one at a time, also from a subfolder', async t => {
+  const f = await fixture(t);
+  const lines = count => Array.from({ length: count }, (_, index) => `line ${index}`);
+  await f.write('sub/notes.txt', lines(20).join('\n') + '\n'); await f.write('image.bin', Buffer.from([0, 1, 2, 255]));
+  await f.git('add', '.'); await f.git('commit', '-m', '基础');
+  await f.write('sub/notes.txt', lines(20).map((line, index) => index === 2 ? 'LINE 2' : index === 15 ? 'LINE 15' : line).join('\n') + '\n');
+  await f.write('sub/new.txt', '新文件\n'); await f.write('image.bin', Buffer.from([0, 1, 2, 254]));
+  const sub = path.join(f.dir, 'sub');
+  const diff = parseDiff(await readGitRaw(sub, 'diff', { path: 'notes.txt' }));
+  assert.equal(diff.hunks.length, 2); assert.equal(diff.added, 2); assert.equal(diff.removed, 2); assert.equal(diff.text, true);
+  assert.deepEqual(diff.hunks[0].lines.filter(line => line.type !== ' ').map(line => line.type + line.text), ['-line 2', '+LINE 2']);
+  assert.equal(diff.hunks[1].oldStart, 13);
+  await readGitRaw(sub, 'apply', { patch: diff.hunks[0].patch, reverse: true });
+  assert.equal((await fs.readFile(path.join(sub, 'notes.txt'), 'utf8')).split('\n')[2], 'line 2', 'the first hunk is undone in the working tree');
+  const rest = parseDiff(await readGitRaw(sub, 'diff', { path: 'notes.txt' }));
+  assert.equal(rest.hunks.length, 1);
+  await readGitRaw(sub, 'apply', { patch: rest.hunks[0].patch, cached: true });
+  assert.equal(parseDiff(await readGitRaw(sub, 'diff', { path: 'notes.txt' })).hunks.length, 0, 'a kept hunk leaves the working tree list');
+  assert.equal(parseDiff(await readGitRaw(sub, 'diff', { path: 'notes.txt', staged: true })).hunks.length, 1, 'and is staged');
+  const fresh = parseDiff(await readGitRaw(sub, 'diff', { path: 'new.txt', untracked: true }));
+  assert.equal(fresh.hunks.length, 1); assert.equal(fresh.hunks[0].lines[0].text, '新文件');
+  await readGitRaw(sub, 'apply', { patch: fresh.patch, cached: true });
+  assert.ok((await f.status()).files.find(file => file.path === 'sub/new.txt').index === 'A', 'a kept new file is added');
+  await readGitRaw(sub, 'apply', { patch: fresh.patch, cached: true, reverse: true }); await readGitRaw(sub, 'apply', { patch: fresh.patch, reverse: true });
+  await assert.rejects(fs.stat(path.join(sub, 'new.txt')), 'a reverted new file is removed');
+  assert.equal(parseDiff(await readGitRaw(f.dir, 'diff', { path: 'image.bin' })).binary, true);
+  await assert.rejects(readGitRaw(sub, 'diff', { path: '../notes.txt' }), /无效的文件路径/);
+  await assert.rejects(readGitRaw(sub, 'apply', { patch: '' }), /无效的补丁/);
 });

@@ -9,15 +9,17 @@ export function GitBadge({ code }: { code: string }) {
   const mark = gitMark(code);
   return <span className={`git-badge git-${mark.tone}`} title={t(mark.title)} aria-hidden="true">{mark.label}</span>;
 }
-function ChangeGroup({ title, files, staged, onOpen }: { title: string; files: GitChange[]; staged?: boolean; onOpen: (path: string) => void }) {
+export type GitOpenMode = 'worktree' | 'staged' | 'untracked' | 'file';
+// A changed file opens as its changes (hunks to keep or revert); a conflicted file opens in the editor.
+function ChangeGroup({ title, files, staged, onOpen }: { title: string; files: GitChange[]; staged?: boolean; onOpen: (path: string, mode: GitOpenMode) => void }) {
   const [limit, setLimit] = useState(100);
   if (!files.length) return null;
   return <details className="git-change-group" open><summary>{title}<span>{files.length}</span></summary>
     {files.slice(0, limit).map(file => {
       const code = file.conflict ? 'U' : file.untracked ? '?' : staged ? file.index : file.worktree;
       const mark = gitMark(code), deleted = code === 'D' || !file.conflict && file.worktree === 'D' || file.index + file.worktree === 'DD';
-      return <button type="button" className={`git-file git-${mark.tone}`} key={`${file.path}:${file.index}:${file.worktree}`} disabled={deleted}
-        title={`${file.path} · ${t(mark.title)}${file.originalPath ? `\n${file.originalPath} → ${file.path}` : ''}`} aria-label={`${t(mark.title)} ${file.path}`} onClick={() => onOpen(file.path)}>
+      return <button type="button" className={`git-file git-${mark.tone} ${deleted ? 'git-file-deleted' : ''}`} key={`${file.path}:${file.index}:${file.worktree}`}
+        title={`${file.path} · ${t(mark.title)}${file.originalPath ? `\n${file.originalPath} → ${file.path}` : ''}`} aria-label={`${t(mark.title)} ${file.path}`} onClick={() => onOpen(file.path, file.conflict ? 'file' : staged ? 'staged' : file.untracked ? 'untracked' : 'worktree')}>
         <span className="git-file-path">{file.path}</span><GitBadge code={code} />
       </button>;
     })}
@@ -79,7 +81,7 @@ function History({ projectId, status, revision }: { projectId: string; status: G
   </section>;
 }
 export function GitPanel({ projectId, status, error, loading, revision, onRefresh, onOpen }: {
-  projectId: string; status: GitStatus | null; error: string; loading: boolean; revision: number; onRefresh: () => void; onOpen: (path: string) => void;
+  projectId: string; status: GitStatus | null; error: string; loading: boolean; revision: number; onRefresh: () => void; onOpen: (path: string, mode: GitOpenMode) => void;
 }) {
   return <div className="git-panel" aria-label={t('Git 历史与更改')}>
     <div className="git-toolbar"><span><GitBranch size={16} />{t('源代码管理')}</span><button className="icon-button" aria-label={t('刷新 Git 状态和历史')} onClick={onRefresh}><ArrowClockwise size={15} className={loading ? 'loading-spinner' : undefined} /></button></div>

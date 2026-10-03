@@ -6,7 +6,7 @@ import {
 } from '@phosphor-icons/react';
 import type { DirectoryListing, FileEntry, Project } from './types';
 import { useExplorerFileActions } from './ExplorerFileActions';
-import { GitBadge, GitPanel } from './GitPanel';
+import { GitBadge, GitPanel, type GitOpenMode } from './GitPanel';
 import { gitDecorations, gitMark, type GitDecoration } from './git-status';
 import { useGitStatus } from './useGitStatus';
 import { t } from './i18n';
@@ -133,9 +133,11 @@ function TreeNode(props: NodeProps) {
   </div>;
 }
 
-export function ProjectExplorer({ project, collapsed, expandedPaths, selectedFile, onCollapse, onExpandedChange, onSelectFile, onReturn, onFilesRemoved, onPathRenamed }: {
+export function ProjectExplorer({ project, collapsed, expandedPaths, selectedFile, changeRevision, onCollapse, onExpandedChange, onSelectFile, onOpenChange, onReturn, onFilesRemoved, onPathRenamed }: {
   project: Project; collapsed: boolean; expandedPaths: string[]; selectedFile: string | null;
-  onCollapse: () => void; onExpandedChange: (paths: string[]) => void; onSelectFile: (path: string) => void;
+  // Counts up when the changes view kept or reverted a hunk, so the status and tree are read again at once.
+  changeRevision: number;
+  onCollapse: () => void; onExpandedChange: (paths: string[]) => void; onSelectFile: (path: string) => void; onOpenChange: (path: string, mode: GitOpenMode) => void;
   onReturn: () => void;
   onFilesRemoved: (paths: string[]) => void; onPathRenamed: (oldPath: string, newPath: string) => void;
 }) {
@@ -146,6 +148,7 @@ export function ProjectExplorer({ project, collapsed, expandedPaths, selectedFil
   const location = project.kind === 'ssh' ? `${project.ssh?.host}:${project.path}` : project.path;
   const expanded = new Set(expandedPaths);
   const files = useExplorerFileActions(project, directory => { setRevision(value => value + 1); if (directory !== undefined) onExpandedChange([...new Set([...expandedPaths, directory])]); }, onSelectFile, onFilesRemoved, onPathRenamed);
+  useEffect(() => { if (changeRevision) { setRevision(value => value + 1); setGitRevision(value => value + 1); } }, [changeRevision]);
   useEffect(() => {
     if (collapsed) return;
     const refresh = () => setRevision(value => value + 1);
@@ -187,7 +190,7 @@ export function ProjectExplorer({ project, collapsed, expandedPaths, selectedFil
         onFocusCapture={() => window.projectGrid.fileTreeFocus(project.id, true)} onBlurCapture={event => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) window.projectGrid.fileTreeFocus(project.id, false); }}>
         <TreeNode projectId={project.id} entry={{ name: project.name, path: '', kind: 'directory' }} depth={-1} expanded={expanded} revision={revision} enabled={!collapsed && !gitOpen} selectedFile={selectedFile} onToggle={toggle} onSelect={onSelectFile} selected={files.selected} choose={files.choose} contextMenu={files.contextMenu} decorations={decorations} />
       </div>
-      {gitOpen && !collapsed && <GitPanel projectId={project.id} status={git.status} error={git.error} loading={git.loading} revision={gitRevision} onRefresh={() => { git.refresh(); setGitRevision(value => value + 1); }} onOpen={onSelectFile} />}
+      {gitOpen && !collapsed && <GitPanel projectId={project.id} status={git.status} error={git.error} loading={git.loading} revision={gitRevision} onRefresh={() => { git.refresh(); setGitRevision(value => value + 1); }} onOpen={(path, mode) => mode === 'file' ? onSelectFile(path) : onOpenChange(path, mode)} />}
       {!gitOpen && files.status}
     </div>
     {files.overlays}

@@ -256,21 +256,26 @@ class Worker:
         return {"path": relative, "name": os.path.basename(filename), "size": info.st_size, "modifiedAt": int(info.st_mtime * 1000), "realPath": os.path.relpath(filename, self.root).replace(os.sep, "/"), "directory": stat.S_ISDIR(info.st_mode), "file": stat.S_ISREG(info.st_mode), "link": os.path.islink(os.path.join(self.root, relative))}
 
     def git(self, action, value=None):
-        if action not in ("status", "history", "files"): raise ValueError("无效的 Git 请求。")
+        if action not in ("status", "history", "files", "diff", "apply"): raise ValueError("无效的 Git 请求。")
         if action == "history" and (type(value) is not int or not 0 <= value <= 100000): raise ValueError("无效的历史页码。")
         if action == "files" and (not isinstance(value, str) or not re.fullmatch(r"(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})", value)): raise ValueError("无效的提交标识。")
+        if action == "diff":
+            target = value.get("path") if isinstance(value, dict) else None
+            if not isinstance(target, str) or not target or len(target) > 4096 or "\0" in target or "\\" in target or target.startswith("/") or ".." in target.split("/"): raise ValueError("无效的文件路径。")
+        if action == "apply" and (not isinstance(value, dict) or not isinstance(value.get("patch"), str) or not value["patch"] or len(value["patch"]) > 1024 * 1024): raise ValueError("无效的补丁。")
         env = {key: val for key, val in os.environ.items() if key.upper() not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES")}
         env.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1", LC_ALL="C")
-        def run(args):
+        # text: a patch for git's standard input. ok: exit codes whose output is still wanted.
+        def run(args, text=None, ok=(0,)):
             # Spool subprocess output to temporary files so a large worktree does
             # not build an unbounded Python/JSON buffer. Both files close on error.
             with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as error:
                 try:
-                    result = subprocess.run(["git", "--no-pager", "-c", "core.fsmonitor=false", "-c", "log.showSignature=false", "-c", "color.ui=false", "-c", "i18n.logOutputEncoding=UTF-8", "-C", self.root] + args, stdout=output, stderr=error, env=env, timeout=8)
+                    result = subprocess.run(["git", "--no-pager", "-c", "core.fsmonitor=false", "-c", "log.showSignature=false", "-c", "color.ui=false", "-c", "i18n.logOutputEncoding=UTF-8", "-C", self.root] + args, stdout=output, stderr=error, env=env, timeout=8, input=None if text is None else text.encode("utf-8"))
                 except FileNotFoundError: raise ValueError("远程主机未找到 Git。")
                 except subprocess.TimeoutExpired: raise ValueError("远程 Git 读取超时，请稍后重试。")
                 if output.tell() > 1024 * 1024: raise ValueError("Git 结果过大，请缩小项目范围后重试。")
-                if result.returncode:
+                if result.returncode not in ok:
                     error.seek(0)
                     raise ValueError(error.read(2400).decode("utf-8", "replace").strip()[:600])
                 output.seek(0)
@@ -283,6 +288,17 @@ class Worker:
                 except ValueError as error:
                     if "does not have any commits yet" in str(error): data = ""
                     else: raise
+            elif action == "diff":
+                options = ["--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "-U3"]
+                if value.get("untracked") is True:
+                    # Nothing in the index to compare with: against nothing, from the top of the repository
+                    # so the header names the file the way every other patch does.
+                    top = re.sub(r"\r?\n$", "", run(["rev-parse", "--show-toplevel"]))
+                    data = run(["-C", top, "diff", "--no-index"] + options + ["--", "/dev/null", prefix + value["path"]], ok=(0, 1))
+                else: data = run(["diff"] + (["--cached"] if value.get("staged") is True else []) + options + ["--", value["path"]])
+            elif action == "apply":
+                run(["apply"] + (["-R"] if value.get("reverse") is True else []) + (["--cached"] if value.get("cached") is True else []) + ["--whitespace=nowarn", "-"], text=value["patch"])
+                data = ""
             else:
                 parents = run(["show", "-s", "--format=%P", value + "^{commit}", "--"]).strip().split()
                 args = ["diff", "--no-relative", "--name-status", "-z", "--no-ext-diff", "--no-textconv", "-M", parents[0], value, "--", "."] if parents else ["diff-tree", "--root", "--no-relative", "--no-commit-id", "-r", "--name-status", "-z", "--no-ext-diff", "--no-textconv", value, "--", "."]

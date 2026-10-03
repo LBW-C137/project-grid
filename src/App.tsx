@@ -23,6 +23,7 @@ import { quickDictation } from './voice-input';
 import { ShortcutSettings } from './ShortcutSettings';
 import { UsageGuide } from './UsageGuide';
 const FilePreview = lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
+const GitDiffView = lazy(() => import('./GitDiffView').then(module => ({ default: module.GitDiffView })));
 
 const api = window.projectGrid;
 
@@ -230,7 +231,9 @@ export function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [sshAuth, setSSHAuth] = useState<SSHAuthPrompt[]>([]);
   const [expandedByProject, setExpandedByProject] = useState<Record<string, string[]>>({});
-  const [previewFile, setPreviewFile] = useState<{ projectId: string; path: string } | null>(null);
+  // diff: the file is shown as its Git changes (from the Git sidebar) instead of its contents.
+  const [previewFile, setPreviewFile] = useState<{ projectId: string; path: string; diff?: 'worktree' | 'staged' | 'untracked' } | null>(null);
+  const [changeRevision, setChangeRevision] = useState(0);
   const editorGuard = useRef<(() => Promise<boolean>) | null>(null);
   const navigationGuard = useRef<Promise<boolean> | null>(null);
   const registerEditorGuard = useCallback((guard: (() => Promise<boolean>) | null) => { editorGuard.current = guard; }, []);
@@ -382,13 +385,15 @@ export function App() {
       {focus && <ProjectExplorer key={focus.id} project={focus} collapsed={settings.explorerCollapsed}
         onFilesRemoved={paths => setPreviewFile(current => current?.projectId === focus.id && paths.some(path => current.path === path || current.path.startsWith(path + '/')) ? null : current)}
         onPathRenamed={(oldPath, newPath) => setPreviewFile(current => current?.projectId === focus.id && (current.path === oldPath || current.path.startsWith(oldPath + '/')) ? { projectId: focus.id, path: newPath + current.path.slice(oldPath.length) } : current)}
-        expandedPaths={expandedByProject[focus.id] ?? ['']} selectedFile={previewFile?.projectId === focus.id ? previewFile.path : null}
+        expandedPaths={expandedByProject[focus.id] ?? ['']} selectedFile={previewFile?.projectId === focus.id ? previewFile.path : null} changeRevision={changeRevision}
+        onOpenChange={async (path, mode) => { if (previewFile?.projectId === focus.id && previewFile.path === path && previewFile.diff === mode) return; if (await allowNavigation()) setPreviewFile({ projectId: focus.id, path, diff: mode === 'file' ? undefined : mode }); }}
         onCollapse={() => setPreference({ explorerCollapsed: !settings.explorerCollapsed })}
         onExpandedChange={paths => setExpandedByProject(value => ({ ...value, [focus.id]: paths }))}
-        onSelectFile={async path => { if (previewFile?.projectId === focus.id && previewFile.path === path) return; if (await allowNavigation()) setPreviewFile({ projectId: focus.id, path }); }} onReturn={returnToGrid} />}
+        onSelectFile={async path => { if (previewFile?.projectId === focus.id && previewFile.path === path && !previewFile.diff) return; if (await allowNavigation()) setPreviewFile({ projectId: focus.id, path }); }} onReturn={returnToGrid} />}
       <main className="main-workspace">
         {workspace.warning && <div className="workspace-warning"><Info size={15} />{t(workspace.warning)}</div>}
-        {focusedId && previewFile?.projectId === focusedId && <Suspense fallback={null}><FilePreview key={`${focusedId}:${previewFile.path}`} projectId={focusedId} filePath={previewFile.path} onClose={async () => { if (await allowNavigation()) setPreviewFile(null); }} onOpenLink={target => openTerminalLink(focusedId, target)} onError={reportError} registerGuard={registerEditorGuard} /></Suspense>}
+        {focusedId && previewFile?.projectId === focusedId && previewFile.diff && <Suspense fallback={null}><GitDiffView key={`${focusedId}:${previewFile.path}:${previewFile.diff}`} projectId={focusedId} filePath={previewFile.path} mode={previewFile.diff} onClose={() => setPreviewFile(null)} onOpenFile={() => setPreviewFile({ projectId: focusedId, path: previewFile.path })} onError={reportError} onChanged={() => setChangeRevision(value => value + 1)} /></Suspense>}
+        {focusedId && previewFile?.projectId === focusedId && !previewFile.diff && <Suspense fallback={null}><FilePreview key={`${focusedId}:${previewFile.path}`} projectId={focusedId} filePath={previewFile.path} onClose={async () => { if (await allowNavigation()) setPreviewFile(null); }} onOpenLink={target => openTerminalLink(focusedId, target)} onError={reportError} registerGuard={registerEditorGuard} /></Suspense>}
         <div className={`grid-area ${!projects.length ? 'empty-area' : ''}`} style={{ visibility: focusedId && previewFile?.projectId === focusedId ? 'hidden' : undefined }}>
           {!projects.length ? <div className="empty-workspace">
             <div className="empty-illustration" aria-hidden="true"><div className="illustration-tile"><span /><i /><i /><i /></div><div className="illustration-tile red-tile"><span /><i /><i /><b /></div><div className="illustration-tile green-tile"><Check size={22} /></div><div className="illustration-tile"><span /><i /><i /></div></div>

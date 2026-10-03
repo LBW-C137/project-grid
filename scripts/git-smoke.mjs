@@ -74,7 +74,11 @@ try {
   assert.equal(await page.getByRole('tree', { name: `${project.name} 的文件目录` }).isVisible(), false, 'Git mode collapses the file explorer');
   assert.equal(await panel.locator('.git-working h3').textContent(), '未提交更改3');
   assert.equal(await panel.getByRole('button', { name: '已修改 src/app.ts', exact: true }).count(), 2, 'staged and unstaged edits are distinct');
-  assert.ok(await panel.getByRole('button', { name: '已删除 obsolete.txt', exact: true }).isDisabled());
+  // A deleted file opens as its changes too (every line removed), so it can be put back.
+  await panel.getByRole('button', { name: '已删除 obsolete.txt', exact: true }).click();
+  await page.locator('.git-diff-view').waitFor(); assert.equal(await page.locator('.git-diff-view .git-line-removed pre').first().textContent(), 'old');
+  assert.equal(await page.locator('.git-diff-view .git-line-added').count(), 0);
+  await page.locator('.git-diff-view').getByRole('button', { name: '返回终端', exact: true }).first().click();
   await panel.getByRole('button', { name: /查看提交.*合并工具栏功能/ }).click();
   await panel.locator('.git-commit-detail').getByText('feature.txt', { exact: true }).waitFor();
   assert.ok(await panel.locator('.git-graph path').count() > 4, 'history includes actual merge edges');
@@ -93,6 +97,10 @@ try {
   await panel.getByRole('button', { name: '刷新 Git 状态和历史', exact: true }).click();
   await panel.getByRole('button', { name: '未跟踪 待提交.txt', exact: true }).waitFor();
   await panel.getByRole('button', { name: '未跟踪 待提交.txt', exact: true }).click();
+  // A changed file opens as its changes first; the editor is one click away.
+  const changes = page.locator('.git-diff-view'); await changes.waitFor();
+  assert.equal(await changes.locator('.git-line-added pre').first().textContent(), '新的未提交文件');
+  await changes.getByRole('button', { name: '打开文件', exact: true }).click();
   const editor = page.getByRole('textbox', { name: '文件编辑器', exact: true }); await editor.waitFor();
   assert.equal(await editor.inputValue(), '新的未提交文件'); await editor.fill('未保存草稿');
   await panel.getByRole('button', { name: '已修改 src/app.ts', exact: true }).first().click();
@@ -101,6 +109,21 @@ try {
   await waitFor(async () => (await fs.readFile(path.join(project.path, '待提交.txt'), 'utf8')) === '未保存草稿', 'editor saves before leaving the project');
   await page.getByRole('button', { name: '关闭文件预览', exact: true }).click();
   await waitFor(async () => !await editor.count(), 'file preview closed');
+  // Changes view: keeping a working-tree hunk stages it, so the file leaves that group; unstaging brings it back.
+  await panel.getByRole('button', { name: '已修改 src/app.ts', exact: true }).nth(1).click();
+  await changes.waitFor();
+  assert.equal(await changes.locator('.git-line-removed pre').first().textContent(), 'export const value = 2;');
+  assert.equal(await changes.locator('.git-line-added pre').first().textContent(), 'export const value = 3;');
+  await page.screenshot({ path: path.join(output, 'git-changes.png') });
+  await changes.getByRole('button', { name: '保留 第 1 处', exact: true }).click();
+  await waitFor(async () => !(await git(project.path, 'diff', '--name-only')).includes('src/app.ts'), 'kept hunk is staged');
+  await changes.getByText('这个文件没有待处理的更改了。').waitFor();
+  await waitFor(async () => await panel.getByRole('button', { name: '已修改 src/app.ts', exact: true }).count() === 1, 'file leaves the working tree group');
+  await panel.getByRole('button', { name: '已修改 src/app.ts', exact: true }).click();
+  await changes.getByRole('button', { name: '取消暂存 第 1 处', exact: true }).click();
+  await waitFor(async () => !(await git(project.path, 'diff', '--cached', '--name-only')).includes('src/app.ts'), 'unstaged hunk returns to the working tree');
+  await changes.getByRole('button', { name: '返回终端', exact: true }).first().click();
+  await waitFor(async () => !await changes.count(), 'changes view closed');
   await page.getByRole('button', { name: '收起目录栏', exact: true }).click();
   await page.waitForSelector('.focus-sidebar.is-collapsed');
   const count = await app.evaluate(() => globalThis.gitReads.status);

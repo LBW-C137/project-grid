@@ -9,17 +9,27 @@ function gitEnvironment(source = process.env) {
   for (const key of Object.keys(env)) if (['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'].includes(key.toUpperCase())) delete env[key];
   return env;
 }
+// A path inside the project, as the window names files: forward slashes, relative, no parent steps.
+function validatePath(value) {
+  if (typeof value !== 'string' || !value || value.length > 4096 || /[\0\\]/.test(value) || value.startsWith('/') || /^[a-z]:/i.test(value) || value.split('/').includes('..')) throw new Error('无效的文件路径。');
+}
 function validateQuery(action, value) {
-  if (!['status', 'history', 'files'].includes(action)) throw new Error('无效的 Git 请求。');
+  if (!['status', 'history', 'files', 'diff', 'apply'].includes(action)) throw new Error('无效的 Git 请求。');
   if (action === 'history' && (!Number.isInteger(value) || value < 0 || value > 100000)) throw new Error('无效的历史页码。');
   if (action === 'files' && (typeof value !== 'string' || !/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(value))) throw new Error('无效的提交标识。');
+  if (action === 'diff') { if (!value || typeof value !== 'object') throw new Error('无效的 Git 请求。'); validatePath(value.path); }
+  if (action === 'apply' && (!value || typeof value !== 'object' || typeof value.patch !== 'string' || !value.patch || value.patch.length > MAX_OUTPUT)) throw new Error('无效的补丁。');
 }
 async function readGitRaw(directory, action, value) {
   validateQuery(action, value);
-  const run = async args => {
+  // input: text for git's standard input (a patch). exitCodes: codes besides 0 whose output is still wanted.
+  const run = async (args, { input, exitCodes = [] } = {}) => {
     try {
-      return (await exec('git', ['--no-pager', '-c', 'core.fsmonitor=false', '-c', 'log.showSignature=false', '-c', 'color.ui=false', '-c', 'i18n.logOutputEncoding=UTF-8', '-C', directory, ...args], { env: gitEnvironment(), windowsHide: true, encoding: 'utf8', timeout: 8000, maxBuffer: MAX_OUTPUT })).stdout;
+      const child = exec('git', ['--no-pager', '-c', 'core.fsmonitor=false', '-c', 'log.showSignature=false', '-c', 'color.ui=false', '-c', 'i18n.logOutputEncoding=UTF-8', '-C', directory, ...args], { env: gitEnvironment(), windowsHide: true, encoding: 'utf8', timeout: 8000, maxBuffer: MAX_OUTPUT });
+      if (input !== undefined) { child.child.stdin.on('error', () => {}); child.child.stdin.end(input); }
+      return (await child).stdout;
     } catch (error) {
+      if (exitCodes.includes(error.code) && typeof error.stdout === 'string') return error.stdout;
       if (error.code === 'ENOENT') throw new Error('未找到 Git，请先安装 Git 并重新打开应用。');
       if (error.killed || error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') throw new Error('Git 读取超时或结果过大，请缩小项目范围后重试。');
       throw new Error(String(error.stderr || error.message).trim().slice(0, 600));
@@ -28,6 +38,20 @@ async function readGitRaw(directory, action, value) {
   try {
     const prefix = (await run(['rev-parse', '--show-prefix'])).replace(/\r?\n$/, '');
     if (action === 'status') return { repository: true, prefix, output: await run(['status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all', '--ignore-submodules=none', '--', '.']) };
+    if (action === 'diff') {
+      const options = ['--no-color', '--no-ext-diff', '--no-textconv', '--no-relative', '-U3'];
+      // An untracked file has nothing in the index to compare with; against nothing it is one added hunk.
+      // Run from the top of the repository so its header names the file as every other patch does.
+      if (value.untracked) {
+        const top = (await run(['rev-parse', '--show-toplevel'])).replace(/\r?\n$/, '');
+        return { repository: true, prefix, output: await run(['-C', top, 'diff', '--no-index', ...options, '--', '/dev/null', prefix + value.path], { exitCodes: [1] }) };
+      }
+      return { repository: true, prefix, output: await run(['diff', ...(value.staged ? ['--cached'] : []), ...options, '--', value.path]) };
+    }
+    if (action === 'apply') {
+      await run(['apply', ...(value.reverse ? ['-R'] : []), ...(value.cached ? ['--cached'] : []), '--whitespace=nowarn', '-'], { input: value.patch });
+      return { repository: true, prefix, output: '' };
+    }
     if (action === 'history') {
       let output;
       try { output = await run(['log', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${PAGE_SIZE + 1}`, `--skip=${value}`, ...(prefix ? ['--full-history', '--', '.'] : ['--'])]); }
@@ -116,6 +140,34 @@ function parseFiles(raw) {
   }
   return { files, total, truncated: total > MAX_FILES };
 }
+// git diff of one file as hunks the window shows and applies one at a time; each hunk carries a patch
+// of its own (the file header and that hunk). text is false when the file is not UTF-8 text, whose
+// patch could not be rebuilt from decoded text.
+function parseDiff(raw) {
+  const result = { repository: raw.repository, binary: false, text: !raw.output.includes('\uFFFD'), added: 0, removed: 0, hunks: [], patch: raw.output };
+  const lines = raw.output.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  const header = [];
+  let hunk = null;
+  for (const line of lines) {
+    if (line.startsWith('@@ ')) {
+      const range = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+      if (!range) throw new Error('无法解析 Git 差异。');
+      hunk = { header: line, oldStart: Number(range[1]), oldLines: range[2] === undefined ? 1 : Number(range[2]), newStart: Number(range[3]), newLines: range[4] === undefined ? 1 : Number(range[4]), lines: [], patch: '' };
+      result.hunks.push(hunk);
+    } else if (!hunk) {
+      header.push(line);
+      if (/^Binary files .* differ$/.test(line)) result.binary = true;
+    } else if (line.startsWith('\\')) hunk.lines.push({ type: '\\', text: line.slice(2) });
+    else {
+      const type = line[0] === '+' ? '+' : line[0] === '-' ? '-' : ' ';
+      if (type === '+') result.added++; else if (type === '-') result.removed++;
+      hunk.lines.push({ type, text: line.slice(1) });
+    }
+  }
+  for (const item of result.hunks) item.patch = [...header, item.header, ...item.lines.map(line => (line.type === '\\' ? '\\ ' : line.type) + line.text)].join('\n') + '\n';
+  return result;
+}
 class ProjectGit {
   constructor(remote) { this.remote = remote; this.pending = new Map(); }
   async read(project, action, value) {
@@ -126,10 +178,10 @@ class ProjectGit {
       const raw = project.kind === 'ssh'
         ? await this.remote(project.id).request('git', { action, value })
         : await readGitRaw(project.path, action, value);
-      return action === 'status' ? parseStatus(raw) : action === 'history' ? parseHistory(raw, value) : parseFiles(raw);
+      return action === 'status' ? parseStatus(raw) : action === 'history' ? parseHistory(raw, value) : action === 'files' ? parseFiles(raw) : action === 'diff' ? parseDiff(raw) : { applied: raw.repository };
     })();
     this.pending.set(key, task);
     try { return await task; } finally { if (this.pending.get(key) === task) this.pending.delete(key); }
   }
 }
-module.exports = { ProjectGit, readGitRaw, parseStatus, parseHistory, parseFiles, gitEnvironment };
+module.exports = { ProjectGit, readGitRaw, parseStatus, parseHistory, parseFiles, parseDiff, gitEnvironment };
