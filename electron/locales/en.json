@@ -556,5 +556,8 @@
   "新增使用指南：第一次打开和每次更新后显示，也可在设置里随时再看。": "A usage guide: it opens on first use and after each update, and any time from Settings.",
   "设置里可选择本地终端使用 PowerShell 或命令提示符 (cmd)；两者都能识别 Codex 与 Claude Code、提醒完成并在重启后恢复会话。": "Choose PowerShell or Command Prompt (cmd) for local terminals in Settings; both recognise Codex and Claude Code, announce finished rounds and restore sessions after a restart.",
   "新建分屏终端的快捷键 Ctrl+Shift+T，项目菜单里也会显示快捷键。": "Ctrl+Shift+T opens a new split terminal, and the project menu shows the key.",
-  "顶部标题栏只保留设置按钮；搜索 Ctrl+Shift+F、添加项目 Ctrl+Shift+N，都可在设置里修改。": "The title bar keeps only the settings button; search is Ctrl+Shift+F and add project Ctrl+Shift+N, both changeable in Settings."
+  "顶部标题栏只保留设置按钮；搜索 Ctrl+Shift+F、添加项目 Ctrl+Shift+N，都可在设置里修改。": "The title bar keeps only the settings button; search is Ctrl+Shift+F and add project Ctrl+Shift+N, both changeable in Settings.",
+  "多个 Codex 终端空闲时不再反复扫描全部会话记录，后台 CPU 占用大幅下降。": "Idle Codex terminals no longer rescan every session transcript; background CPU use drops sharply.",
+  "语音播报与语音识别模型在空闲几分钟后自动释放内存；有任务在处理或开始录音时会提前加载。": "The spoken-notice and dictation models release their memory after a few idle minutes, and load ahead of time while a round is running or a recording starts.",
+  "大仓库的 Git 状态自动刷新会按读取耗时放慢，手动刷新不受影响。": "In large repositories the Git status refreshes less often, in step with how long it takes to read; the refresh button still acts at once."
 }
