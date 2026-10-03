@@ -1,0 +1,47 @@
+/* How the window answers the pointer. Everything here is decoration on top of working controls:
+   it follows the app's animation setting (see the motion rules in glass.css) and moves no layout. */
+
+/* Overview: the card under the pointer stands out. A soft light follows the pointer across its
+   translucent surface (under the text, like the completion glow), its edge brightens and it lifts. */
+.panel-spotlight { position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .28s ease;
+  background: radial-gradient(520px circle at var(--spot-x, 50%) var(--spot-y, 0px), rgba(255, 255, 255, .22), rgba(255, 255, 255, .08) 36%, transparent 62%); }
+.app-shell:not(.focus-mode) .project-panel { transition: border-color .18s ease, box-shadow .24s ease; }
+.app-shell:not(.focus-mode) .project-grid:not(.is-reordering) .project-panel:hover .panel-spotlight { opacity: 1; }
+.app-shell:not(.focus-mode) .project-grid:not(.is-reordering) .project-panel:hover { box-shadow: var(--glass-lift), 0 0 0 1px rgba(214, 236, 255, .62), 0 16px 36px -12px rgba(2, 14, 26, .6); }
+.app-shell:not(.focus-mode) .project-grid:not(.is-reordering) .project-panel:is(.is-working, .has-unread, .round-complete, .has-error):hover { box-shadow: var(--glass-lift), 0 0 0 1px rgba(var(--signal-rgb), .5), 0 16px 36px -12px rgba(2, 14, 26, .6); }
+:root[data-motion="off"] .panel-spotlight { display: none; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .panel-spotlight { display: none; } }
+/* The controls of the hovered card come forward; on the others they rest. */
+.app-shell:not(.focus-mode) .panel-header .icon-button { opacity: .72; transition: opacity .18s ease, background .18s ease, transform .18s cubic-bezier(.2, .8, .2, 1); }
+.app-shell:not(.focus-mode) .project-panel:is(:hover, :focus-within) .panel-header .icon-button { opacity: 1; }
+
+/* Rows answer the pointer the same way everywhere: a wash of light, a small step to the right, a press. */
+:is(.git-file, .activity-item, .recent-open, .tree-row) { transition: background .16s ease, transform .16s cubic-bezier(.2, .8, .2, 1); }
+:is(button.git-file, .recent-open):hover { transform: translateX(2px); }
+.activity-item:hover { background: rgba(255, 255, 255, .07); }
+:is(button.git-file, .tree-row, .recent-open):active { transform: scale(.985); }
+.git-hunk { transition: border-color .18s ease, box-shadow .18s ease; }
+.git-hunk:hover { border-color: rgba(220, 237, 255, .3); box-shadow: 0 6px 20px -10px rgba(2, 14, 26, .7); }
+.git-hunk-action { transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s cubic-bezier(.2, .8, .2, 1); }
+.git-hunk-action:active:not(:disabled) { transform: scale(.95); }
+.git-line { transition: filter .12s ease; }.git-line:hover { filter: brightness(1.18); }
+
+/* Pills, tabs and badges press in and settle. */
+:is(.settings-nav button, .preview-option, .status-button, .text-button, .explorer-tabs button) { transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s cubic-bezier(.2, .8, .2, 1); }
+:is(.settings-nav button, .preview-option, .status-button, .text-button):active:not(:disabled) { transform: scale(.95); }
+.status-button:hover .status-dot { transform: scale(1.25); }.status-dot { transition: transform .18s cubic-bezier(.2, .8, .2, 1); }
+.setting-row { transition: background .18s ease; border-radius: 8px; }
+.setting-row:hover { background: rgba(255, 255, 255, .035); }
+:is(.setting-row select, .search-input, .announce-options input) { transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
+.setting-row select:hover { border-color: #b8d7ef80; }
+
+/* Things that appear, arrive: panes slide in from their edge, messages rise, dialogs dim the window gently. */
+@keyframes arrive-right { from { opacity: 0; transform: translateX(14px); } }
+@keyframes arrive-up { from { opacity: 0; transform: translateY(10px); } }
+@keyframes backdrop-in { from { opacity: 0; } }
+.activity-pane { animation: arrive-right .24s cubic-bezier(.2, .8, .2, 1); }
+.activity-item { animation: arrive-up .2s cubic-bezier(.2, .8, .2, 1); }
+.git-hunk { animation: arrive-up .22s cubic-bezier(.2, .8, .2, 1) backwards; }
+.error-toast, .workspace-warning { animation: arrive-up .22s cubic-bezier(.2, .8, .2, 1); }
+dialog[open]::backdrop { animation: backdrop-in .2s ease; }
+.panel-activity { animation: arrive-up .2s cubic-bezier(.2, .8, .2, 1); }

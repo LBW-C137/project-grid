@@ -10,7 +10,7 @@
 }
 :root[data-theme="mountain-blue"] {
   background: #193b49;
-  --glass: rgba(9, 35, 46, .32);
+  --glass: rgba(9, 35, 46, .42);
   --glass-strong: rgba(15, 39, 52, .72);
   --glass-solid: #173847;
   --glass-border: #d8f4f257;
@@ -20,17 +20,17 @@
   --theme-line: #c5e6e43b;
   --theme-hover: #c2eeec16;
   --theme-chrome: rgba(13, 40, 52, .34);
-  --theme-sidebar: rgba(12, 40, 50, .36);
+  --theme-sidebar: rgba(12, 40, 50, .52);
   --theme-pane: rgba(4, 23, 34, .16);
   --theme-control: rgba(26, 65, 78, .2);
-  --theme-editor: rgba(6, 27, 39, .26);
+  --theme-editor: rgba(6, 27, 39, .4);
   --theme-code: #09212d60;
   --theme-button: #d2e9e7a1;
   --theme-button-ink: #183d48;
 }
 :root[data-theme="wild-red"] {
   background: #3e2830;
-  --glass: rgba(40, 21, 32, .32);
+  --glass: rgba(40, 21, 32, .42);
   --glass-strong: rgba(43, 24, 37, .74);
   --glass-solid: #3a2634;
   --glass-border: #ffe9df57;
@@ -40,10 +40,10 @@
   --theme-line: #edd0c43b;
   --theme-hover: #f7d1bf16;
   --theme-chrome: rgba(48, 25, 38, .34);
-  --theme-sidebar: rgba(42, 24, 36, .36);
+  --theme-sidebar: rgba(42, 24, 36, .52);
   --theme-pane: rgba(25, 10, 24, .16);
   --theme-control: rgba(83, 48, 65, .2);
-  --theme-editor: rgba(29, 18, 31, .26);
+  --theme-editor: rgba(29, 18, 31, .4);
   --theme-code: #241b2466;
   --theme-button: #ead9d0a1;
   --theme-button-ink: #502e39;
@@ -97,7 +97,7 @@
 .theme-option.is-selected .theme-swatch { border-color: var(--theme-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 28%, transparent); }
 .theme-option:focus-within .theme-swatch { outline: 2px solid var(--theme-accent); outline-offset: 3px; }
 .theme-name { display: block; margin-top: 9px; font-size: 12px; color: var(--theme-ink); }
-.theme-option small { display: block; margin-top: 4px; color: var(--theme-muted); font-size: 9px; line-height: 1.5; }
+.theme-option small { display: block; margin-top: 4px; color: var(--theme-muted); font-size: 11px; line-height: 1.5; }
 @media (prefers-reduced-transparency: reduce) {
   :root:not([data-theme="forest"]) :is(.project-panel, .titlebar, .focus-sidebar, .file-preview, .settings-dialog, .dropdown) { background: var(--glass-solid); backdrop-filter: none; }
 }

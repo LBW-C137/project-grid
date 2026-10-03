@@ -664,5 +664,7 @@
   "操作教程": "Tutorial",
   "跳过教程": "Skip the tutorial",
   "教程改为在界面上一步步指引：气泡指向要操作的位置，其余部分暂时不可用；可在设置里重看。": "The tutorial now guides you in the window itself: a bubble points at the place to act while the rest is blocked; replay it from Settings.",
-  "先点击「启动终端」，再在终端里输入 codex 或 claude，按回车启动。": "Click “Start terminal” first, then type codex or claude in the terminal and press Enter."
+  "先点击「启动终端」，再在终端里输入 codex 或 claude，按回车启动。": "Click “Start terminal” first, then type codex or claude in the terminal and press Enter.",
+  "字体更清晰：正文、代码和终端改用常规字重，最小字号 11px，等宽字体统一并带中文回退。": "Clearer type: body text, code and the terminal use the regular weight, nothing is smaller than 11px, and one monospace stack with a Chinese fallback is used throughout.",
+  "总览里鼠标移到哪个项目，哪个项目就亮起并有光斑跟随；列表、按钮和面板都有更细致的悬停与按压反馈。": "In the overview the project under the pointer lights up and a glow follows the pointer; lists, buttons and panes answer hover and press more finely."
 }

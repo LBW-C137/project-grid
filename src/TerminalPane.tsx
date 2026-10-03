@@ -63,8 +63,8 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const hoverLink = (_event: MouseEvent, target: string) => { if (host.current) host.current.title = `${t('Ctrl + 鼠标左键打开链接')}\n${target}`; };
     const leaveLink = () => { if (host.current) host.current.removeAttribute('title'); };
     const terminal = new Terminal({
-      fontFamily: "'Cascadia Code', 'Consolas', 'Microsoft YaHei UI', monospace",
-      fontSize, lineHeight: 1.3, fontWeight: '600', fontWeightBold: '700', scrollback: 3000, minimumContrastRatio: 7,
+      fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace",
+      fontSize, lineHeight: 1.3, fontWeight: '400', fontWeightBold: '700', scrollback: 3000, minimumContrastRatio: 7,
       cursorBlink: true, cursorStyle: 'bar', allowProposedApi: false, allowTransparency: true,
       // Bundled ConPTY reflows the prompt on resize; the cursor line must follow
       // that reflow too, or later output can overwrite old prompt characters.

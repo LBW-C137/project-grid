@@ -95,11 +95,11 @@ try {
     return { gap: innerHeight - box.bottom, margin: parseFloat(getComputedStyle(node).marginBottom), width: innerWidth };
   });
   assert.ok(Math.abs(previewGeometry.gap - previewGeometry.margin) <= 1, 'preview keeps one layout gap above the window bottom');
-  assert.equal(await editor.evaluate(node => getComputedStyle(node).fontWeight), '600');
+  assert.equal(await editor.evaluate(node => getComputedStyle(node).fontWeight), '400');
   await page.getByRole('button', { name: '预览', exact: true }).click();
   const markdown = page.getByRole('article', { name: 'Markdown 预览', exact: true });
   await markdown.getByRole('heading', { name: 'Project Grid', exact: true }).waitFor();
-  assert.equal(await markdown.evaluate(node => getComputedStyle(node).fontWeight), '600');
+  assert.equal(await markdown.evaluate(node => getComputedStyle(node).fontWeight), '400');
   assert.equal(await markdown.locator('table tbody tr').count(), 2);
   assert.equal(await markdown.locator('pre code').count(), 1);
   assert.equal(await markdown.locator('input[type="checkbox"][disabled]').count(), 2);

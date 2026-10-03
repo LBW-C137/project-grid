@@ -107,7 +107,7 @@ try {
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
     const cells = await readCells(first.locator('.xterm-rows').first());
     for (const cell of cells) {
-      assert.equal(cell.weight, cell.label === 'BOLD' ? '700' : '600');
+      assert.equal(cell.weight, cell.label === 'BOLD' ? '700' : '400');
       assert.equal(cell.size, '13px', 'user font size stays unchanged');
       assert.equal(cell.filter, 'none'); assert.equal(cell.opacity, '1');
       if (cell.label.startsWith('DIM_')) {

@@ -46,7 +46,7 @@
 .panel-header { transition: background .22s ease; }
 .app-shell:not(.focus-mode) .project-panel:not(.has-unread, .round-complete) .panel-header:hover { background: linear-gradient(180deg, #ffffff12, #ffffff05); }
 .panel-name > span { transition: text-shadow .22s ease; }
-.app-shell:not(.focus-mode) .panel-header:hover .panel-name > span { text-shadow: var(--text-shadow, none), 0 0 14px #ffffff40; }
+.app-shell:not(.focus-mode) .panel-header:hover .panel-name > span { text-shadow: var(--text-shadow, none); }
 .panel-name small { max-width: 140px; }
 .focus-mode .panel-name small { max-width: 280px; }
 
@@ -146,7 +146,7 @@
 .file-text-editor { caret-color: var(--theme-accent, #ffffff); }
 .file-text-editor::selection { background: color-mix(in srgb, var(--theme-accent, #b9e6d5) 34%, #1d3445); }
 .editor-gutter .is-current { transition: color .2s ease, text-shadow .2s ease; }
-.file-editor:focus-within .editor-gutter .is-current { color: var(--theme-accent, #ffffff); text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent, #ffffff) 55%, transparent); }
+.file-editor:focus-within .editor-gutter .is-current { color: var(--theme-accent, #ffffff); text-shadow: var(--text-shadow, none); }
 
 /* Switching files or modes eases the content in while the tabs and toolbar stay put. */
 .file-preview > :is(.file-editor, .markdown-editor-surface, .file-code-scroll, .image-viewport, .video-viewport, .html-preview-frame, .markdown-body, .file-preview-message) { animation: polish-content-in .28s cubic-bezier(.2, .8, .2, 1); }

@@ -1,0 +1,16 @@
+/* Type, in one place. Two faces: the interface font and one monospace stack for code, paths and the
+   terminal, each with a Chinese fallback. Body text is weight 400. The fonts of Windows 10 have no weight in between:
+   600 falls to bold for Microsoft YaHei and Consolas, which clogs small Chinese strokes, and 500 makes
+   Segoe UI semibold while Chinese stays regular, so a line mixes two weights. Labels and emphasis stay 600, headings 700. */
+:root {
+  --font-ui: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
+  --font-mono: 'Cascadia Code', 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace;
+  font-family: var(--font-ui);
+}
+body { text-rendering: optimizeLegibility; font-kerning: normal; font-optical-sizing: auto; }
+h1, h2, h3 { letter-spacing: .1px; }
+code, kbd, pre, samp { font-family: var(--font-mono); }
+/* Counters, times and sizes keep their width as digits change. */
+.panel-index, .panel-meta, .workspace-summary, .activity-title time, .file-preview-footer, .git-branch > span, .explorer-tab-count, .zoom-label, .guide-keys kbd { font-variant-numeric: tabular-nums; }
+/* Long Chinese explanations read better with a little more leading than labels need. */
+.setting-row small, .settings-intro, .settings-note p, .guide-body, .activity-item p, .activity-empty, .agents-intro, .tour-bubble p { line-height: 1.65; }
