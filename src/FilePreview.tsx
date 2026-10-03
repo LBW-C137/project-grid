@@ -56,8 +56,9 @@ function fileSize(bytes: number) {
   return `${(bytes / 1024 ** unit).toFixed(unit ? 1 : 0)} ${units[unit]}`;
 }
 
-export function FilePreview({ projectId, filePath, onClose, onError, registerGuard, onOpenLink }: {
-  projectId: string; filePath: string; onClose: () => void; onError: (message: string) => void;
+export function FilePreview({ projectId, filePath, autoSave, onClose, onError, registerGuard, onOpenLink }: {
+  // autoSave: edits are written after a short pause in typing, and before leaving the file.
+  projectId: string; filePath: string; autoSave: boolean; onClose: () => void; onError: (message: string) => void;
   registerGuard: (guard: (() => Promise<boolean>) | null) => void;
   onOpenLink: (target: string) => void;
 }) {
@@ -90,23 +91,40 @@ export function FilePreview({ projectId, filePath, onClose, onError, registerGua
   const dirty = editing && draft !== (text || '').replace(/\r\n/g, '\n');
   dirtyRef.current = dirty;
 
-  const save = (): Promise<boolean> => {
+  // quiet: an automatic save. The editor stays enabled and keeps its focus, and whatever was typed
+  // while the file was being written stays in the editor (and is saved by the next pause).
+  const draftRef = useRef(draft); draftRef.current = draft;
+  const save = (quiet = false): Promise<boolean> => {
     if (savingTask.current) return savingTask.current;
     if (!preview || !textPage || !editing || !dirty) return Promise.resolve(true);
-    setSaving(true); setSaveMessage('');
-    const task = window.projectGrid.saveFile(projectId, filePath, textPage.index, preview.revision, draft).then(result => {
+    if (!quiet) setSaving(true);
+    setSaveMessage('');
+    const sent = draft;
+    const task = window.projectGrid.saveFile(projectId, filePath, textPage.index, preview.revision, sent).then(result => {
       if (!result.ok) { setSaveMessage(result.error); return false; }
       setLoaded({ key, result });
-      if ('content' in result.value) setDraft(result.value.content.replace(/\r\n/g, '\n'));
-      dirtyRef.current = false; window.projectGrid.editorDirty(false);
-      setSaveMessage(t('已保存')); return true;
+      if ('content' in result.value) { const saved = result.value.content.replace(/\r\n/g, '\n'); setDraft(current => current === sent ? saved : current); }
+      if (draftRef.current === sent) { dirtyRef.current = false; window.projectGrid.editorDirty(false); }
+      setSaveMessage(quiet ? t('已自动保存') : t('已保存')); return true;
     }).catch(error => { setSaveMessage(String(error.message || error)); return false; })
       .finally(() => { setSaving(false); savingTask.current = null; });
     savingTask.current = task; return task;
   };
+  const saveRef = useRef(save); saveRef.current = save;
+  // Auto save: one second after the last keystroke, and at once when the window loses focus. A save
+  // that fails (the file changed on disk) shows its message and waits for the next edit.
+  useEffect(() => {
+    if (!autoSave || !dirty) return;
+    const timer = setTimeout(() => void saveRef.current(true), 1000);
+    const blur = () => void saveRef.current(true);
+    window.addEventListener('blur', blur);
+    return () => { clearTimeout(timer); window.removeEventListener('blur', blur); };
+  }, [autoSave, dirty, draft]);
   guard.current = async () => {
-    if (savingTask.current) return savingTask.current;
+    if (savingTask.current && !await savingTask.current) return false;
     if (!dirtyRef.current) return true;
+    // With auto save, leaving the file saves it; the question is asked only when that fails.
+    if (autoSave && await saveRef.current(true) && !dirtyRef.current) return true;
     const result = await window.projectGrid.confirmEditorClose(filePath);
     if (!result.ok || result.value === 'cancel') return false;
     if (result.value === 'save') return save();
@@ -176,7 +194,7 @@ export function FilePreview({ projectId, filePath, onClose, onError, registerGua
   else body = <div className="file-preview-message"><FileText size={28} /><p>{preview?.kind === 'unsupported' ? t(preview.reason) : t('无法预览此文件。')}</p></div>;
 
   return <section className="file-preview" aria-label={t('文件预览')} onKeyDown={event => { if (editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); } }}>
-    <div className="file-tabs"><button className="terminal-tab" onClick={onClose}><Terminal size={15} />{t('返回终端')}</button><div className="selected-file-tab"><Icon size={15} /><span>{filePath.split('/').at(-1)}{dirty ? ' •' : ''}</span><button className="icon-button" title={t('关闭文件预览')} aria-label={t('关闭文件预览')} onClick={onClose}><X size={14} /></button></div><span className={`preview-readonly ${editing && dirty ? 'is-dirty' : ''}`} role="status">{t(markdown && mode === 'preview' ? dirty ? '预览 · 未保存' : 'Markdown 预览' : editing ? saving ? '编辑模式 · 保存中…' : dirty ? '编辑模式 · 未保存，Ctrl+S 保存' : '编辑模式' : preview?.kind === 'image' ? '图片预览' : preview?.kind === 'video' ? '视频预览' : preview?.kind === 'html' ? '网页预览' : '文本预览')}</span></div>
+    <div className="file-tabs"><button className="terminal-tab" onClick={onClose}><Terminal size={15} />{t('返回终端')}</button><div className="selected-file-tab"><Icon size={15} /><span>{filePath.split('/').at(-1)}{dirty ? ' •' : ''}</span><button className="icon-button" title={t('关闭文件预览')} aria-label={t('关闭文件预览')} onClick={onClose}><X size={14} /></button></div><span className={`preview-readonly ${editing && dirty ? 'is-dirty' : ''}`} role="status">{t(markdown && mode === 'preview' ? dirty ? '预览 · 未保存' : 'Markdown 预览' : editing ? saving ? '编辑模式 · 保存中…' : autoSave ? '编辑模式 · 自动保存' : dirty ? '编辑模式 · 未保存，Ctrl+S 保存' : '编辑模式' : preview?.kind === 'image' ? '图片预览' : preview?.kind === 'video' ? '视频预览' : preview?.kind === 'html' ? '网页预览' : '文本预览')}</span></div>
     <div className="file-preview-toolbar"><span title={filePath}>{filePath.split('/').join('  /  ')}</span><div>
       {preview?.kind === 'image' && <div className="image-controls">
         <button className="preview-option" aria-pressed={zoom === 'fit'} onClick={() => setZoom('fit')}>{t('适应窗口')}</button>
@@ -192,7 +210,7 @@ export function FilePreview({ projectId, filePath, onClose, onError, registerGua
       {text !== null && !editing && <button className="icon-button" title={textPage && textPage.count > 1 ? t('复制当前页内容') : t('复制文件内容')} aria-label={textPage && textPage.count > 1 ? t('复制当前页内容') : t('复制文件内容')} onClick={async () => { const result = await window.projectGrid.copy(editing ? draft : text); if (!result.ok) onError(result.error); }}><Copy size={16} /></button>}
     </div></div>
     {body}
-    {saveMessage && <div className={`editor-message ${saveMessage === t('已保存') ? '' : 'editor-error'}`} role="status">{saveMessage}</div>}
+    {saveMessage && <div className={`editor-message ${saveMessage === t('已保存') || saveMessage === t('已自动保存') ? '' : 'editor-error'}`} role="status">{saveMessage}</div>}
     {showingText && textPage && textPage.count > 1 && <form className="text-pagination" onSubmit={event => { event.preventDefault(); const value = Number(pageInput); if (Number.isSafeInteger(value)) void navigate(() => setPageIndex(Math.max(0, Math.min(textPage.count - 1, value - 1)))); }}>
       <span>{t('分段读取 · 编辑仅影响当前段')}</span><button type="button" className="preview-option" disabled={!textPage.index || loading || saving} onClick={() => void navigate(() => setPageIndex(0))}>{t('首页')}</button>
       <button type="button" className="icon-button" aria-label={t('上一页')} disabled={!textPage.index || loading || saving} onClick={() => void navigate(() => setPageIndex(textPage.index - 1))}><CaretLeft size={15} /></button>

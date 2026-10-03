@@ -21,7 +21,7 @@ for (const folder of [dataDir, bin, codexHome, path.join(project.path, 'src')]) 
 await fs.writeFile(path.join(project.path, 'src', 'main.txt'), 'original\r\n中文\r\n');
 await fs.writeFile(path.join(project.path, 'other.txt'), 'other');
 await fs.writeFile(path.join(project.path, 'page.html'), '<h1>Original page</h1>');
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { notifications: false, restoreSessions: true, closeToTray: false } }));
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { autoSave: false, notifications: false, restoreSessions: true, closeToTray: false } }));
 await exec(path.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/target:exe', '/reference:System.Web.Extensions.dll', `/out:${path.join(bin, 'codex.exe')}`, path.join(root, 'tests/fixtures/multi-codex.cs')], { windowsHide: true });
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir, PROJECT_GRID_TEST_RESTORE: '1', PROJECT_GRID_TEST_SSH_CONFIG: ssh.configFile, CODEX_HOME: codexHome };
 delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
@@ -101,6 +101,15 @@ try {
   assert.equal(await page.locator('.file-preview-toolbar button').count(), 0, 'no save, stop-editing, refresh or copy buttons while editing');
   await page.keyboard.press('Control+s');
   await waitFor(async () => (await fs.readFile(path.join(project.path, 'src', 'main.txt'), 'utf8')) === 'saved\r\n保留中文', 'Ctrl+S saves with original CRLF');
+  // Auto save (the default): a pause in typing writes the file, with no shortcut and without taking focus.
+  await page.evaluate(() => window.projectGrid.settings({ autoSave: true }));
+  await editor.fill('auto\n自动保存');
+  await waitFor(async () => (await fs.readFile(path.join(project.path, 'src', 'main.txt'), 'utf8')) === 'auto\r\n自动保存', 'a pause in typing saves the file');
+  assert.equal(await editor.evaluate(node => document.activeElement === node), true, 'saving does not take focus from the editor');
+  assert.equal(await page.locator('.preview-readonly').innerText(), '编辑模式 · 自动保存');
+  await page.evaluate(() => window.projectGrid.settings({ autoSave: false }));
+  await editor.fill('saved\n保留中文'); await page.keyboard.press('Control+s');
+  await waitFor(async () => (await fs.readFile(path.join(project.path, 'src', 'main.txt'), 'utf8')) === 'saved\r\n保留中文', 'manual saving again');
   await waitFor(async () => (await page.locator('.preview-readonly').innerText()) === '编辑模式', 'saved state shows plain edit mode');
   // Line numbers: one per line, the caret's line highlighted, and still level with their text after scrolling.
   const gutter = page.locator('.editor-gutter span');

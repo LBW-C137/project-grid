@@ -159,7 +159,8 @@ test('corrupt workspace is copied aside before a new workspace can be saved', t 
 });
 
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'forest', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true });
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'forest', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true });
+  assert.equal(cleanSettings({ autoSave: false }).autoSave, false);
   assert.equal(cleanSettings({ language: 'fr' }).language, 'zh');
   assert.equal(cleanSettings({ shell: 'cmd' }).shell, 'cmd');
   assert.equal(cleanSettings({ shell: 'bash -c evil' }).shell, 'powershell', 'only PowerShell or Command Prompt');

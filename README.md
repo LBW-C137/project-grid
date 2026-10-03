@@ -4,7 +4,7 @@
 
 <h1 align="center">Project Grid · 项目矩阵</h1>
 
-<p align="center"><strong>多个项目，一屏掌握。红框亮起，继续下一轮。</strong></p>
+<p align="center"><strong>多个项目，一屏掌握。红框亮起，继续下一轮对话。</strong></p>
 <p align="center">A local workspace for parallel Codex and Claude Code projects, live terminals, and completion alerts.</p>
 
 <p align="center">
@@ -75,7 +75,7 @@ Project Grid 把项目放进同一个窗口：每个方框都有独立终端，C
 
 右键文件或文件夹，可以复制 **绝对路径** 或 **相对路径**；支持多选，也可按 Ctrl+Shift+C 复制绝对路径。SSH 项目复制的是服务器上的 Linux 路径。
 
-文本和代码文件打开后即可编辑，左侧显示行号并高亮光标所在行，按 **Ctrl+S** 保存。HTML 点击「源码」即可编辑；Markdown 支持编辑与渲染预览切换，未保存的修改也能预览。保存会保留原编码、BOM 和换行格式；外部程序改动过文件时会提示冲突，切换文件或退出前会提醒处理未保存内容。大文件按段编辑，保存当前段时保留其余内容。
+文本和代码文件打开后即可编辑，左侧显示行号并高亮光标所在行。编辑会自动保存：停止输入约 1 秒后写入，切换文件或离开窗口前也会保存；想自己掌握时机，可在设置里关闭自动保存，按 **Ctrl+S** 保存。HTML 点击「源码」即可编辑；Markdown 支持编辑与渲染预览切换，未保存的修改也能预览。保存会保留原编码、BOM 和换行格式；外部程序改动过文件时会提示冲突，切换文件或退出前会提醒处理未保存内容。大文件按段编辑，保存当前段时保留其余内容。
 
 Markdown 预览支持标题、表格、引用、代码块、任务列表、图片和链接。本地及 SSH 项目的相对图片与文件链接均从文档所在目录解析。
 
