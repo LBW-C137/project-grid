@@ -674,5 +674,10 @@
   "液态玻璃": "Liquid glass",
   "实色（更清晰）": "Solid (sharper)",
   "设置的「外观」里新增「界面材质」：选「实色」后面板不透明，文字用 ClearType 渲染，最锐利，也更省显卡。": "Settings > Appearance has a new Surface choice: with Solid the panes are opaque, text is drawn with ClearType at its sharpest, and the graphics card works less.",
-  "顶栏色调与卡片统一；收起的侧栏不再显示收起按钮；卡片标题栏不再显示正在运行的指令。": "The title bar now matches the cards; a collapsed sidebar no longer shows the collapse button; card headers no longer show the running command."
+  "顶栏色调与卡片统一；收起的侧栏不再显示收起按钮；卡片标题栏不再显示正在运行的指令。": "The title bar now matches the cards; a collapsed sidebar no longer shows the collapse button; card headers no longer show the running command.",
+  "智能总结": "Smart summary",
+  "让完成这一轮的 Codex 或 Claude Code 自己用一句话说明结果（做成了什么、在等你回答什么），再播报；每轮多调用一次模型，播报会晚十几秒。关闭后只播报指令的第一句。": "The Codex or Claude Code that finished the round says in one sentence what it achieved or what it is waiting for, and that is spoken; one more model call per round, and the notice comes some ten seconds later. When off, only the first sentence of your prompt is spoken.",
+  "语音播报更智能：由 Codex 或 Claude Code 自己用一句话总结这一轮的结果再播报，可在设置里关闭。": "Smarter spoken notices: Codex or Claude Code sums up the round in one sentence, which is what you hear; it can be turned off in Settings.",
+  "总览里鼠标移到哪个项目，哪个项目就整块抬起；全屏时顶栏自动收起，鼠标碰到屏幕顶边再出现。": "In the overview the project under the pointer rises as a slab; in full screen the title bar hides and returns when the pointer touches the top edge.",
+  "语音输入的浮层改为厚玻璃质感，并去掉了项目和终端名称那一行。": "The dictation overlay is now a thick piece of glass, without the line naming the project and terminal."
 }

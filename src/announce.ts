@@ -25,7 +25,9 @@ export function announcementVoice(language: Settings['language']) {
   return matching.find(voice => preferred[language].test(voice.name)) || matching[0] || null;
 }
 
-export function announcementText(name: string, task: string, settings: Pick<Settings, 'announcePhrase' | 'language'>) {
+// summary: a sentence about what the round achieved, written by the agent's own CLI; it is spoken as it is.
+export function announcementText(name: string, task: string, settings: Pick<Settings, 'announcePhrase' | 'language'>, summary = '') {
+  if (summary) return settings.language === 'en' ? `${name}: ${summary}` : `${name}，${summary}`;
   const set = phrases[settings.language][task ? 'task' : 'plain'];
   const template = settings.announcePhrase || set[turn++ % set.length];
   return template.replace(/\{(项目|project)\}/gi, name).replace(/\{(任务|task)\}/gi, task).replace(/[，,]\s*[，,]/g, '，');
@@ -61,8 +63,8 @@ async function play({ samples, sampleRate }: { samples: Float32Array<ArrayBuffer
 
 // One notice at a time: rounds that finish together are read one after another.
 let queue = Promise.resolve();
-export function announce(name: string, task: string, settings: Pick<Settings, 'announcePhrase' | 'language'>) {
-  const text = announcementText(name, task, settings);
+export function announce(name: string, task: string, settings: Pick<Settings, 'announcePhrase' | 'language'>, summary = '') {
+  const text = announcementText(name, task, settings, summary);
   queue = queue.then(async () => {
     const result = await window.projectGrid.speak(text).catch(() => null);
     if (result?.ok) await play(result.value).catch(() => systemVoice(text, settings.language));

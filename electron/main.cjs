@@ -29,6 +29,7 @@ const { VoiceManager } = require('./voice.cjs');
 const { SpeechManager } = require('./speech.cjs');
 const { summarizeTask } = require('./task-summary.cjs');
 const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
+const { summarizeRound, claudeReply, codexReply } = require('./round-summary.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
@@ -174,7 +175,21 @@ function showWindow(id) {
 }
 
 // task: a short name for what the round worked on, from its prompt (empty when unknown).
-function notifyCompletion(project, task = '') {
+// The agent's final words of the round are kept for the spoken summary; a new round forgets them.
+function noteReply(s, reply) { if (reply?.reset) s.lastReply = ''; else if (reply?.text) s.lastReply = reply.text.slice(-8000); }
+// A sentence saying what the round achieved, made by the same CLI from its own final reply. Empty when
+// the setting is off or nothing usable comes back; the plain notice is spoken then. Isolated test
+// profiles skip it unless asked, since it runs the real CLI.
+async function roundSummary(project, s) {
+  if (!store.settings.announceSummary || !s || project.kind === 'ssh') return '';
+  if (process.env.PROJECT_GRID_DATA_DIR && process.env.PROJECT_GRID_TEST_SUMMARY !== '1') return '';
+  // Claude's transcript is read on a timer; read it to the end so the final reply is in hand.
+  if (s.agent === 'claude') await s.activityMonitor?.poll();
+  return summarizeRound({ agent: s.agent, language: store.settings.language, task: s.lastTask || '', reply: s.lastReply || '', directory: path.join(app.getPath('userData'), 'summaries') });
+}
+
+// s: the terminal whose round finished, when known.
+function notifyCompletion(project, task = '', s = null) {
   if (!window.isFocused()) {
     window.flashFrame(true); clearTimeout(attentionTimer);
     attentionTimer = setTimeout(() => { if (window && !window.isDestroyed()) window.flashFrame(false); }, 9000);
@@ -192,7 +207,10 @@ function notifyCompletion(project, task = '') {
     note.show();
   }
   // Spoken with the system voice in the window, which knows the chosen language and phrase.
-  if (store.settings.announce) send('completion:announce', { projectId: project.id, name: project.name, task });
+  if (store.settings.announce) {
+    const notice = { projectId: project.id, name: project.name, task };
+    roundSummary(project, s).catch(() => '').then(summary => send('completion:announce', summary ? { ...notice, summary } : notice));
+  }
 }
 
 function briefAction(action) { return action ? { kind: action.kind, tool: action.tool, target: action.target, detail: action.detail, done: action.done } : null; }
@@ -224,7 +242,7 @@ function followClaude(project, s, event) {
     s.claudeTranscript = new TranscriptTail(file); s.actions.reset();
     s.activityMonitor?.stop();
     const tail = s.claudeTranscript;
-    s.activityMonitor = monitorActivity(async () => { await tail.read(record => describeActions(s, project.path, claudeRecord(s.actions, record, project.path))); return null; }, () => {});
+    s.activityMonitor = monitorActivity(async () => { await tail.read(record => { noteReply(s, claudeReply(record)); describeActions(s, project.path, claudeRecord(s.actions, record, project.path)); }); return null; }, () => {});
   } else void s.activityMonitor?.poll();
 }
 
@@ -247,7 +265,7 @@ function applyActivity(project, s, snapshot) {
   else if (snapshot.state === 'complete' && snapshot.turnId) {
     s.lastCompletedAt = snapshot.updatedAt;
     if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
-    if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project, s.lastTask || '');
+    if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project, s.lastTask || '', s);
   } else if (snapshot.state === 'interrupted') store.expectCompletion(project.id, false);
   broadcast();
 }
@@ -303,7 +321,7 @@ function onEvent(event) {
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
     const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0,
-      onRecord: record => describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path)) });
+      onRecord: record => { noteReply(s, codexReply(record)); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path)); } });
     s.activityMonitor = monitorActivity(
       () => reader ? reader.read() : project.terminals?.length && !s.reportedThreadId ? Promise.resolve(null) : s.terminal.request('codex-status', { since: remoteSince, threadId: s.reportedThreadId }),
       snapshot => {

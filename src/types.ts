@@ -10,7 +10,7 @@ export type Project = {
   terminals: ProjectTerminal[];
 };
 export type ProjectTerminal = { action: AgentActionBrief | null; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
-export type Settings = { columns: number; surface: 'glass' | 'solid'; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: 'forest' | 'mountain-blue' | 'wild-red'; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' };
+export type Settings = { columns: number; surface: 'glass' | 'solid'; announceSummary: boolean; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: 'forest' | 'mountain-blue' | 'wild-red'; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' };
 export type SpeechState = { phase: 'missing' | 'downloading' | 'ready' | 'error'; ready: boolean; percent: number; error: string | null; downloadBytes: number };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type SSHInfo = { hosts: string[]; configFile: string; configExists: boolean; sshPath: string; source: string };
@@ -55,7 +55,7 @@ export type Bridge = {
   openDownloadPage(): Promise<Result<void>>;
   onUpdateState(callback: (state: AppUpdateState) => void): () => void;
   addProjects(): Promise<Result<string[]>>;
-  onAnnounce(callback: (event: { projectId: string; name: string; task: string }) => void): () => void;
+  onAnnounce(callback: (event: { projectId: string; name: string; task: string; summary?: string }) => void): () => void;
   getSpeechState(): Promise<Result<SpeechState>>;
   prepareSpeech(): Promise<Result<SpeechState>>;
   speak(text: string): Promise<Result<{ samples: Float32Array<ArrayBuffer>; sampleRate: number }>>;
