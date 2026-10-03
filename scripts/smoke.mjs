@@ -243,7 +243,9 @@ try {
   const landed = await page.locator(`[data-project-slot="${projects[0].id}"]`).boundingBox(), dropTrack = await page.evaluate(() => window.dropTrack);
   const distances = dropTrack.map(([left, top]) => Math.hypot(left - landed.x, top - landed.y));
   assert.ok(distances.every((distance, index) => !index || distance <= distances[index - 1] + 4), `the dropped card never jumps back: ${distances.map(Math.round).join(',')}`);
-  assert.ok(distances.at(-1) < 2, 'the dropped card ends in its slot');
+  // The pointer still rests on the card it dropped, so the card ends raised over its slot by the hover lift.
+  const settled = dropTrack.at(-1);
+  assert.ok(Math.abs(settled[0] - landed.x) < 2 && landed.y - settled[1] > -2 && landed.y - settled[1] < 6, `the dropped card ends in its slot: ${JSON.stringify({ settled, landed })}`);
   assert.deepEqual(JSON.parse(await fs.readFile(path.join(dataDir, 'workspace.json'), 'utf8')).projects.map(project => project.id), swappedOrder);
   const afterDrag = (await page.evaluate(() => window.projectGrid.getState())).value.projects;
   assert.deepEqual(Object.fromEntries(afterDrag.map(project => [project.id, project.sessionId])), sessionIds);
