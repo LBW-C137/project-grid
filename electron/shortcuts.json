@@ -8,5 +8,6 @@
   "nextProject": "Ctrl+Tab",
   "previousProject": "Ctrl+Shift+Tab",
   "maximize": "Ctrl+Shift+Enter",
+  "fullscreen": "F11",
   "newTerminal": "Ctrl+Shift+T"
 }

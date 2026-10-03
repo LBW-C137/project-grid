@@ -117,6 +117,10 @@ try {
   const rejected = await page.evaluate(id => window.projectGrid.openLink(id, 'vscode://file/example'), remote.id); assert.equal(rejected.ok, false);
   await page.evaluate(id => window.projectGrid.openLink(id, 'https://example.com/docs'), local.id);
   assert.deepEqual(await app.evaluate(() => globalThis.navigationOpened), [local.path, 'https://example.com/docs']);
+  // F11 puts the whole window in full screen and back, whatever view is open.
+  const fullScreen = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFullScreen()), before = await fullScreen();
+  await page.keyboard.press('F11'); await waitFor(async () => await fullScreen() !== before, 'F11 toggles full screen');
+  await page.keyboard.press('F11'); await waitFor(async () => await fullScreen() === before, 'F11 toggles full screen back');
   assert.deepEqual(errors, []);
   console.log(`PASS: removed sidebar/manual-finish/VS Code actions, local folder/browser retained, SSH root/nested/symlink/Markdown directories stay internal and protect drafts. Screenshots: ${output}`);
 } catch (error) { if (page) await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {}); throw error; }

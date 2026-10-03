@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld('projectGrid', {
   onError: callback => listen('app:error', callback),
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
+  toggleFullScreen: () => ipcRenderer.send('window:fullscreen'),
   close: () => ipcRenderer.send('window:close'),
   focusMode: enabled => ipcRenderer.send('window:focus-mode', enabled),
   quit: () => ipcRenderer.invoke('app:quit'),

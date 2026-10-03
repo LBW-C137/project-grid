@@ -152,6 +152,7 @@ Windows 安装版会自动检查新版本，在后台下载更新。设置中可
 | `Ctrl + Shift + N` | 添加项目 |
 | `Ctrl + Tab` / `Ctrl + Shift + Tab` | 切到下一个 / 上一个项目；总览中只移动输入焦点，不放大 |
 | `Ctrl + Shift + Enter` | 放大或还原当前项目 |
+| `F11` | 整个窗口全屏或还原 |
 | `Ctrl + Shift + T` | 在当前项目新建终端并分屏 |
 | `Ctrl + B` | 全屏项目中展开或收起目录 |
 | `Ctrl + Shift + G` | 返回项目总览 |

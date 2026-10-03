@@ -48,6 +48,7 @@ const { translate } = require('./i18n.cjs');
 // Text shown by the main process follows the language chosen in settings (Chinese source -> locales/en.json).
 const t = (text, values) => translate(store?.settings.language, text, values);
 let window, tray, store, eventServer, sshAuth, updateManager, quitting = false, installingUpdate = false;
+let userFullScreen = false;
 const sessions = new Map();
 const branches = new Map();
 const projectGit = new ProjectGit(id => remoteFor(id));
@@ -765,8 +766,10 @@ function registerIpc() {
   listen('terminal:focus', (id, focused) => { if (sessions.has(id) && focused) { activeTerminal = id; activeFileTree = null; } else if (activeTerminal === id) activeTerminal = null; });
   listen('window:minimize', () => window.minimize());
   listen('window:maximize', () => window.isMaximized() ? window.unmaximize() : window.maximize());
+  listen('window:fullscreen', () => { userFullScreen = !window.isFullScreen(); window.setFullScreen(userFullScreen); });
   listen('window:close', () => window.close());
-  listen('window:focus-mode', enabled => { if (typeof enabled === 'boolean') window.setFullScreen(enabled); });
+  // Keep full screen chosen with the shortcut when returning to the overview.
+  listen('window:focus-mode', enabled => { if (typeof enabled === 'boolean') window.setFullScreen(enabled || userFullScreen); });
   handle('app:quit', requestQuit);
 }
 

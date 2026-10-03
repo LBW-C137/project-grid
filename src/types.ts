@@ -9,7 +9,7 @@ export type Project = {
   terminals: ProjectTerminal[];
 };
 export type ProjectTerminal = { id: string; title: string; shell: 'powershell' | 'cmd' | 'bash'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
-export type Settings = { columns: number; autoSave: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: 'forest' | 'mountain-blue' | 'wild-red'; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' };
+export type Settings = { columns: number; autoSave: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: 'forest' | 'mountain-blue' | 'wild-red'; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' };
 export type SpeechState = { phase: 'missing' | 'downloading' | 'ready' | 'error'; ready: boolean; percent: number; error: string | null; downloadBytes: number };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type SSHInfo = { hosts: string[]; configFile: string; configExists: boolean; sshPath: string; source: string };
@@ -110,7 +110,7 @@ export type Bridge = {
   onTerminalData(callback: (packet: TerminalPacket) => void): () => void;
   onFocusProject(callback: (id: string) => void): () => void;
   onError(callback: (message: string) => void): () => void;
-  minimize(): void; maximize(): void; close(): void; focusMode(enabled: boolean): void;
+  minimize(): void; maximize(): void; toggleFullScreen(): void; close(): void; focusMode(enabled: boolean): void;
   quit(): Promise<Result<boolean>>;
 };
 declare global { interface Window { projectGrid: Bridge; } }

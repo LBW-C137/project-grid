@@ -332,6 +332,7 @@ export function App() {
         void perform(api.addTerminal(id)).then(terminal => { if (terminal) focusTerminalWhenReady(terminal); });
       }
       else if (action === 'maximize') { if (focusedId) void returnToGrid(); else { const id = currentProject(); if (id) void focusProject(id); } }
+      else if (action === 'fullscreen') api.toggleFullScreen();
       else if (action === 'nextProject' || action === 'previousProject') {
         const ids = navigation.current, current = currentProject();
         if (!ids.length) return;

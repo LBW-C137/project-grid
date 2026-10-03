@@ -598,5 +598,7 @@
   "还原更改": "Revert changes",
   "还原“{name}”的 {count} 处更改？": "Revert {count} changes in “{name}”?",
   "还原“{name}”的这处更改？": "Revert this change in “{name}”?",
-  "工作区里的这些修改会被丢弃，无法撤销。": "These working-tree changes will be discarded; this cannot be undone."
+  "工作区里的这些修改会被丢弃，无法撤销。": "These working-tree changes will be discarded; this cannot be undone.",
+  "窗口全屏或还原": "Full screen window on or off",
+  "按 F11 让整个窗口全屏或还原，快捷键可在设置里修改。": "F11 puts the whole window in full screen or back; the key can be changed in Settings."
 }
