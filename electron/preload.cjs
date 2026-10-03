@@ -86,6 +86,8 @@ contextBridge.exposeInMainWorld('projectGrid', {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   toggleFullScreen: () => ipcRenderer.send('window:fullscreen'),
+  isFullScreen: () => ipcRenderer.invoke('window:is-fullscreen'),
+  onFullScreen: callback => listen('window:fullscreen-changed', callback),
   terminalActions: id => ipcRenderer.invoke('terminal:actions', id),
   onTerminalAction: callback => listen('terminal:action', callback),
   close: () => ipcRenderer.send('window:close'),

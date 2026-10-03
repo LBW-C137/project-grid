@@ -108,6 +108,9 @@ function publicState() {
     settings: store.settings,
     warning: store.warning,
     platform: process.platform,
+    // In full screen the title bar slides away and returns when the pointer touches the top edge. The
+    // desktop checks drive the title bar in full screen, so isolated test profiles keep it unless asked.
+    autoHideTitlebar: !process.env.PROJECT_GRID_DATA_DIR || process.env.PROJECT_GRID_TEST_TITLEBAR === '1',
     version: app.getVersion(),
     // The usage guide opens on first use and after each update. Isolated test profiles skip it unless asked.
     guide: store.settings.guideVersion !== app.getVersion() && (!process.env.PROJECT_GRID_DATA_DIR || process.env.PROJECT_GRID_TEST_GUIDE === '1'),
@@ -812,6 +815,7 @@ function registerIpc() {
   listen('window:close', () => window.close());
   // Keep full screen chosen with the shortcut when returning to the overview.
   listen('window:focus-mode', enabled => { if (typeof enabled === 'boolean') window.setFullScreen(enabled || userFullScreen); });
+  handle('window:is-fullscreen', () => window.isFullScreen());
   handle('app:quit', requestQuit);
 }
 
@@ -930,6 +934,8 @@ else {
     window.webContents.session.setPermissionCheckHandler((contents, permission, _origin, details) => allowPlayerFullscreen(contents, permission, details) || permission === 'media' && isAppFrame(contents, details) && details.mediaType === 'audio');
     window.once('ready-to-show', () => window.show());
     window.on('focus', () => { clearTimeout(attentionTimer); window.flashFrame(false); });
+    window.on('enter-full-screen', () => send('window:fullscreen-changed', true));
+    window.on('leave-full-screen', () => send('window:fullscreen-changed', false));
     window.webContents.on('render-process-gone', (_event, details) => {
       if (!quitting && details.reason !== 'clean-exit') window.reload();
     });

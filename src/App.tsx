@@ -15,7 +15,6 @@ import { useProjectReorder } from './useProjectReorder';
 import { useProjectFocusMotion } from './useProjectFocusMotion';
 import { applyTheme, themes } from './themes';
 import { applyMotion, motionReduced } from './motion';
-import { trackSpotlight } from './spotlight';
 import { LiquidGlass } from './LiquidGlass';
 import { VoiceButton, VoiceModelStatus, VoiceOverlay } from './VoiceButton';
 import { announce, announcementVoice, onVoicesReady } from './announce';
@@ -113,7 +112,6 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, activity
   >
     <span key={signalKey} className="panel-signal" aria-hidden="true" />
     <span key={`glow:${signalKey}`} className="panel-glow" aria-hidden="true" />
-    <span className="panel-spotlight" aria-hidden="true" />
     <header className="panel-header" title={focused ? undefined : t('点击标题栏放大，按住标题栏拖动排序')} onClick={event => {
       if (!focused && event.button === 0 && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !(event.target as Element).closest('button, [role="menu"]')) onFocus(project.id);
     }}>
@@ -259,6 +257,8 @@ export function App() {
   // The surface (glass or solid) is a mode of the whole stylesheet, like the theme.
   useEffect(() => { document.documentElement.dataset.surface = workspace?.settings.surface || 'glass'; }, [workspace?.settings.surface]);
   const [agents, setAgents] = useState<AgentsState | null>(null);
+  // Native full screen (F11, or an expanded project): the title bar gets out of the way.
+  const [fullScreen, setFullScreen] = useState(false);
   const [agentsDismissed, setAgentsDismissed] = useState(false);
   const [settingsSection, setSettingsSection] = useState('appearance');
   const [updates, setUpdates] = useState<AppUpdateState | null>(null);
@@ -351,6 +351,8 @@ export function App() {
     const offError = api.onError(reportError);
     const offUpdates = api.onUpdateState(setUpdates);
     const offAgents = api.onAgents(setAgents);
+    const offFullScreen = api.onFullScreen(setFullScreen);
+    perform(api.isFullScreen()).then(value => { if (typeof value === 'boolean') setFullScreen(value); });
     const offAuth = api.onSSHAuth(setSSHAuth);
     const offEditor = api.onEditorClose(id => { void allowNavigation().then(accepted => api.editorCloseResult(id, accepted), () => api.editorCloseResult(id, false)); });
     perform(api.getSSHAuth()).then(requests => { if (requests) setSSHAuth(requests); });
@@ -358,7 +360,7 @@ export function App() {
     perform(api.getUpdateState()).then(state => { if (state) setUpdates(state); });
     perform(api.getState()).then(state => { if (state) setWorkspace(state); });
     const clock = setInterval(() => setNow(Date.now()), 5000);
-    return () => { offState(); offFocus(); offError(); offUpdates(); offAgents(); offAuth(); offEditor(); clearInterval(clock); if (errorTimer.current) clearTimeout(errorTimer.current); };
+    return () => { offState(); offFocus(); offError(); offUpdates(); offAgents(); offFullScreen(); offAuth(); offEditor(); clearInterval(clock); if (errorTimer.current) clearTimeout(errorTimer.current); };
   }, [focusProject, perform, reportError, allowNavigation]);
   useEffect(() => {
     if (focusedId && workspace && !workspace.projects.some(p => p.id === focusedId)) returnToGrid();
@@ -419,7 +421,8 @@ export function App() {
   navigation.current = (focusedId ? orderedProjects : orderedProjects.filter(project => visibleIds.has(project.id))).map(project => project.id);
   const setPreference = (patch: Partial<Settings>) => { perform(api.settings(patch)); };
 
-  return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''}`} style={{ '--liquid-backdrop': 'url("#project-grid-refraction") blur(6px) saturate(165%)' } as CSSProperties}>
+  return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''} ${fullScreen && workspace.autoHideTitlebar ? 'titlebar-auto' : ''}`} style={{ '--liquid-backdrop': 'url("#project-grid-refraction") blur(6px) saturate(165%)' } as CSSProperties}>
+    {fullScreen && workspace.autoHideTitlebar && <div className="titlebar-reveal" aria-hidden="true" />}
     <div className="titlebar">
       <div className="titlebar-brand"><span className="brand-mark"><i /><i /><i /><i /></span><span>Project Grid</span></div>
       {!!projects.length && <div className="workspace-summary" role="status" aria-label={t('工作区概况')}>
@@ -459,7 +462,7 @@ export function App() {
             <div className="empty-hints"><span><Circle weight="fill" size={7} />{t('粉色呼吸 · 等待查看')}</span><span><CheckCircle weight="fill" size={12} />{t('绿色常亮 · 本轮完成')}</span></div>
           </div> : <>
             {!focusedId && !visible.length && <div className="no-results"><MagnifyingGlass size={30} weight="light" /><h2>{t('没有找到匹配项目')}</h2><p>{t('试试其他项目名称或目录。')}</p><button className="button secondary small" onClick={() => setQuery('')}>{t('重置搜索')}</button></div>}
-            <div className={`project-grid ${reorder.drag ? 'is-reordering' : ''}`} onPointerDown={reorder.onPointerDown} onPointerMove={focusedId ? undefined : trackSpotlight} onClickCapture={reorder.onClickCapture} style={{ '--columns': columns, '--rows': rows, display: !focusedId && !visible.length ? 'none' : undefined } as CSSProperties}>
+            <div className={`project-grid ${reorder.drag ? 'is-reordering' : ''}`} onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture} style={{ '--columns': columns, '--rows': rows, display: !focusedId && !visible.length ? 'none' : undefined } as CSSProperties}>
               {orderedProjects.map((project, index) => <div key={project.id} className={`project-slot ${reorder.drag?.id === project.id ? 'drag-placeholder' : ''}`} data-project-slot={project.id} style={{ display: focusedId ? focusedId !== project.id ? 'none' : undefined : !visibleIds.has(project.id) ? 'none' : undefined }}><ProjectPanel project={project} index={index}
                 hidden={focusedId ? focusedId !== project.id : !visibleIds.has(project.id)} focused={focusedId === project.id && !previewFile}
                 fontSize={settings.fontSize} now={now} activityOpen={settings.activityPane} onToggleActivity={() => setPreference({ activityPane: !settings.activityPane })} onFocus={focusProject} onAction={perform} onError={reportError} onOpenLink={openTerminalLink} onRevealProject={revealProject}

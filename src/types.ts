@@ -15,7 +15,7 @@ export type SpeechState = { phase: 'missing' | 'downloading' | 'ready' | 'error'
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type SSHInfo = { hosts: string[]; configFile: string; configExists: boolean; sshPath: string; source: string };
 export type SSHAuthPrompt = { id: string; host: string; message: string; kind: 'secret' | 'confirm' };
-export type Workspace = { projects: Project[]; settings: Settings; warning: string | null; platform: string; version: string; guide: boolean };
+export type Workspace = { projects: Project[]; settings: Settings; warning: string | null; platform: string; version: string; guide: boolean; autoHideTitlebar: boolean };
 export type TerminalSnapshot = { sessionId: string | null; seq: number; data: string };
 export type TerminalPacket = TerminalSnapshot & { id: string };
 export type FileEntry = { name: string; path: string; kind: 'directory' | 'file' | 'link' };
@@ -121,7 +121,7 @@ export type Bridge = {
   onTerminalData(callback: (packet: TerminalPacket) => void): () => void;
   onFocusProject(callback: (id: string) => void): () => void;
   onError(callback: (message: string) => void): () => void;
-  minimize(): void; maximize(): void; toggleFullScreen(): void; terminalActions(id: string): Promise<Result<AgentAction[]>>; onTerminalAction(callback: (packet: AgentActionPacket) => void): () => void; close(): void; focusMode(enabled: boolean): void;
+  minimize(): void; maximize(): void; toggleFullScreen(): void; isFullScreen(): Promise<Result<boolean>>; onFullScreen(callback: (fullScreen: boolean) => void): () => void; terminalActions(id: string): Promise<Result<AgentAction[]>>; onTerminalAction(callback: (packet: AgentActionPacket) => void): () => void; close(): void; focusMode(enabled: boolean): void;
   quit(): Promise<Result<boolean>>;
 };
 declare global { interface Window { projectGrid: Bridge; } }
