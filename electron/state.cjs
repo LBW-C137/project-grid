@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { normalizeSSH } = require('./ssh-config.cjs');
+const SUMMARY_PRESETS = require('./summary-presets.json');
 
 // Local folders once opened as projects, newest first, so a removed project can be added again in one click.
 const HISTORY_LIMIT = 30;
@@ -18,7 +19,7 @@ function cleanHistory(input) {
 // Claude turn was left unfinished. Only non-default values are stored.
 const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'claude' } : {}), ...(restore?.interrupted === true ? { interrupted: true } : {}) });
 
-const defaults = { columns: 0, surface: 'glass', autoSave: true, activityPane: true, announceSummary: true, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'forest' };
+const defaults = { columns: 0, surface: 'glass', autoSave: true, activityPane: true, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'forest' };
 
 // Keyboard shortcuts the user changed, by action; defaults live in the window (src/shortcuts.ts).
 // "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
@@ -27,6 +28,18 @@ const SHORTCUT = /^(?:(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:F(?:[1-9]|1[0-2]))|(?=
 function cleanShortcuts(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
   return Object.fromEntries(SHORTCUT_ACTIONS.filter(action => typeof input[action] === 'string' && SHORTCUT.test(input[action])).map(action => [action, input[action]]));
+}
+
+// What the spoken notice says and who writes it. fast: the prompt's first sentence, at once (the default).
+// agent: the round's own CLI sums it up. cloud / local: a model reached over HTTP. Only the provider, the
+// address and the model name are kept here; an API key is stored encrypted elsewhere (summary-models.cjs).
+function cleanEndpoint(input, target) {
+  const preset = SUMMARY_PRESETS[target].find(item => item.id === input?.provider) || SUMMARY_PRESETS[target][0];
+  const text = (value, limit) => typeof value === 'string' ? value.replace(/[\0-\x1f\x7f]/g, '').trim().slice(0, limit) : null;
+  return { provider: preset.id, protocol: preset.id === 'custom' && input?.protocol === 'anthropic' ? 'anthropic' : preset.protocol, baseUrl: text(input?.baseUrl, 300) || preset.baseUrl, model: text(input?.model, 120) ?? preset.model };
+}
+function cleanSummarySettings(input) {
+  return { mode: ['fast', 'agent', 'cloud', 'local'].includes(input?.mode) ? input.mode : 'fast', cloud: cleanEndpoint(input?.cloud, 'cloud'), local: cleanEndpoint(input?.local, 'local') };
 }
 
 function cleanSettings(input = {}) {
@@ -39,6 +52,7 @@ function cleanSettings(input = {}) {
     // glass: translucent panes over the wallpaper. solid: opaque panes, on which Windows draws text with
     // ClearType and nothing is blurred behind them.
     surface: input.surface === 'solid' ? 'solid' : 'glass',
+    summary: cleanSummarySettings(input.summary),
     shortcuts: cleanShortcuts(input.shortcuts),
     // Shell for local terminals; SSH projects always use Bash on the server.
     shell: input.shell === 'cmd' ? 'cmd' : 'powershell',
@@ -46,7 +60,7 @@ function cleanSettings(input = {}) {
     guideVersion: typeof input.guideVersion === 'string' && /^\d+\.\d+\.\d+(-[\w.-]+)?$/.test(input.guideVersion) ? input.guideVersion : '',
     // Spoken completion phrase; empty uses the built-in phrases. {项目} or {project} is the project name.
     announcePhrase: typeof input.announcePhrase === 'string' ? input.announcePhrase.replace(/[\0-\x1f\x7f]/g, ' ').trim().slice(0, 80) : defaults.announcePhrase,
-    ...Object.fromEntries(['notifications', 'sound', 'announce', 'closeToTray', 'explorerCollapsed', 'restoreSessions', 'autoSave', 'activityPane', 'announceSummary'].map(key => [key, typeof input[key] === 'boolean' ? input[key] : defaults[key]])),
+    ...Object.fromEntries(['notifications', 'sound', 'announce', 'closeToTray', 'explorerCollapsed', 'restoreSessions', 'autoSave', 'activityPane'].map(key => [key, typeof input[key] === 'boolean' ? input[key] : defaults[key]])),
   };
 }
 

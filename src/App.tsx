@@ -23,6 +23,7 @@ import { actionFor, applyShortcuts, editingKeyInField, shortcut } from './shortc
 import { quickDictation } from './voice-input';
 import { ShortcutSettings } from './ShortcutSettings';
 import { AgentsSettings } from './AgentsSettings';
+import { SummarySettings } from './SummarySettings';
 import { UsageGuide } from './UsageGuide';
 import { GuideTour } from './GuideTour';
 const FilePreview = lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
@@ -161,7 +162,7 @@ function AnnounceSettings({ settings, update }: { settings: Settings; update: (p
     : voice ? t('一轮完成时由 {voice} 播报；可下载更自然的本地女声（约 74 MB）', { voice }) : t('一轮完成时播报项目名（系统中未找到对应语言的语音）');
   return <div className="setting-group">
     <label className="setting-row"><span><Waveform size={19} /><span><b>{t('语音播报')}</b><small title={speech?.error ? t(speech.error) : undefined}>{status}</small></span></span><input type="checkbox" checked={settings.announce} onChange={event => { update({ announce: event.target.checked }); if (event.target.checked && !speech?.ready) void api.prepareSpeech(); }} /></label>
-    {settings.announce && <label className="setting-row announce-summary"><span><span><b>{t('智能总结')}</b><small>{t('让完成这一轮的 Codex 或 Claude Code 自己用一句话说明结果（做成了什么、在等你回答什么），再播报；每轮多调用一次模型，播报会晚十几秒。关闭后只播报指令的第一句。')}</small></span></span><input type="checkbox" checked={settings.announceSummary} onChange={event => update({ announceSummary: event.target.checked })} /></label>}
+    {settings.announce && <SummarySettings settings={settings} update={update} />}
     {settings.announce && <div className="announce-options">
       <input aria-label={t('播报语')} placeholder={t('留空轮换内置提示语，如：{example}', { example })} value={phrase} maxLength={80} onChange={event => setPhrase(event.target.value)} onBlur={savePhrase} onKeyDown={event => { if (event.key === 'Enter') savePhrase(); }} />
       {!speech?.ready && speech?.phase !== 'downloading' && <button type="button" className="button secondary small" onClick={() => void api.prepareSpeech()}>{t('下载自然女声')}</button>}

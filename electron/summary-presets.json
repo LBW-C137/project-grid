@@ -1,0 +1,20 @@
+{
+  "cloud": [
+    { "id": "openai", "name": "OpenAI", "protocol": "openai", "baseUrl": "https://api.openai.com/v1", "model": "gpt-4o-mini" },
+    { "id": "anthropic", "name": "Anthropic (Claude)", "protocol": "anthropic", "baseUrl": "https://api.anthropic.com", "model": "claude-haiku-4-5-20251001" },
+    { "id": "deepseek", "name": "DeepSeek", "protocol": "openai", "baseUrl": "https://api.deepseek.com/v1", "model": "deepseek-chat" },
+    { "id": "dashscope", "name": "阿里云百炼（通义千问）", "protocol": "openai", "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-turbo" },
+    { "id": "zhipu", "name": "智谱 GLM", "protocol": "openai", "baseUrl": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4-flash" },
+    { "id": "moonshot", "name": "Moonshot（Kimi）", "protocol": "openai", "baseUrl": "https://api.moonshot.cn/v1", "model": "moonshot-v1-8k" },
+    { "id": "siliconflow", "name": "硅基流动 SiliconFlow", "protocol": "openai", "baseUrl": "https://api.siliconflow.cn/v1", "model": "Qwen/Qwen2.5-7B-Instruct" },
+    { "id": "openrouter", "name": "OpenRouter", "protocol": "openai", "baseUrl": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini" },
+    { "id": "custom", "name": "自定义（OpenAI 兼容接口）", "protocol": "openai", "baseUrl": "", "model": "" }
+  ],
+  "local": [
+    { "id": "ollama", "name": "Ollama", "protocol": "openai", "baseUrl": "http://localhost:11434/v1", "model": "qwen2.5:1.5b", "hint": "ollama pull qwen2.5:1.5b" },
+    { "id": "vllm", "name": "vLLM", "protocol": "openai", "baseUrl": "http://localhost:8000/v1", "model": "", "hint": "vllm serve Qwen/Qwen2.5-1.5B-Instruct" },
+    { "id": "lmstudio", "name": "LM Studio", "protocol": "openai", "baseUrl": "http://localhost:1234/v1", "model": "", "hint": "" },
+    { "id": "llamacpp", "name": "llama.cpp server", "protocol": "openai", "baseUrl": "http://localhost:8080/v1", "model": "", "hint": "llama-server -m model.gguf --port 8080" },
+    { "id": "custom", "name": "自定义（OpenAI 兼容接口）", "protocol": "openai", "baseUrl": "", "model": "", "hint": "" }
+  ]
+}

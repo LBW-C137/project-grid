@@ -482,3 +482,15 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
 .tour-bubble::before { content: ''; position: absolute; left: var(--tour-arrow); width: 12px; height: 12px; margin-left: -6px; background: #1b3646; border: 1px solid #e8f5ff80; border-right: 0; border-bottom: 0; display: none; }
 .tour-arrow-up::before { display: block; top: -7px; transform: rotate(45deg); }.tour-arrow-down::before { display: block; bottom: -7px; transform: rotate(225deg); }
+
+/* Spoken summary settings: the chosen mode, then the connection of a cloud or local model as a small form. */
+.summary-fields { display: grid; gap: 10px; padding: 4px 0 12px 31px; }
+.summary-fields > label { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; font-size: 12px; }
+.summary-fields :is(input, select) { width: 100%; min-width: 0; padding: 7px 10px; border: 1px solid #bfd7ef45; border-radius: 9px; color: #eef6ff; background: #0b1b2966; font: inherit; font-size: 12px; }
+.summary-fields select { background: #14283a; }
+.summary-fields input:focus { outline: none; border-color: #b8d7efb0; box-shadow: 0 0 0 3px #c5e6ff14; }
+.summary-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }.summary-inline input { flex: 1; }.summary-inline .button { flex: none; }
+.summary-hint { margin: 0; font-size: 11px; line-height: 1.6; color: var(--theme-muted, #c9dbea); }.summary-hint code { margin-left: 4px; padding: 1px 6px; border-radius: 5px; background: #0b1b2966; user-select: text; }
+.summary-test { display: flex; align-items: center; gap: 10px; padding: 0 0 14px 31px; border-bottom: 1px solid #dcedff19; min-height: 30px; }
+.summary-status { min-width: 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }.summary-status.is-ok { color: #a8edc6; }.summary-status.is-error { color: #ffbbb6; }.summary-status.is-busy { color: #c9dbea; }
+.summary-settings > .setting-row { align-items: flex-start; }.summary-settings > .setting-row select { flex: none; width: 250px; max-width: 46%; }

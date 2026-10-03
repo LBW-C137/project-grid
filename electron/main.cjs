@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, Notification, clipboard, shell, protocol, net: electronNet } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, Notification, clipboard, shell, protocol, safeStorage, net: electronNet } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -30,6 +30,7 @@ const { SpeechManager } = require('./speech.cjs');
 const { summarizeTask } = require('./task-summary.cjs');
 const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
 const { summarizeRound, claudeReply, codexReply } = require('./round-summary.cjs');
+const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARGETS } = require('./summary-models.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
@@ -65,7 +66,7 @@ let sshAskpassDir;
 let activeTerminal = null;
 let activeFileTree = null;
 let fileOperations, fileProgress = null;
-let voiceManager, speechManager;
+let voiceManager, speechManager, summarySecrets;
 let attentionTimer;
 let editorDirty = false, editorCloseRequest = null, editorFile = null;
 const fileSaves = new Set();
@@ -177,15 +178,18 @@ function showWindow(id) {
 // task: a short name for what the round worked on, from its prompt (empty when unknown).
 // The agent's final words of the round are kept for the spoken summary; a new round forgets them.
 function noteReply(s, reply) { if (reply?.reset) s.lastReply = ''; else if (reply?.text) s.lastReply = reply.text.slice(-8000); }
-// A sentence saying what the round achieved, made by the same CLI from its own final reply. Empty when
-// the setting is off or nothing usable comes back; the plain notice is spoken then. Isolated test
-// profiles skip it unless asked, since it runs the real CLI.
+// A sentence saying what the round achieved, for the spoken notice, written the way the settings choose:
+// not at all (fast, the default: the plain notice is spoken at once), by the round's own CLI, or by a
+// cloud or local model over HTTP. Empty when nothing usable comes back; the plain notice is spoken then.
 async function roundSummary(project, s) {
-  if (!store.settings.announceSummary || !s || project.kind === 'ssh') return '';
-  if (process.env.PROJECT_GRID_DATA_DIR && process.env.PROJECT_GRID_TEST_SUMMARY !== '1') return '';
+  const mode = store.settings.summary.mode;
+  if (mode === 'fast' || !s || project.kind === 'ssh') return '';
   // Claude's transcript is read on a timer; read it to the end so the final reply is in hand.
   if (s.agent === 'claude') await s.activityMonitor?.poll();
-  return summarizeRound({ agent: s.agent, language: store.settings.language, task: s.lastTask || '', reply: s.lastReply || '', directory: path.join(app.getPath('userData'), 'summaries') });
+  const material = { language: store.settings.language, task: s.lastTask || '', reply: s.lastReply || '' };
+  if (!material.reply.trim()) return '';
+  if (mode === 'agent') return summarizeRound({ agent: s.agent, ...material, directory: path.join(app.getPath('userData'), 'summaries') });
+  return modelSummary({ target: mode, entry: store.settings.summary[mode], apiKey: summarySecrets.get(mode), ...material, fetcher: (url, options) => electronNet.fetch(url, options) });
 }
 
 // s: the terminal whose round finished, when known.
@@ -703,6 +707,25 @@ function registerIpc() {
   handle('speech:state', () => speechManager.getState());
   handle('speech:prepare', () => speechManager.prepare());
   handle('speech:speak', text => speechManager.speak(text));
+  // Spoken summaries from a model: whether a key is saved (never the key), saving one, the server's models, a trial run.
+  const summaryKeys = () => ({ keys: { cloud: summarySecrets.has('cloud'), local: summarySecrets.has('local') } });
+  const summaryTarget = target => { if (!SUMMARY_TARGETS.includes(target)) throw new Error('无效的模型类型。'); return target; };
+  handle('summary:state', summaryKeys);
+  handle('summary:set-key', (target, key) => { summarySecrets.set(summaryTarget(target), key); return summaryKeys(); });
+  handle('summary:models', target => listModels({ ...connection(summaryTarget(target), store.settings.summary[target], summarySecrets.get(target)), fetcher: (url, options) => electronNet.fetch(url, options) }));
+  handle('summary:test', async mode => {
+    const english = store.settings.language === 'en', started = Date.now();
+    const material = english
+      ? { language: 'en', task: 'add a captcha to the login page', reply: 'I added a captcha component to src/login.tsx and three tests; npm test passes. One question: how long should a captcha stay valid?' }
+      : { language: 'zh', task: '给登录页加上验证码', reply: '我在 src/login.tsx 加了图形验证码组件，补了 3 个测试，npm test 全部通过。还有一个问题：验证码过期时间要设成多久？' };
+    let text;
+    if (mode === 'agent') {
+      const installed = agents.getState();
+      text = await summarizeRound({ agent: installed.claude.installed ? 'claude' : 'codex', ...material, directory: path.join(app.getPath('userData'), 'summaries') });
+      if (!text) throw new Error('编码助手没有给出总结：可能未安装、未登录，或超过了 30 秒。');
+    } else text = await modelSummary({ target: summaryTarget(mode), entry: store.settings.summary[mode], apiKey: summarySecrets.get(mode), ...material, fetcher: (url, options) => electronNet.fetch(url, options) });
+    return { text, ms: Date.now() - started };
+  });
   listen('files:focus', (id, focused) => { if (focused) { findProject(id); activeFileTree = id; activeTerminal = null; } else if (activeFileTree === id) activeFileTree = null; });
   handle('project:file', async (id, relativePath, pageIndex) => {
     const project = findProject(id);
@@ -862,6 +885,7 @@ else {
       } catch (error) { console.warn('Windows Search icon refresh:', error.message); }
     }
     store = new WorkspaceStore(path.join(app.getPath('userData'), 'workspace.json'));
+    summarySecrets = new SecretStore(path.join(app.getPath('userData'), 'summary-keys.json'), safeStorage);
     voiceManager = new VoiceManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
     // Download the offline model in the background after installation so dictation works on first use.
     // Waits for startup and session restore first; isolated test profiles skip the 239 MB download.
