@@ -210,6 +210,7 @@ function SettingsDialog({ settings, agents, onAgents, initialSection, updates, o
         </label>)}
       </div></fieldset>
       <label className="setting-row"><span><Globe size={19} /><span><b>{t('语言')}</b><small>{t('界面、提示与语音播报的语言')}</small></span></span><select aria-label={t('语言')} value={settings.language} onChange={event => update({ language: event.target.value as Settings['language'] })}><option value="zh">中文</option><option value="en">English</option></select></label>
+      <label className="setting-row"><span><Monitor size={19} /><span><b>{t('界面材质')}</b><small>{t('实色：面板不透明，文字用 ClearType 渲染，最锐利，也更省显卡；玻璃：透出壁纸')}</small></span></span><select aria-label={t('界面材质')} value={settings.surface} onChange={event => update({ surface: event.target.value as Settings['surface'] })}><option value="glass">{t('液态玻璃')}</option><option value="solid">{t('实色（更清晰）')}</option></select></label>
       <label className="setting-row"><span><ArrowsOutSimple size={19} /><span><b>{t('界面动画')}</b><small>{t('窗口平滑放大与呼吸灯；默认不受 Windows“动画效果”开关影响')}</small></span></span><select aria-label={t('界面动画')} value={settings.focusAnimation} onChange={e => update({ focusAnimation: e.target.value as Settings['focusAnimation'] })}><option value="smooth">{t('开启')}</option><option value="system">{t('跟随系统')}</option><option value="off">{currentLanguage() === 'en' ? 'Off' : '关闭'}</option></select></label>
       <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端字号')}</b><small>{t('全屏与网格共用字号')}</small></span></span><select aria-label={t('终端字号')} value={settings.fontSize} onChange={e => update({ fontSize: Number(e.target.value) })}>{[10, 11, 12, 13, 14, 16, 18, 20].map(n => <option key={n} value={n}>{n} px</option>)}</select></label>
       </section>
@@ -255,6 +256,8 @@ export function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   useEffect(() => { if (workspace) applyTheme(workspace.settings.theme); }, [workspace?.settings.theme]);
   useEffect(() => { applyMotion(workspace?.settings.focusAnimation || 'smooth'); }, [workspace?.settings.focusAnimation]);
+  // The surface (glass or solid) is a mode of the whole stylesheet, like the theme.
+  useEffect(() => { document.documentElement.dataset.surface = workspace?.settings.surface || 'glass'; }, [workspace?.settings.surface]);
   const [agents, setAgents] = useState<AgentsState | null>(null);
   const [agentsDismissed, setAgentsDismissed] = useState(false);
   const [settingsSection, setSettingsSection] = useState('appearance');

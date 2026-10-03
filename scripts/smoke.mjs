@@ -378,7 +378,7 @@ try {
   await page.evaluate(id => window.projectGrid.writeTerminal(id, 'node ./alt-screen.cjs\r'), projects[0].id);
   await waitFor(async () => panel.locator('.xterm-rows > div').evaluateAll(rows => rows.some(row => row.textContent.includes('CONPTY_ALT_SCREEN_OK') && !row.textContent.includes('node '))), 'interactive alternate-screen terminal');
   await page.getByRole('button', { name: '收起目录栏', exact: true }).click();
-  await page.getByRole('button', { name: '展开目录栏', exact: true }).click();
+  await page.locator('.explorer-rail').getByRole('button', { name: '资源管理器', exact: true }).click();
   await page.evaluate(id => window.projectGrid.writeTerminal(id, 'q'), projects[0].id);
   await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[0].shellReady, 'alternate-screen app exits after resizing without a cursor-report loop');
   console.log('PASS: interactive alternate-screen app remains responsive through terminal resizing');

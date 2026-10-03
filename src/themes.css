@@ -19,7 +19,7 @@
   --theme-muted: #e1f2fa;
   --theme-line: #c5e6e43b;
   --theme-hover: #c2eeec16;
-  --theme-chrome: rgba(13, 40, 52, .34);
+  --theme-chrome: rgba(13, 40, 52, .5);
   --theme-sidebar: rgba(12, 40, 50, .52);
   --theme-pane: rgba(4, 23, 34, .16);
   --theme-control: rgba(26, 65, 78, .2);
@@ -39,7 +39,7 @@
   --theme-muted: #fae9e6;
   --theme-line: #edd0c43b;
   --theme-hover: #f7d1bf16;
-  --theme-chrome: rgba(48, 25, 38, .34);
+  --theme-chrome: rgba(48, 25, 38, .5);
   --theme-sidebar: rgba(42, 24, 36, .52);
   --theme-pane: rgba(25, 10, 24, .16);
   --theme-control: rgba(83, 48, 65, .2);
@@ -56,7 +56,7 @@
 }
 
 /* Palette changes affect materials, never terminal ANSI colors or task signals. */
-:root:not([data-theme="forest"]) .titlebar { background: var(--glass-sheen), var(--theme-chrome); border-color: var(--theme-line); }
+:root:not([data-theme="forest"]) .titlebar { background: var(--theme-chrome); border-color: rgba(255, 255, 255, .1); }
 :root:not([data-theme="forest"]) .focus-sidebar { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--glass-hairline); }
 :root:not([data-theme="forest"]) :is(.settings-dialog, .dropdown) { background: var(--glass-sheen), var(--glass-strong); border-color: var(--theme-line); color: var(--theme-ink); }
 :root:not([data-theme="forest"]) .file-preview { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--glass-hairline); }
@@ -101,3 +101,4 @@
 @media (prefers-reduced-transparency: reduce) {
   :root:not([data-theme="forest"]) :is(.project-panel, .titlebar, .focus-sidebar, .file-preview, .settings-dialog, .dropdown) { background: var(--glass-solid); backdrop-filter: none; }
 }
+:root[data-surface="solid"]:not([data-theme="forest"]) :is(.project-panel, .titlebar, .focus-sidebar, .file-preview, .settings-dialog, .dropdown) { background: var(--glass-solid); backdrop-filter: none; }

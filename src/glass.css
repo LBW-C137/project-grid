@@ -36,7 +36,7 @@
 .titlebar, .focus-sidebar, .project-panel, .settings-dialog, .file-preview {
   backdrop-filter: var(--liquid-backdrop, blur(6px) saturate(165%));
 }
-.titlebar { height: 48px; flex-basis: 48px; margin: 0; border: 0; border-bottom: 1px solid var(--glass-border); border-radius: 0; background: var(--glass-sheen), rgba(9, 24, 34, .52); box-shadow: var(--glass-shadow); overflow: hidden; text-shadow: var(--text-shadow); }
+.titlebar { height: 48px; flex-basis: 48px; margin: 0; border: 0; border-bottom: 1px solid rgba(255, 255, 255, .1); border-radius: 0; background: rgba(9, 24, 34, .52); backdrop-filter: blur(18px) saturate(125%); box-shadow: none; overflow: hidden; text-shadow: var(--text-shadow); }
 /* The title bar balances its two ends: brand and project count on the left, and the search, add and settings
    controls on the right, all about 28px tall. */
 .titlebar-brand { padding-left: 22px; gap: 11px; color: #e3ebf5; font-size: 15px; letter-spacing: .1px; }
@@ -414,6 +414,16 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
   .settings-dialog::backdrop { background: #07111fc9; backdrop-filter: none; }
   .app-shell::before { backdrop-filter: none; }
 }
+/* The solid surface, chosen in Settings: the same opaque panes. On an opaque pane Windows draws text with
+   ClearType (sub-pixel) instead of the grey antialiasing a translucent layer gets, so letters are at their
+   sharpest; nothing is blurred behind the panes, and the wallpaper is covered by a plain dark ground. */
+:root[data-surface="solid"] :is(.project-panel, .focus-sidebar, .file-preview, .titlebar, .settings-dialog, .dropdown, .reorder-hint, .search-input, .button.secondary, .voice-overlay, .tour-bubble) { background: var(--glass-solid); backdrop-filter: none; text-shadow: none; }
+:root[data-surface="solid"] .project-panel.has-unread { background: #3b2b39; }:root[data-surface="solid"] .project-panel.round-complete { background: #263d35; }
+:root[data-surface="solid"] .settings-dialog::backdrop { background: #07111fc9; backdrop-filter: none; }
+:root[data-surface="solid"] .app-shell { background: #0e1a22 !important; }:root[data-surface="solid"] .app-shell::before { backdrop-filter: none; }
+:root[data-surface="solid"] :is(.terminal-host .xterm-rows, .panel-header, .tree-row) { text-shadow: none; }
+:root[data-surface="solid"] .panel-spotlight { display: none; }:root[data-surface="solid"] :is(.project-panel, .focus-sidebar, .file-preview)::after { display: none; }
+:root[data-surface="solid"] .project-panel { border-color: rgba(255, 255, 255, .1); }
 /* Motion follows the app setting (src/motion.ts): "off" always stops it, "system" follows Windows. */
 :root[data-motion="off"] :is(*, *::before, *::after) { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { :root[data-motion="system"] :is(*, *::before, *::after) { animation: none !important; transition: none !important; } }

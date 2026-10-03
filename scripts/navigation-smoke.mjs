@@ -67,7 +67,7 @@ try {
   assert.deepEqual(await sidebar.locator('.explorer-tabs button').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['资源管理器', 'Git 历史']);
   assert.equal(await sidebar.getByRole('treeitem', { name: local.name, exact: true }).count(), 0, 'the project root is the title, not a tree row');
   await page.screenshot({ path: path.join(output, 'sidebar.png') });
-  await page.keyboard.press('Control+b'); await sidebar.getByRole('button', { name: '展开目录栏', exact: true }).waitFor();
+  await page.keyboard.press('Control+b'); await page.waitForSelector('.focus-sidebar.is-collapsed'); assert.equal(await sidebar.locator('.sidebar-toggle').count(), 0, 'a collapsed sidebar shows no collapse control, only its two panes');
   assert.deepEqual(await sidebar.locator('.explorer-rail button').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['资源管理器', 'Git 历史']);
   await page.screenshot({ path: path.join(output, 'sidebar-collapsed.png') });
   await page.keyboard.press('Control+b');
