@@ -24,6 +24,7 @@ import { quickDictation } from './voice-input';
 import { ShortcutSettings } from './ShortcutSettings';
 import { AgentsSettings } from './AgentsSettings';
 import { UsageGuide } from './UsageGuide';
+import { GuideTour } from './GuideTour';
 const FilePreview = lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
 const GitDiffView = lazy(() => import('./GitDiffView').then(module => ({ default: module.GitDiffView })));
 
@@ -264,11 +265,14 @@ export function App() {
   const { root: focusMotionRoot, focusedId, focus: setFocusedId } = useProjectFocusMotion(workspace?.settings.focusAnimation || 'smooth');
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The usage guide: welcome page on first use, "what's new" after an update, or opened from settings.
-  const [guide, setGuide] = useState<'intro' | 'news' | null>(null);
+  // tour: the tutorial in the window itself, a bubble at each place to act.
+  const [guide, setGuide] = useState<'tour' | 'keys' | 'news' | null>(null);
+  const tourWithAdd = useRef(false);
+  const startTour = () => { tourWithAdd.current = !workspace?.projects.length; setGuide('tour'); };
   const guideShown = useRef(false);
   useEffect(() => {
     if (!workspace?.guide || guideShown.current) return;
-    guideShown.current = true; setGuide(workspace.settings.guideVersion ? 'news' : 'intro');
+    guideShown.current = true; if (workspace.settings.guideVersion) setGuide('news'); else startTour();
   }, [workspace?.guide, workspace?.settings.guideVersion]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -361,7 +365,7 @@ export function App() {
     // While a dialog is open (including recording a new shortcut) nothing is intercepted.
     const handler = (event: KeyboardEvent) => {
       const action = actionFor(event);
-      if (!action || editingKeyInField(event) || document.querySelector('dialog[open]')) return;
+      if (!action || editingKeyInField(event) || document.querySelector('dialog[open], .tour-layer')) return;
       event.preventDefault(); event.stopPropagation();
       if (event.repeat) return;
       if (action === 'search' && !focusedId) { setSearchOpen(true); requestAnimationFrame(() => queryInput.current?.focus()); }
@@ -463,8 +467,9 @@ export function App() {
       </main>
     </div>
     {error && <div className="error-toast" role="alert"><Info size={18} /><span>{error}</span><IconButton label={t('关闭提示')} onClick={() => setError(null)}><X size={16} /></IconButton></div>}
-    {guide && <UsageGuide version={workspace.version} start={guide} onClose={() => { setGuide(null); if (settings.guideVersion !== workspace.version) setPreference({ guideVersion: workspace.version }); }} />}
-    {settingsOpen && <SettingsDialog settings={settings} agents={agents} onAgents={setAgents} initialSection={settingsSection} updates={updates} onGuide={() => { setSettingsOpen(false); setSettingsSection('appearance'); setGuide('intro'); }} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => { setSettingsOpen(false); setSettingsSection('appearance'); }} update={setPreference} quit={() => perform(api.quit())} />}
+    {guide === 'tour' && <GuideTour projects={projects} focusedId={focusedId} withAdd={tourWithAdd.current} onClose={() => { setGuide(null); if (settings.guideVersion !== workspace.version) setPreference({ guideVersion: workspace.version }); }} />}
+    {guide && guide !== 'tour' && <UsageGuide version={workspace.version} start={guide} onTour={startTour} onClose={() => { setGuide(null); if (settings.guideVersion !== workspace.version) setPreference({ guideVersion: workspace.version }); }} />}
+    {settingsOpen && <SettingsDialog settings={settings} agents={agents} onAgents={setAgents} initialSection={settingsSection} updates={updates} onGuide={() => { setSettingsOpen(false); setSettingsSection('appearance'); startTour(); }} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => { setSettingsOpen(false); setSettingsSection('appearance'); }} update={setPreference} quit={() => perform(api.quit())} />}
     {addOpen && <AddProjectDialog onClose={() => setAddOpen(false)} onAdded={() => setQuery('')} onError={reportError} />}
     {sshAuth[0] && <SSHAuthDialog key={sshAuth[0].id} request={sshAuth[0]} />}
     <VoiceOverlay />

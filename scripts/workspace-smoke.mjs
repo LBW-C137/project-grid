@@ -95,10 +95,22 @@ try {
   assert.equal((await page.evaluate(() => window.projectGrid.getState())).value.guide, false);
   await page.keyboard.press('Control+,');
   await page.getByRole('button', { name: '使用指南', exact: true }).click();
-  await guide.getByRole('heading', { name: '欢迎使用 Project Grid', exact: true }).waitFor();
-  for (const title of ['第一步：添加项目', '第二步：开始一轮任务', '第三步：等提醒，再继续']) { await guide.getByRole('button', { name: '下一步', exact: true }).click(); await guide.getByRole('heading', { name: title, exact: true }).waitFor(); }
+  // From Settings the tutorial runs in the window itself: a bubble at the place to act, the rest blocked.
+  const tour = page.locator('.tour-bubble'); await tour.waitFor();
+  await tour.getByRole('heading', { name: '启动编码助手', exact: true }).waitFor();
+  await tour.getByText('先点击「启动终端」，再在终端里输入 codex 或 claude，按回车启动。').waitFor();
+  assert.equal(await page.locator('.tour-shade').count(), 4, 'everything but the step\'s target is shaded');
   await page.screenshot({ path: path.join(output, 'guide-step.png') });
-  await page.keyboard.press('Escape'); await guide.waitFor({ state: 'detached' });
+  const gear = await page.locator('.titlebar-tools > .icon-button').boundingBox();
+  await page.mouse.click(gear.x + gear.width / 2, gear.y + gear.height / 2);
+  assert.equal(await page.locator('dialog.settings-dialog[open]').count(), 0, 'the rest of the window cannot be used during a step');
+  for (const title of ['下达指令', '放大查看', '设置与更多']) { await tour.getByRole('button', { name: '下一步', exact: true }).click(); await tour.getByRole('heading', { name: title, exact: true }).waitFor(); }
+  const ring = await page.locator('.tour-ring').boundingBox();
+  assert.ok(ring.width < 80 && Math.abs(ring.x + ring.width / 2 - (gear.x + gear.width / 2)) < 4, 'the last step points at the settings button');
+  await page.screenshot({ path: path.join(output, 'guide-last-step.png') });
+  await tour.getByRole('button', { name: '完成', exact: true }).click(); await tour.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: '工作台设置', exact: true }).click(); await page.getByRole('button', { name: '使用指南', exact: true }).click();
+  await tour.waitFor(); await page.keyboard.press('Escape'); await tour.waitFor({ state: 'detached' });
   console.log('PASS: the usage guide opens on what is new after an update, pages through the steps and shortcuts, and reopens from settings');
   await page.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[0].shellReady, 'terminal ready');
