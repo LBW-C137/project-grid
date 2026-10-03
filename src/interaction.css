@@ -44,4 +44,3 @@
 .git-hunk { animation: arrive-up .22s cubic-bezier(.2, .8, .2, 1) backwards; }
 .error-toast, .workspace-warning { animation: arrive-up .22s cubic-bezier(.2, .8, .2, 1); }
 dialog[open]::backdrop { animation: backdrop-in .2s ease; }
-.panel-activity { animation: arrive-up .2s cubic-bezier(.2, .8, .2, 1); }

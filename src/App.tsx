@@ -8,7 +8,7 @@ import {
 import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
 import { ProjectTerminals } from './ProjectTerminals';
 import { ProjectExplorer } from './ProjectExplorer';
-import { ActivityPane, actionText } from './ActivityPane';
+import { ActivityPane } from './ActivityPane';
 import { AddProjectDialog } from './AddProjectDialog';
 import { SSHAuthDialog } from './SSHAuthDialog';
 import { useProjectReorder } from './useProjectReorder';
@@ -124,7 +124,6 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, activity
         {project.kind === 'ssh' && <small className="ssh-project-label"><Globe size={11} />{project.ssh?.host}</small>}
       </button>
       {!!meta && <span className="panel-meta" title={project.path}>{meta}</span>}
-      {working && project.action && <span className={`panel-activity ${project.action.kind === 'edit' && !project.action.done ? 'is-editing' : ''}`} title={actionText(project.action)}>{actionText(project.action)}</span>}
       {!!project.unread && !focused && !working
         ? <button type="button" className={`${badgeClass} status-button`} title={statusText(project)} onClick={() => onFocus(project.id)} aria-label={t('查看 {name} 的完成结果', { name: project.name })}>{badge}</button>
         : <span className={badgeClass} title={statusText(project)}>{badge}</span>}

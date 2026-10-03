@@ -421,11 +421,8 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .panel-header .voice-button { width: 24px; height: 27px; }
 .titlebar-tools > .search-toggle { width: 28px; height: 28px; }
 
-/* What the agent is doing. On a card: one line in the header while it works. In an expanded project:
-   a pane beside the terminal listing the steps of the round; the terminal gives it room and refits. */
-.panel-activity { flex: 0 1 auto; min-width: 0; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 11px var(--font-mono); color: #a9d4f5; }
-.panel-activity.is-editing { color: #ffd9a0; }
-@container (max-width: 460px) { .panel-activity { display: none; } }
+/* What the agent is doing: in an expanded project, a pane beside the terminal lists the steps of the
+   round; the terminal gives it room and refits. */
 .panel-header .icon-button.is-active { color: #f1f7ff; background: #edfbff1f; }
 .project-panel.has-activity .panel-terminal-area { margin-right: 340px; }
 .activity-pane { position: absolute; top: 44px; right: 0; bottom: 0; width: 340px; z-index: 1; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid rgba(220, 237, 255, .14); background: rgba(4, 16, 26, .3); border-radius: 0 0 calc(var(--glass-radius) - 1px) 0; text-shadow: var(--text-shadow); }

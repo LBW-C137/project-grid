@@ -152,7 +152,7 @@ function claudeRecord(log, record, cwd) {
   if (!Array.isArray(content)) return;
   const added = [];
   for (const block of content) {
-    if (record.type === 'assistant' && block.type === 'tool_use') { const action = claudeAction(block, at, record.cwd || cwd); log.add(action); added.push(action); }
+    if (record.type === 'assistant' && block.type === 'tool_use') { const action = claudeAction(block, at, cwd || record.cwd); log.add(action); added.push(action); }
     else if (record.type === 'user' && block.type === 'tool_result') log.finish(String(block.tool_use_id || ''), block.is_error === true);
   }
   return added;

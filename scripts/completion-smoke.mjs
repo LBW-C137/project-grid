@@ -62,7 +62,6 @@ try {
   const step = (id, cmd) => JSON.stringify({ type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'custom_tool_call', call_id: id, name: 'exec', input: 'text(await tools.exec_command({cmd:' + JSON.stringify(cmd) + '}))' } }) + '\n';
   await fs.appendFile(transcript, step('call-1', 'npm test'));
   await waitFor(async () => (await state()).action?.kind === 'command' && (await state()).action.target === 'npm test', 'running command is reported');
-  await waitFor(async () => (await page.locator('.panel-activity').innerText()) === '运行 npm test', 'card names the current step');
   await fs.appendFile(transcript, JSON.stringify({ type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'custom_tool_call_output', call_id: 'call-1', output: [] } }) + '\n' + step('call-2', 'apply_patch\n*** Begin Patch\n*** Update File: src/login.ts\n*** End Patch'));
   await waitFor(async () => (await state()).action?.kind === 'edit' && (await state()).action.target === 'src/login.ts', 'file edit is reported');
   assert.equal((await page.evaluate(id => window.projectGrid.terminalActions(id), project.id)).value.length, 2, 'both steps are listed for the activity pane');
