@@ -1,0 +1,213 @@
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const os = require('node:os');
+
+// What an agent is doing, step by step: each tool it calls becomes one action the window can show
+// ("editing src/App.tsx", "running npm test", "skill code-review", "MCP github · create_issue").
+// Both agents already write this down: Claude Code in its transcript, Codex in its rollout file.
+// Reading those costs the agents nothing, unlike a hook that would run before every tool.
+//
+// An action is { id, at, kind, tool, target, detail, description, done, failed }.
+// kind: edit | command | read | search | web | skill | mcp | agent | other.
+const clip = (value, limit) => { const text = String(value ?? '').replace(/\s+/g, ' ').trim(); return text.length > limit ? `${text.slice(0, limit - 1)}…` : text; };
+
+// A file named by the agent, relative to the project when it lies inside it.
+function projectPath(file, cwd) {
+  if (typeof file !== 'string' || !file) return '';
+  if (cwd && path.isAbsolute(file)) {
+    const relative = path.relative(cwd, file);
+    if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) return relative.split(path.sep).join('/');
+  }
+  return file.split('\\').join('/');
+}
+
+// mcp__server__tool, the name both agents give a tool that an MCP server provides.
+function mcpTool(name) {
+  const match = /^mcp__(.+?)__(.+)$/.exec(name);
+  return match ? { server: match[1], tool: match[2] } : null;
+}
+
+const CLAUDE_KINDS = { Edit: 'edit', Write: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit', Read: 'read', Bash: 'command', PowerShell: 'command', BashOutput: 'command', Grep: 'search', Glob: 'search', WebFetch: 'web', WebSearch: 'web', Skill: 'skill', Agent: 'agent', Task: 'agent' };
+// One tool_use block of a Claude Code transcript.
+function claudeAction(block, at, cwd) {
+  const name = String(block.name || ''), input = block.input && typeof block.input === 'object' ? block.input : {};
+  const action = { id: String(block.id || ''), at, kind: CLAUDE_KINDS[name] || 'other', tool: name, target: '', detail: '', description: '', done: false, failed: false };
+  const mcp = mcpTool(name);
+  if (mcp) { action.kind = 'mcp'; action.target = `${mcp.server} · ${mcp.tool}`; action.server = mcp.server; }
+  else if (action.kind === 'edit' || action.kind === 'read') action.target = projectPath(input.file_path || input.notebook_path, cwd);
+  else if (action.kind === 'command') { action.target = clip(input.command || input.bash_id, 240); action.detail = clip(input.description, 160); }
+  else if (action.kind === 'search') { action.target = clip(input.pattern, 160); action.detail = projectPath(input.path, cwd); }
+  else if (action.kind === 'web') action.target = clip(input.url || input.query, 240);
+  else if (action.kind === 'skill') { action.target = clip(input.skill, 120); action.detail = clip(input.args, 160); }
+  else if (action.kind === 'agent') { action.target = clip(input.description || input.subagent_type, 160); action.detail = clip(input.subagent_type, 80); }
+  else action.target = name;
+  return action;
+}
+
+const EDITING_COMMAND = /\b(apply_patch|writeFileSync|appendFileSync|Set-Content|Add-Content|Out-File|sed\s+-i|tee\s)/;
+// A shell command Codex ran. Codex edits files through the shell too (apply_patch or a script that writes).
+function codexCommand(id, at, command, cwd) {
+  const action = { id, at, kind: 'command', tool: 'exec_command', target: clip(command, 240), detail: '', description: '', done: false, failed: false };
+  const files = [...String(command).matchAll(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/gm)].map(match => projectPath(match[1].trim(), cwd));
+  const skill = /([^\s"'`]*[\\/]([^\\/\s"'`]+)[\\/]SKILL\.md)/.exec(String(command));
+  if (files.length) { action.kind = 'edit'; action.target = files.slice(0, 3).join('、') + (files.length > 3 ? ` +${files.length - 3}` : ''); }
+  else if (skill) { action.kind = 'skill'; action.target = skill[2]; action.skillFile = skill[1]; }
+  else if (EDITING_COMMAND.test(String(command))) { action.kind = 'edit'; action.detail = action.target; action.target = ''; }
+  return action;
+}
+// One response_item of a Codex rollout that calls a tool. Newer Codex wraps every call in a script
+// for its "exec" tool (tools.exec_command({cmd: "…"})); older versions call shell and apply_patch directly.
+function codexActions(payload, at, cwd) {
+  const id = String(payload.call_id || payload.id || '');
+  if (payload.type === 'custom_tool_call' && typeof payload.input === 'string') {
+    const actions = [], input = payload.input;
+    for (const match of input.matchAll(/tools\.([\w.]+)\(/g)) {
+      const name = match[1], rest = input.slice(match.index);
+      if (name === 'exec_command' || name === 'shell') {
+        const command = /cmd:\s*("(?:[^"\\]|\\.)*")/.exec(rest);
+        let text = ''; try { text = command ? JSON.parse(command[1]) : ''; } catch { text = command ? command[1] : ''; }
+        actions.push(codexCommand(`${id}:${actions.length}`, at, text, cwd));
+      } else if (name === 'apply_patch') actions.push(codexCommand(`${id}:${actions.length}`, at, rest, cwd));
+      else if (name === 'write_stdin') continue;
+      else {
+        const mcp = mcpTool(name) || (name.includes('.') ? { server: name.split('.')[0], tool: name.split('.').slice(1).join('.') } : null);
+        actions.push({ id: `${id}:${actions.length}`, at, kind: mcp ? 'mcp' : 'other', tool: name, target: mcp ? `${mcp.server} · ${mcp.tool}` : name, detail: '', description: '', done: false, failed: false, ...(mcp ? { server: mcp.server } : {}) });
+      }
+    }
+    if (!actions.length && payload.name === 'apply_patch') actions.push(codexCommand(`${id}:0`, at, `apply_patch\n${input}`, cwd));
+    return actions;
+  }
+  if (payload.type === 'function_call' || payload.type === 'local_shell_call') {
+    let args = {}; try { args = typeof payload.arguments === 'string' ? JSON.parse(payload.arguments) : payload.action || {}; } catch { }
+    const name = String(payload.name || 'shell'), mcp = mcpTool(name);
+    if (mcp) return [{ id: `${id}:0`, at, kind: 'mcp', tool: name, target: `${mcp.server} · ${mcp.tool}`, detail: '', description: '', done: false, failed: false, server: mcp.server }];
+    const command = Array.isArray(args.command) ? args.command.join(' ') : args.command || args.cmd || args.input || '';
+    if (['shell', 'exec_command', 'local_shell', 'apply_patch', 'container.exec'].includes(name)) return [codexCommand(`${id}:0`, at, name === 'apply_patch' ? `apply_patch\n${command}` : command, cwd)];
+    return [{ id: `${id}:0`, at, kind: 'other', tool: name, target: name, detail: '', description: '', done: false, failed: false }];
+  }
+  return [];
+}
+// The call id a Codex output record answers, or null.
+function codexFinished(payload) {
+  return ['custom_tool_call_output', 'function_call_output', 'local_shell_call_output'].includes(payload.type) ? String(payload.call_id || '') : null;
+}
+
+// The steps of the current round, oldest first. changed is called with what to tell the window.
+class ActionLog {
+  constructor(changed = () => {}, limit = 200) { this.changed = changed; this.limit = limit; this.list = []; }
+  reset() { if (!this.list.length) return; this.list = []; this.changed({ reset: true }); }
+  add(action) {
+    if (!action.id || this.list.some(item => item.id === action.id)) return;
+    this.list.push(action);
+    if (this.list.length > this.limit) this.list.shift();
+    this.changed({ action });
+  }
+  // prefix: a Codex call id covers every step its script made.
+  finish(id, failed = false, prefix = false) {
+    for (const action of this.list) {
+      if (action.done || !(prefix ? action.id.startsWith(`${id}:`) : action.id === id)) continue;
+      action.done = true; action.failed = failed; this.changed({ action });
+    }
+  }
+  // A round that ended leaves nothing running, whatever the transcript recorded last.
+  settle() { for (const action of this.list) if (!action.done) { action.done = true; this.changed({ action }); } }
+  update(action) { this.changed({ action }); }
+  // What the card names: the step in progress, else the latest one.
+  current() { return this.list.findLast(action => !action.done) || this.list.at(-1) || null; }
+}
+
+// Follows a growing JSON-lines file from where the last read stopped, a bounded amount per call.
+class TranscriptTail {
+  constructor(filename) { this.filename = filename; this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; }
+  async read(onRecord) {
+    let file; try { file = await fs.open(this.filename, 'r'); } catch { return; }
+    try {
+      const stat = await file.stat();
+      if (stat.size < this.offset) { this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; }
+      const end = Math.min(stat.size, this.offset + 4 * 1024 * 1024);
+      while (this.offset < end) {
+        const chunk = Buffer.alloc(Math.min(65536, end - this.offset));
+        const { bytesRead } = await file.read(chunk, 0, chunk.length, this.offset);
+        if (!bytesRead) break;
+        this.offset += bytesRead;
+        this.buffer = Buffer.concat([this.buffer, chunk.subarray(0, bytesRead)]);
+        let newline;
+        while ((newline = this.buffer.indexOf(10)) !== -1) {
+          const line = this.buffer.subarray(0, newline); this.buffer = this.buffer.subarray(newline + 1);
+          if (!this.skipping && line.length <= 1024 * 1024) { try { onRecord(JSON.parse(line.toString('utf8'))); } catch { } }
+          this.skipping = false;
+        }
+        if (this.buffer.length > 1024 * 1024) { this.buffer = Buffer.alloc(0); this.skipping = true; }
+      }
+    } finally { await file.close(); }
+  }
+}
+
+// One record of a Claude Code transcript, applied to the log: a prompt starts a new round, a tool_use
+// block is a step, its tool_result ends it. Child agents (sidechains) are part of their parent's step.
+function claudeRecord(log, record, cwd) {
+  if (!record || record.isSidechain || !record.message) return;
+  const content = record.message.content, at = Date.parse(record.timestamp) || Date.now();
+  if (record.type === 'user' && !record.isMeta && (typeof content === 'string' || Array.isArray(content) && content.some(block => block.type === 'text') && !content.some(block => block.type === 'tool_result'))) { log.reset(); return; }
+  if (!Array.isArray(content)) return;
+  const added = [];
+  for (const block of content) {
+    if (record.type === 'assistant' && block.type === 'tool_use') { const action = claudeAction(block, at, record.cwd || cwd); log.add(action); added.push(action); }
+    else if (record.type === 'user' && block.type === 'tool_result') log.finish(String(block.tool_use_id || ''), block.is_error === true);
+  }
+  return added;
+}
+// One record of a Codex rollout, applied to the log.
+function codexRecord(log, record, cwd) {
+  if (!record?.payload) return;
+  const at = Date.parse(record.timestamp) || Date.now();
+  // A different conversation (the reader moved to another rollout file) or a new round starts over.
+  if (record.type === 'session_meta' || record.type === 'event_msg' && ['task_started', 'turn_started'].includes(record.payload.type)) { log.reset(); return; }
+  if (record.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload.type)) { log.settle(); return; }
+  if (record.type !== 'response_item') return;
+  const finished = codexFinished(record.payload);
+  if (finished) { log.finish(finished, false, true); return; }
+  const added = codexActions(record.payload, at, cwd);
+  for (const action of added) log.add(action);
+  return added;
+}
+
+// What a skill is for: the description at the top of its SKILL.md. Skills live in the project, in the
+// user's Claude and Codex folders, and inside installed plugins; the folders are indexed once in a while.
+const SKILL_ROOTS = () => [path.join(os.homedir(), '.claude', 'skills'), path.join(os.homedir(), '.claude', 'plugins'), path.join(os.homedir(), '.codex', 'skills')];
+const skillIndexes = new Map();
+async function skillIndex(root) {
+  const known = skillIndexes.get(root);
+  if (known && Date.now() - known.at < 5 * 60000) return known.files;
+  const files = new Map();
+  const visit = async (folder, depth) => {
+    let entries; try { entries = await fs.readdir(folder, { withFileTypes: true }); } catch { return; }
+    if (entries.some(entry => entry.isFile() && entry.name === 'SKILL.md') && !files.has(path.basename(folder))) files.set(path.basename(folder), path.join(folder, 'SKILL.md'));
+    if (depth < 8) await Promise.all(entries.filter(entry => entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.git').map(entry => visit(path.join(folder, entry.name), depth + 1)));
+  };
+  await visit(root, 0);
+  skillIndexes.set(root, { at: Date.now(), files });
+  return files;
+}
+async function readSkillDescription(file) {
+  let handle; try { handle = await fs.open(file, 'r'); } catch { return ''; }
+  try {
+    const buffer = Buffer.alloc(8192), { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(buffer.toString('utf8', 0, bytesRead));
+    const line = front && /^description:\s*(.*(?:\r?\n[ \t]+.*)*)$/m.exec(front[1]);
+    return line ? clip(line[1].replace(/^[>|][+-]?\s*/, '').replace(/^["']|["']$/g, ''), 400) : '';
+  } finally { await handle.close(); }
+}
+// name: "skill" or "plugin:skill". file: a SKILL.md the agent itself read (Codex), relative to cwd.
+async function skillDescription(name, cwd, file) {
+  if (file) { const direct = await readSkillDescription(path.resolve(cwd || '.', file)); if (direct) return direct; }
+  const skill = String(name || '').split(':').at(-1);
+  if (!/^[\w.-]{1,120}$/.test(skill)) return '';
+  for (const root of [...(cwd ? [path.join(cwd, '.claude', 'skills'), path.join(cwd, '.codex', 'skills')] : []), ...SKILL_ROOTS()]) {
+    const found = (await skillIndex(root)).get(skill);
+    if (found) { const description = await readSkillDescription(found); if (description) return description; }
+  }
+  return '';
+}
+
+module.exports = { ActionLog, TranscriptTail, claudeAction, claudeRecord, codexActions, codexRecord, skillDescription, projectPath };

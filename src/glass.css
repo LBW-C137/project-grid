@@ -406,3 +406,26 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 
 .panel-header .voice-button { width: 24px; height: 27px; }
 .titlebar-tools > .search-toggle { width: 28px; height: 28px; }
+
+/* What the agent is doing. On a card: one line in the header while it works. In an expanded project:
+   a pane beside the terminal listing the steps of the round; the terminal gives it room and refits. */
+.panel-activity { flex: 0 1 auto; min-width: 0; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11px 'Cascadia Code', Consolas, 'Microsoft YaHei UI', monospace; color: #a9d4f5; }
+.panel-activity.is-editing { color: #ffd9a0; }
+@container (max-width: 460px) { .panel-activity { display: none; } }
+.panel-header .icon-button.is-active { color: #f1f7ff; background: #edfbff1f; }
+.project-panel.has-activity .panel-terminal-area { margin-right: 340px; }
+.activity-pane { position: absolute; top: 44px; right: 0; bottom: 0; width: 340px; z-index: 1; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid rgba(220, 237, 255, .14); background: rgba(4, 16, 26, .3); border-radius: 0 0 calc(var(--glass-radius) - 1px) 0; text-shadow: var(--text-shadow); }
+.activity-header { display: flex; align-items: baseline; gap: 8px; padding: 11px 14px 7px; font-size: 12px; }.activity-header span { color: #a9bfd6; font-size: 11px; }
+.activity-now { display: flex; align-items: center; gap: 7px; margin: 0 10px 8px; padding: 7px 10px; border-radius: 8px; font-size: 12px; color: #d6e6f5; background: rgba(255, 255, 255, .06); }
+.activity-now > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-now.is-working { color: #cfe9ff; background: rgba(73, 191, 255, .14); }.activity-now.is-editing { color: #ffe3b8; background: rgba(255, 176, 72, .16); }
+.activity-list { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 14px; }
+.activity-empty { margin: 8px 6px; font-size: 11px; line-height: 1.7; color: #a9bfd6; }
+.activity-item { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px; padding: 6px 6px; border-radius: 7px; }
+.activity-item.is-running { background: rgba(255, 255, 255, .06); }
+.activity-icon { padding-top: 2px; color: #9fb5ce; }.activity-edit .activity-icon { color: #ffcf8f; }.activity-skill .activity-icon { color: #d0b6f7; }.activity-mcp .activity-icon { color: #a2e1e7; }
+.activity-title { display: flex; align-items: baseline; gap: 8px; font-size: 11px; }.activity-title time { color: #8ea6c1; font-size: 10px; }.activity-title em { color: #ffb1ac; font-style: normal; font-size: 10px; }
+.activity-item code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11px/1.6 'Cascadia Code', Consolas, 'Microsoft YaHei UI', monospace; color: #e7f1fa; }
+.activity-item p { margin: 1px 0 0; font-size: 11px; line-height: 1.5; color: #a9bfd6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.activity-item.is-failed code { color: #ffc9c5; }
+@media (max-width: 1000px) { .project-panel.has-activity .panel-terminal-area { margin-right: 0; } .activity-pane { display: none; } }

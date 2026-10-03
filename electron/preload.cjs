@@ -82,6 +82,8 @@ contextBridge.exposeInMainWorld('projectGrid', {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   toggleFullScreen: () => ipcRenderer.send('window:fullscreen'),
+  terminalActions: id => ipcRenderer.invoke('terminal:actions', id),
+  onTerminalAction: callback => listen('terminal:action', callback),
   close: () => ipcRenderer.send('window:close'),
   focusMode: enabled => ipcRenderer.send('window:focus-mode', enabled),
   quit: () => ipcRenderer.invoke('app:quit'),

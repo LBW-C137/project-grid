@@ -33,6 +33,8 @@ class CodexActivityReader {
     }
   }
   record(record) {
+    // Every record also goes to whoever follows the agent's steps (agent-actions.cjs).
+    this.options.onRecord?.(record);
     if (record.type !== 'event_msg') return;
     const item = record.payload || {}, turn = item.turn_id;
     // The prompt of the round, so its completion can be announced by what it worked on.

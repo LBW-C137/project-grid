@@ -58,6 +58,24 @@ try {
   await waitFor(async () => (await state()).codexActivity === 'working', 'parent stays running');
   assert.equal(await notices(), 0); assert.equal((await state()).unread, 0);
   await waitFor(async () => page.locator('.status-badge').innerText().then(text => text.includes('正在处理')), 'visible running badge');
+  // The step the agent is on shows in the card header: a command it runs, then a file it patches.
+  const step = (id, cmd) => JSON.stringify({ type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'custom_tool_call', call_id: id, name: 'exec', input: 'text(await tools.exec_command({cmd:' + JSON.stringify(cmd) + '}))' } }) + '\n';
+  await fs.appendFile(transcript, step('call-1', 'npm test'));
+  await waitFor(async () => (await state()).action?.kind === 'command' && (await state()).action.target === 'npm test', 'running command is reported');
+  await waitFor(async () => (await page.locator('.panel-activity').innerText()) === '运行 npm test', 'card names the current step');
+  await fs.appendFile(transcript, JSON.stringify({ type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'custom_tool_call_output', call_id: 'call-1', output: [] } }) + '\n' + step('call-2', 'apply_patch\n*** Begin Patch\n*** Update File: src/login.ts\n*** End Patch'));
+  await waitFor(async () => (await state()).action?.kind === 'edit' && (await state()).action.target === 'src/login.ts', 'file edit is reported');
+  assert.equal((await page.evaluate(id => window.projectGrid.terminalActions(id), project.id)).value.length, 2, 'both steps are listed for the activity pane');
+  // Expanded, the pane beside the terminal lists the steps, newest first, and the running edit is marked.
+  await page.getByRole('button', { name: '全屏查看 Parent task status', exact: true }).click();
+  const pane = page.locator('.activity-pane'); await pane.waitFor();
+  await waitFor(async () => await pane.locator('.activity-item').count() === 2, 'activity pane lists the steps');
+  assert.equal(await pane.locator('.activity-item').first().locator('code').innerText(), 'src/login.ts');
+  assert.ok((await pane.locator('.activity-now').getAttribute('class')).includes('is-editing'));
+  await page.waitForFunction(() => !document.querySelector('[data-focus-motion]')); await page.screenshot({ path: path.join(output, 'activity-pane.png') });
+  await page.getByRole('button', { name: '隐藏活动栏', exact: true }).click(); await waitFor(async () => !await pane.count(), 'activity pane can be hidden');
+  await page.getByRole('button', { name: '显示活动栏：它正在做什么', exact: true }).click(); await pane.waitFor();
+  await page.getByRole('button', { name: '返回总览', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));
   await page.screenshot({ path: path.join(output, 'parent-running.png') });
   // The round's prompt, as Codex records it; the spoken notice names this work.
   await fs.appendFile(transcript, JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message: '给登录页加上验证码。然后跑一下测试' } }) + '\n');

@@ -28,6 +28,7 @@ const { ClipboardWrites } = require('./clipboard-writes.cjs');
 const { VoiceManager } = require('./voice.cjs');
 const { SpeechManager } = require('./speech.cjs');
 const { summarizeTask } = require('./task-summary.cjs');
+const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
 
@@ -89,7 +90,9 @@ function publicState() {
         const s = sessions.get(id);
         return { id, title: t('终端 {n}', { n: index + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : store.settings.shell), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
           codexActivity: s?.codexActivity || 'unknown', shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
-          lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null };
+          lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null,
+          // The step a working agent is on, for the card's one-line status; the full list is sent separately.
+          action: s?.codexActive && s.codexActivity === 'working' ? briefAction(s.actions.current()) : null };
       });
       const first = terminals[0];
       const activeCodex = terminals.filter(item => item.codexActive);
@@ -103,6 +106,7 @@ function publicState() {
         codexActive: activeCodex.length > 0, codexActivity: activity, agent: activeCodex[0]?.agent || null,
         shellReady: first.shellReady, codexAvailable: first.codexAvailable,
         lastActivityAt: first.lastActivityAt, error: terminals.find(item => item.error)?.error || null,
+        action: terminals.find(item => item.action)?.action || null,
       };
     }),
     settings: store.settings,
@@ -192,6 +196,39 @@ function notifyCompletion(project, task = '') {
   if (store.settings.announce) send('completion:announce', { projectId: project.id, name: project.name, task });
 }
 
+function briefAction(action) { return action ? { kind: action.kind, tool: action.tool, target: action.target, detail: action.detail, done: action.done } : null; }
+// The agent's steps reach the window in small batches; after a long history is read at once (a resumed
+// conversation) the whole list replaces what the window has.
+function publishAction(s, change) {
+  if (sessions.get(s.terminalId) !== s) return;
+  (s.actionChanges ||= []).push(change);
+  s.actionTimer ||= setTimeout(() => {
+    const changes = s.actionChanges; s.actionChanges = []; s.actionTimer = null;
+    if (sessions.get(s.terminalId) !== s) return;
+    send('terminal:action', changes.length > 40 || changes.some(item => item.reset) ? { id: s.terminalId, list: s.actions.list } : { id: s.terminalId, changes: changes.map(item => item.action) });
+    scheduleState();
+  }, 120);
+}
+// A skill step names the skill; what the skill is for comes from its SKILL.md, a moment later.
+function describeActions(s, cwd, actions) {
+  for (const action of actions || []) {
+    if (action.kind !== 'skill') continue;
+    skillDescription(action.target, cwd, action.skillFile).then(description => { if (description) { action.description = description; s.actions.update(action); } }).catch(() => {});
+  }
+}
+// Claude Code writes each tool call to its transcript; follow it while the session lasts.
+function followClaude(project, s, event) {
+  const file = typeof event.transcriptPath === 'string' ? path.resolve(event.transcriptPath) : '';
+  const home = path.resolve(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
+  if (!file || path.basename(file) !== `${event.sessionId}.jsonl` || !file.toLowerCase().startsWith(home.toLowerCase() + path.sep)) return;
+  if (s.claudeTranscript?.filename !== file) {
+    s.claudeTranscript = new TranscriptTail(file); s.actions.reset();
+    s.activityMonitor?.stop();
+    const tail = s.claudeTranscript;
+    s.activityMonitor = monitorActivity(async () => { await tail.read(record => describeActions(s, project.path, claudeRecord(s.actions, record, project.path))); return null; }, () => {});
+  } else void s.activityMonitor?.poll();
+}
+
 // A round being worked on ends with a spoken notice: load the voice now, so it is ready by then.
 const roundsWorking = () => [...sessions.values()].some(s => s.codexActive && s.codexActivity === 'working');
 function warmSpeech() { if (store.settings.announce) speechManager?.warm().catch(() => {}); }
@@ -223,6 +260,8 @@ function claudeActivity(project, s, event) {
   const turnId = event.eventId.slice(event.sessionId.length + 1);
   // Remember the conversation and whether its turn is still open, so a restart can resume it and continue.
   store.setRestore(s.terminalId, { threadId: event.sessionId, interrupted: event.state === 'working' });
+  followClaude(project, s, event);
+  if (event.state === 'complete') void s.activityMonitor?.poll().then(() => { if (sessions.get(s.terminalId) === s && s.codexActivity !== 'working') s.actions.settle(); });
   applyActivity(project, s, { threadId: event.sessionId, turnId: event.state === 'complete' ? turnId : null, state: event.state, updatedAt: Date.now(), prompt: typeof event.prompt === 'string' ? event.prompt.slice(0, 2000) : undefined });
 }
 
@@ -250,6 +289,7 @@ function onEvent(event) {
     s.error = null;
     s.submissions.reset();
     s.codexActivity = 'unknown'; s.activitySince = Date.now(); s.activityInputAt = 0;
+    s.actions.reset(); s.claudeTranscript = null;
     s.agent = event.agent === 'claude' ? 'claude' : 'codex';
     s.activityMonitor?.stop(); s.activityMonitor = null;
     // A terminal restores the agent it last ran. Switching agents drops the other one's conversation id.
@@ -263,7 +303,8 @@ function onEvent(event) {
     store.setRestore(s.terminalId, agentRestore);
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
-    const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0 });
+    const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0,
+      onRecord: record => describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path)) });
     s.activityMonitor = monitorActivity(
       () => reader ? reader.read() : project.terminals?.length && !s.reportedThreadId ? Promise.resolve(null) : s.terminal.request('codex-status', { since: remoteSince, threadId: s.reportedThreadId }),
       snapshot => {
@@ -404,6 +445,7 @@ function startTerminal(id) {
     codexActive: false, codexAvailable: null, seq: 0, chunks: [], bytes: 0, pending: '',
     flushTimer: null, lastActivityAt: Date.now(), error: null, submissions: new SubmissionTracker(),
   };
+  s.actions = new ActionLog(change => publishAction(s, change));
   sessions.set(id, s);
   store.setRestore(id, { terminal: true, ...(restorePlans.has(id) ? {} : { codex: false }) });
   startupErrors.delete(id);
@@ -451,7 +493,7 @@ function disposeTerminal(id) {
   const s = sessions.get(id);
   if (!s) return;
   sessions.delete(id);
-  clearTimeout(s.flushTimer);
+  clearTimeout(s.flushTimer); clearTimeout(s.actionTimer);
   s.activityMonitor?.stop();
   try { s.terminal.kill(); } catch { }
   if (s.bootstrapFile) fs.rmSync(s.bootstrapFile, { force: true });
@@ -720,6 +762,7 @@ function registerIpc() {
     restorePlans.delete(id);
     disposeTerminal(id); startTerminal(id); return true;
   });
+  handle('terminal:actions', id => { findProject(id); return sessions.get(id)?.actions.list || []; });
   handle('terminal:attach', id => {
     findProject(id);
     const s = sessions.get(id);

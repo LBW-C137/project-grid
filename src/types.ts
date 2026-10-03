@@ -5,11 +5,12 @@ export type Project = {
   kind: 'local' | 'ssh'; ssh: { host: string; configFile: string | null } | null;
   lastCompletedAt: number | null; lastActivityAt: number | null; awaitingCompletion: boolean;
   sessionId: string | null; status: 'stopped' | 'starting' | 'shell' | 'codex' | 'exited';
+  action: AgentActionBrief | null;
   codexActive: boolean; agent: 'codex' | 'claude' | null; codexActivity: 'unknown' | 'working' | 'complete' | 'interrupted'; shellReady: boolean; codexAvailable: boolean | null; error: string | null;
   terminals: ProjectTerminal[];
 };
-export type ProjectTerminal = { id: string; title: string; shell: 'powershell' | 'cmd' | 'bash'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
-export type Settings = { columns: number; autoSave: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: 'forest' | 'mountain-blue' | 'wild-red'; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' };
+export type ProjectTerminal = { action: AgentActionBrief | null; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
+export type Settings = { columns: number; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: 'forest' | 'mountain-blue' | 'wild-red'; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' };
 export type SpeechState = { phase: 'missing' | 'downloading' | 'ready' | 'error'; ready: boolean; percent: number; error: string | null; downloadBytes: number };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type SSHInfo = { hosts: string[]; configFile: string; configExists: boolean; sshPath: string; source: string };
@@ -25,6 +26,11 @@ export type GitChange = { path: string; index: string; worktree: string; origina
 export type GitStatus = { repository: boolean; branch: string; head: string; detached: boolean; unborn: boolean; upstream: string | null; ahead: number | null; behind: number | null; files: GitChange[]; total: number; staged: number; unstaged: number; conflicts: number; truncated: boolean };
 export type GitCommit = { hash: string; parents: string[]; author: string; date: string; refs: string; subject: string };
 export type GitHistory = { commits: GitCommit[]; nextOffset: number | null };
+// One step an agent took (a tool call). The card shows the brief form, the activity pane the whole list.
+export type AgentActionKind = 'edit' | 'command' | 'read' | 'search' | 'web' | 'skill' | 'mcp' | 'agent' | 'other';
+export type AgentActionBrief = { kind: AgentActionKind; tool: string; target: string; detail: string; done: boolean };
+export type AgentAction = AgentActionBrief & { id: string; at: number; description: string; failed: boolean; server?: string };
+export type AgentActionPacket = { id: string; list?: AgentAction[]; changes?: AgentAction[] };
 export type GitDiffLine = { type: ' ' | '+' | '-' | '\\'; text: string };
 export type GitHunk = { header: string; oldStart: number; oldLines: number; newStart: number; newLines: number; lines: GitDiffLine[]; patch: string };
 export type GitDiff = { repository: boolean; binary: boolean; text: boolean; added: number; removed: number; hunks: GitHunk[]; patch: string };
@@ -110,7 +116,7 @@ export type Bridge = {
   onTerminalData(callback: (packet: TerminalPacket) => void): () => void;
   onFocusProject(callback: (id: string) => void): () => void;
   onError(callback: (message: string) => void): () => void;
-  minimize(): void; maximize(): void; toggleFullScreen(): void; close(): void; focusMode(enabled: boolean): void;
+  minimize(): void; maximize(): void; toggleFullScreen(): void; terminalActions(id: string): Promise<Result<AgentAction[]>>; onTerminalAction(callback: (packet: AgentActionPacket) => void): () => void; close(): void; focusMode(enabled: boolean): void;
   quit(): Promise<Result<boolean>>;
 };
 declare global { interface Window { projectGrid: Bridge; } }
