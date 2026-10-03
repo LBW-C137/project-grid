@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('projectGrid', {
   cancelFileOperation: () => ipcRenderer.invoke('files:cancel'),
   getVoiceState: () => ipcRenderer.invoke('voice:state'),
   prepareVoice: () => ipcRenderer.invoke('voice:prepare'),
+  warmVoice: () => ipcRenderer.invoke('voice:warm'),
   transcribe: audio => ipcRenderer.invoke('voice:transcribe', audio),
   onVoiceState: callback => listen('voice:state', callback),
   pasteTerminal: (id, text, sessionId) => ipcRenderer.invoke('terminal:paste', id, text, sessionId),

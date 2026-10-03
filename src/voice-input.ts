@@ -103,6 +103,8 @@ export async function toggleDictation(id: string, sessionId: string | null, onEr
   // Recording counts from the keypress or click, so an Escape while the microphone is still opening cancels it.
   const pending = { id, sessionId, onError };
   target = pending; set({ recording: id, label: label || null });
+  // The recognizer is released after a few idle minutes; load it again while the user is speaking.
+  void window.projectGrid.warmVoice();
   const opened = opening.then(() => target === pending ? capture.open('', level => set({ level: Math.min(1, level * 5) })) : undefined);
   opening = opened.catch(() => {});
   try {

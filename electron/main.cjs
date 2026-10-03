@@ -191,6 +191,10 @@ function notifyCompletion(project, task = '') {
   if (store.settings.announce) send('completion:announce', { projectId: project.id, name: project.name, task });
 }
 
+// A round being worked on ends with a spoken notice: load the voice now, so it is ready by then.
+const roundsWorking = () => [...sessions.values()].some(s => s.codexActive && s.codexActivity === 'working');
+function warmSpeech() { if (store.settings.announce) speechManager?.warm().catch(() => {}); }
+
 // One place turns an agent's turn state into lights and completion alerts, for Codex and Claude alike.
 function applyActivity(project, s, snapshot) {
   if (sessions.get(s.terminalId) !== s || !s.codexActive) return;
@@ -202,7 +206,7 @@ function applyActivity(project, s, snapshot) {
   if (summarizeTask(snapshot.prompt)) s.lastTask = summarizeTask(snapshot.prompt);
   if (s.agent === 'codex') store.setRestore(s.terminalId, { threadId: snapshot.threadId });
   s.codexActivity = snapshot.state;
-  if (snapshot.state === 'working') store.expectCompletion(project.id);
+  if (snapshot.state === 'working') { store.expectCompletion(project.id); warmSpeech(); }
   else if (snapshot.state === 'complete' && snapshot.turnId) {
     s.lastCompletedAt = snapshot.updatedAt;
     if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
@@ -616,6 +620,7 @@ function registerIpc() {
   handle('files:cancel', () => fileOperations.cancel());
   handle('voice:state', () => voiceManager.getState());
   handle('voice:prepare', () => voiceManager.prepare());
+  handle('voice:warm', () => voiceManager.warm());
   handle('voice:transcribe', audio => voiceManager.transcribe(audio));
   handle('speech:state', () => speechManager.getState());
   handle('speech:prepare', () => speechManager.prepare());
@@ -716,7 +721,7 @@ function registerIpc() {
       if (submitted && s.codexActive) {
         store.expectCompletion(s.projectId);
         s.codexActivity = 'working'; s.activityInputAt = Date.now();
-        scheduleState();
+        scheduleState(); warmSpeech();
       }
       if (!s.codexActive && !isTerminalResponse(data)) {
         const wasReady = s.ready && !s.inputDirty;
@@ -778,10 +783,11 @@ else {
     voiceManager = new VoiceManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
     // Download the offline model in the background after installation so dictation works on first use.
     // Waits for startup and session restore first; isolated test profiles skip the 239 MB download.
-    speechManager = new SpeechManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('speech:state', state) });
+    speechManager = new SpeechManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('speech:state', state), busy: roundsWorking });
     if (!process.env.PROJECT_GRID_DATA_DIR) setTimeout(() => { if (!quitting) voiceManager.prepare().catch(() => {}); }, 8000);
     // The natural voice for spoken notices downloads once, after voice input, while announcing is on.
-    if (!process.env.PROJECT_GRID_DATA_DIR) setTimeout(() => { if (!quitting && store.settings.announce) speechManager.prepare().then(() => speechManager.warm()).catch(() => {}); }, 20000);
+    // Its model is loaded only while a round is being worked on (warmSpeech), not for an idle window.
+    if (!process.env.PROJECT_GRID_DATA_DIR) setTimeout(() => { if (!quitting && store.settings.announce) speechManager.prepare().then(() => { if (roundsWorking()) return speechManager.warm(); }).catch(() => {}); }, 20000);
     fileOperations = new FileOperations({ integrationDir, cacheRoot: path.join(app.getPath('userData'), 'file-clipboard'), remote: remoteFor, clipboardWrites,
       trash: filename => shell.trashItem(filename),
       confirmDelete: async (project, paths) => (await dialog.showMessageBox(window, { type: 'question', title: t('删除文件'), message: t('删除 {count} 个文件或文件夹？', { count: paths.length }),

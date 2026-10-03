@@ -15,7 +15,9 @@ function recognizer() {
   return engine;
 }
 
-parentPort.on('message', ({ id, samples }) => {
+parentPort.on('message', ({ id, samples, warm }) => {
+  // Loading ahead of a recording; a failure is reported by the recognition that follows.
+  if (warm) { try { recognizer(); } catch { } return; }
   try {
     const asr = recognizer();
     const stream = asr.createStream();

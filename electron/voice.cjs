@@ -20,6 +20,9 @@ const MODEL_FILES = [
 const DOWNLOAD_BYTES = MODEL_FILES.reduce((total, file) => total + file.size, 0);
 // Files from the previous Whisper engine, removed once so they stop occupying about 64 MB.
 const LEGACY_ENTRIES = ['runtime', 'runtime.zip', 'runtime.zip.partial', 'model.bin', 'model.bin.partial', 'recordings'];
+// The loaded model holds about 300 MB. It is released after this long without dictation and loaded
+// again while the next recording is being spoken (warm).
+const IDLE_RELEASE = 5 * 60 * 1000;
 
 async function digest(filename) { const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(filename)) hash.update(chunk); return hash.digest('hex'); }
 
@@ -75,8 +78,8 @@ function samplesFromWav(bytes) {
 }
 
 class VoiceManager {
-  constructor({ directory, fetcher = fetch, changed = () => {} }) {
-    Object.assign(this, { directory, fetcher, changed });
+  constructor({ directory, fetcher = fetch, changed = () => {}, idle = IDLE_RELEASE, worker = path.join(__dirname, 'voice-worker.cjs') }) {
+    Object.assign(this, { directory, fetcher, changed, idle, workerFile: worker });
     this.modelDirectory = path.join(directory, MODEL_DIRECTORY);
     this.state = { phase: 'missing', ready: false, percent: 0, error: null, model: 'SenseVoice Small · 本地离线识别', downloadBytes: DOWNLOAD_BYTES };
     this.requests = new Map(); this.sequence = 0;
@@ -117,21 +120,38 @@ class VoiceManager {
     return this.preparing;
   }
   engine() {
+    this.rest();
     if (this.worker) return this.worker;
     const threads = Math.min(4, Math.max(1, os.availableParallelism() - 2));
-    this.worker = new Worker(path.join(__dirname, 'voice-worker.cjs'), { workerData: { model: this.file('model.int8.onnx'), tokens: this.file('tokens.txt'), threads } });
-    this.worker.on('message', ({ id, text, error }) => {
+    const worker = this.worker = new Worker(this.workerFile, { workerData: { model: this.file('model.int8.onnx'), tokens: this.file('tokens.txt'), threads } });
+    worker.on('message', ({ id, text, error }) => {
       const request = this.requests.get(id); if (!request) return;
       this.requests.delete(id);
       if (error) request.reject(new Error(`本地识别失败：${error}`)); else request.resolve(text);
     });
+    // A released worker exits after its successor may have started; only the current one's end is a failure.
     const fail = error => {
+      if (this.worker !== worker) return;
       for (const { reject } of this.requests.values()) reject(new Error(`本地识别引擎已停止：${error?.message || error}`));
       this.requests.clear(); this.worker = null;
     };
-    this.worker.on('error', fail);
-    this.worker.on('exit', code => { if (this.worker) fail(`退出代码 ${code}`); });
-    return this.worker;
+    worker.on('error', fail);
+    worker.on('exit', code => fail(`退出代码 ${code}`));
+    return worker;
+  }
+  // Counts the idle time again from now. When it runs out the worker and its model are released.
+  rest() {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      if (this.requests.size) { this.rest(); return; }
+      const worker = this.worker; this.worker = null; void worker?.terminate();
+    }, this.idle);
+    this.idleTimer.unref?.();
+  }
+  // Loads the model while a recording is still being spoken, so recognition starts at once.
+  async warm() {
+    await this.getState();
+    if (this.state.ready) this.engine().postMessage({ warm: true });
   }
   // SenseVoice detects the language itself and writes Chinese, including Cantonese, in simplified characters.
   async transcribe(audio) {
@@ -154,7 +174,7 @@ class VoiceManager {
   }
   // Shutdown: stop any download and fail pending recognitions before the worker goes away.
   close() {
-    this.controller?.abort();
+    this.controller?.abort(); clearTimeout(this.idleTimer);
     for (const { reject } of this.requests.values()) reject(new Error('识别已取消。'));
     this.requests.clear();
     const worker = this.worker; this.worker = null; void worker?.terminate();

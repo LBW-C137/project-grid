@@ -32,6 +32,9 @@ const SPEECH_FILES = [
 const SPEECH_BYTES = SPEECH_FILES.reduce((total, file) => total + file.size, 0);
 // A touch quicker than the model's own pace, which sounds slow and flat for a short notice.
 const SPEED = 1.25;
+// The loaded model holds about 200 MB. It is released once nothing has needed it for this long and no
+// round is being worked on, and loaded again when the next round starts (warm), before that round can finish.
+const IDLE_RELEASE = 10 * 60 * 1000;
 
 // The lexicon has no full-width colon or similar marks; they become pauses it can read.
 function speakableText(text) {
@@ -40,8 +43,9 @@ function speakableText(text) {
 }
 
 class SpeechManager {
-  constructor({ directory, fetcher = fetch, changed = () => {} }) {
-    Object.assign(this, { directory: path.join(directory, SPEECH_DIRECTORY), fetcher, changed });
+  // busy: whether a round is being worked on, so its notice will be needed. worker: the synthesis script.
+  constructor({ directory, fetcher = fetch, changed = () => {}, busy = () => false, idle = IDLE_RELEASE, worker = path.join(__dirname, 'speech-worker.cjs') }) {
+    Object.assign(this, { directory: path.join(directory, SPEECH_DIRECTORY), fetcher, changed, busy, idle, workerFile: worker });
     this.state = { phase: 'missing', ready: false, percent: 0, error: null, downloadBytes: SPEECH_BYTES };
     this.requests = new Map(); this.sequence = 0;
   }
@@ -79,30 +83,44 @@ class SpeechManager {
     return this.preparing;
   }
   engine() {
+    this.rest();
     if (this.worker) return this.worker;
     const threads = Math.min(4, Math.max(1, os.availableParallelism() - 2));
     const file = name => this.file(name);
-    this.worker = new Worker(path.join(__dirname, 'speech-worker.cjs'), { workerData: {
+    const worker = this.worker = new Worker(this.workerFile, { workerData: {
       model: file('model.int8.onnx'), lexicon: file('lexicon.txt'), tokens: file('tokens.txt'), dictDir: file('dict'),
       ruleFsts: ['date.fst', 'phone.fst', 'number.fst', 'new_heteronym.fst'].map(file).join(','), threads,
     } });
-    this.worker.on('message', ({ id, samples, sampleRate, error }) => {
+    worker.on('message', ({ id, samples, sampleRate, error }) => {
       const request = this.requests.get(id); if (!request) return;
       this.requests.delete(id);
       if (error) request.reject(new Error(`语音合成失败：${error}`)); else request.resolve({ samples, sampleRate });
     });
+    // A released worker exits after its successor may have started; only the current one's end is a failure.
     const fail = error => {
+      if (this.worker !== worker) return;
       for (const { reject } of this.requests.values()) reject(new Error(`语音合成已停止：${error?.message || error}`));
       this.requests.clear(); this.worker = null;
     };
-    this.worker.on('error', fail);
-    this.worker.on('exit', code => { if (this.worker) fail(`退出代码 ${code}`); });
-    return this.worker;
+    worker.on('error', fail);
+    worker.on('exit', code => fail(`退出代码 ${code}`));
+    return worker;
   }
-  // Loads the model ahead of the first notice, which otherwise waits about three seconds longer.
+  // Counts the idle time again from now. When it runs out the worker and its model are released,
+  // unless a notice is being made or a round is still being worked on.
+  rest() {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      if (this.requests.size || this.busy()) { this.rest(); return; }
+      const worker = this.worker; this.worker = null; void worker?.terminate();
+    }, this.idle);
+    this.idleTimer.unref?.();
+  }
+  // Loads the model ahead of the next notice, which otherwise waits several seconds longer.
   async warm() {
     await this.getState();
-    if (this.state.ready) await this.speak('好').catch(() => {});
+    if (!this.state.ready) return;
+    if (this.worker) this.rest(); else await this.speak('好').catch(() => {});
   }
   // Returns mono float samples for the renderer to play. Notices are short and rare; they queue.
   async speak(text) {
@@ -118,7 +136,7 @@ class SpeechManager {
     });
   }
   close() {
-    this.controller?.abort();
+    this.controller?.abort(); clearTimeout(this.idleTimer);
     for (const { reject } of this.requests.values()) reject(new Error('语音合成已取消。'));
     this.requests.clear();
     const worker = this.worker; this.worker = null; void worker?.terminate();

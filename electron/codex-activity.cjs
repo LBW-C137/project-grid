@@ -1,7 +1,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-const { records, sameDirectory } = require('./session-restore.cjs');
+const { interactiveSession } = require('./session-restore.cjs');
+const { rolloutFiles, sessionMeta } = require('./session-files.cjs');
 
 // Only interactive rollout files can own a project card. A child agent can
 // inherit notify, but its completion does not end the interactive parent turn.
@@ -15,34 +16,19 @@ class CodexActivityReader {
   async discover() {
     if (Date.now() < this.nextDiscovery) return;
     this.nextDiscovery = Date.now() + 2000;
-    const candidates = [];
-    const visit = async (folder, depth = 0) => {
-      if (depth > 4) return;
-      let entries; try { entries = await fs.readdir(folder, { withFileTypes: true }); } catch { return; }
-      for (const entry of entries) {
-        const filename = path.join(folder, entry.name);
-        if (entry.isDirectory()) await visit(filename, depth + 1);
-        else if (entry.isFile() && /^rollout-.*\.jsonl$/.test(entry.name)) {
-          if (this.boundThread && !entry.name.includes(this.boundThread)) continue;
-          try { const stat = await fs.stat(filename); if (this.boundThread || stat.mtimeMs >= this.since - 2000) candidates.push({ filename, modified: stat.mtimeMs }); } catch {}
-        }
-      }
-    };
-    await visit(this.directory);
+    // The listing is shared with the other terminals and kept current by a watcher (session-files.cjs).
+    const candidates = (await rolloutFiles(this.directory)).filter(item => this.boundThread ? item.name.includes(this.boundThread) : item.modified >= this.since - 2000);
     candidates.sort((a, b) => b.modified - a.modified);
     for (const item of candidates) {
       if (item.filename === this.filename) return;
       try {
-        for await (const record of records(item.filename)) {
-          const meta = record.payload;
-          if (record.type === 'session_meta' && ['cli', 'vscode'].includes(meta?.source || 'cli') && sameDirectory(meta?.cwd, this.cwd) && /^[a-f\d-]{36}$/i.test(meta?.id || '') && (!this.boundThread || meta.id === this.boundThread)) {
-            this.filename = item.filename;
-            this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false;
-            this.snapshot = { threadId: meta.id, turnId: null, state: 'unknown', updatedAt: 0 };
-          }
-          break;
+        const meta = await sessionMeta(item.filename);
+        if (interactiveSession(meta, this.cwd) && (!this.boundThread || meta.id === this.boundThread)) {
+          this.filename = item.filename;
+          this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false;
+          this.snapshot = { threadId: meta.id, turnId: null, state: 'unknown', updatedAt: 0 };
+          return;
         }
-        if (this.filename === item.filename) return;
       } catch {}
     }
   }

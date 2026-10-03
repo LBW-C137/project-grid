@@ -1,23 +1,7 @@
 const fs = require('node:fs');
-const fsp = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-
-async function* records(filename) {
-  let buffer = Buffer.alloc(0); let skipping = false;
-  for await (const chunk of fs.createReadStream(filename, { highWaterMark: 64 * 1024 })) {
-    buffer = Buffer.concat([buffer, chunk]);
-    let index;
-    while ((index = buffer.indexOf(10)) >= 0) {
-      const line = buffer.subarray(0, index);
-      buffer = buffer.subarray(index + 1);
-      if (!skipping && line.length <= 1024 * 1024) { try { yield JSON.parse(line.toString('utf8')); } catch { } }
-      skipping = false;
-    }
-    if (buffer.length > 1024 * 1024) { buffer = Buffer.alloc(0); skipping = true; }
-  }
-  if (buffer.length && !skipping) { try { yield JSON.parse(buffer.toString('utf8')); } catch { } }
-}
+const { records, rolloutFiles, sessionMeta } = require('./session-files.cjs');
 
 function sameDirectory(a, b) {
   if (typeof a !== 'string') return false;
@@ -38,33 +22,22 @@ function advanceTaskState(state, record) {
   return state;
 }
 
+// Whether a rollout file is an interactive session (not a child agent or exec run) started in this folder.
+function interactiveSession(meta, directory) {
+  return !!meta && ['cli', 'vscode'].includes(meta.source || 'cli') && sameDirectory(meta.cwd, directory) && /^[a-f\d-]{36}$/i.test(meta.id || '');
+}
+
 async function recentSession(projectPath, codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), threadId = null) {
-  const directory = path.join(codexHome, 'sessions');
-  const files = [];
-  async function visit(folder) {
-    let entries; try { entries = await fsp.readdir(folder, { withFileTypes: true }); } catch { return; }
-    for (const entry of entries) {
-      const filename = path.join(folder, entry.name);
-      if (entry.isDirectory()) await visit(filename);
-      else if (entry.isFile() && /^rollout-.*\.jsonl$/.test(entry.name)) {
-        try { files.push({ filename, modifiedAt: (await fsp.stat(filename)).mtimeMs }); } catch { }
-      }
-    }
-  }
-  await visit(directory);
-  files.sort((a, b) => b.modifiedAt - a.modifiedAt);
+  const files = (await rolloutFiles(path.join(codexHome, 'sessions'))).sort((a, b) => b.modified - a.modified);
   for (const file of files) {
     try {
-      let meta = null; let state = 'unknown';
+      const meta = await sessionMeta(file.filename);
+      if (!interactiveSession(meta, projectPath) || threadId && meta.id !== threadId) continue;
+      let state = 'unknown', first = true;
       for await (const record of records(file.filename)) {
-        if (!meta) {
-          if (record.type !== 'session_meta' || !['cli', 'vscode'].includes(record.payload?.source || 'cli') || !sameDirectory(record.payload?.cwd, projectPath)) break;
-          if (!/^[a-f\d-]{36}$/i.test(record.payload.id || '')) break;
-          if (threadId && record.payload.id !== threadId) break;
-          meta = record.payload;
-        } else state = advanceTaskState(state, record);
+        if (first) first = false; else state = advanceTaskState(state, record);
       }
-      if (meta) return { id: meta.id, state, modifiedAt: file.modifiedAt };
+      return { id: meta.id, state, modifiedAt: file.modified };
     } catch { }
   }
   return null;
@@ -84,4 +57,4 @@ function claudeResumeCommand(restore) {
   return `claude --resume ${restore.threadId}${restore.interrupted ? ' "继续"' : ''}\r`;
 }
 
-module.exports = { recentSession, advanceTaskState, resumeCommand, claudeResumeCommand, records, sameDirectory };
+module.exports = { recentSession, advanceTaskState, resumeCommand, claudeResumeCommand, records, sameDirectory, interactiveSession };

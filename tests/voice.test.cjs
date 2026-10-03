@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { downloadAsset, validateAudio, samplesFromWav, MODEL_FILES } = require('../electron/voice.cjs');
+const { VoiceManager, downloadAsset, validateAudio, samplesFromWav, MODEL_FILES } = require('../electron/voice.cjs');
 const { wavFromSamples } = require('../src/voice-audio.ts');
 
 test('microphone encoder makes bounded mono 16 kHz WAV with safe clipping', () => {
@@ -59,4 +59,19 @@ test('the pinned SenseVoice files are verified by size and SHA-256 on both hosts
     assert.deepEqual(file.urls.map(url => new URL(url).host), ['huggingface.co', 'hf-mirror.com']);
     assert.ok(file.urls.every(url => /\/resolve\/[0-9a-f]{40}\//.test(url)), 'downloads are pinned to one repository revision');
   }
+});
+
+test('the recognizer is released when idle and loads again for the next recording', async t => {
+  const voice = new VoiceManager({ directory: os.tmpdir(), idle: 40, worker: path.join(__dirname, 'helpers/voice-worker-stub.cjs') });
+  t.after(() => voice.close());
+  // Stands for a downloaded model; the stub worker never opens it.
+  voice.initialized = Promise.resolve(); voice.state = { ...voice.state, phase: 'ready', ready: true };
+  const released = async () => { for (let tries = 0; voice.worker && tries < 2000; tries++) await new Promise(resolve => setTimeout(resolve, 1)); return !voice.worker; };
+  await voice.warm();
+  const first = voice.worker;
+  assert.ok(first, 'warming at the start of a recording loads the recognizer');
+  assert.ok(await released(), 'released once idle');
+  assert.equal(await voice.transcribe(wavFromSamples(new Float32Array(16000))), 'heard');
+  assert.ok(voice.worker && voice.worker !== first);
+  assert.ok(await released());
 });
