@@ -68,7 +68,6 @@ export function VoiceOverlay() {
       {recording ? <Microphone size={34} weight="fill" /> : <SpinnerGap className="loading-spinner" size={34} />}
     </div>
     <b>{recording ? t('正在听…') : voice.sending ? t('正在识别并发送…') : t('正在识别…')}</b>
-    {voice.label && <span className="voice-overlay-target">{voice.label}</span>}
     {recording && <span className="voice-overlay-keys"><kbd>Enter</kbd>{t('发送')}<kbd>Esc</kbd>{t('取消')}</span>}
   </div></div>;
 }
