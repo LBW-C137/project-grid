@@ -155,7 +155,7 @@ function AnnounceSettings({ settings, update }: { settings: Settings; update: (p
   const [phrase, setPhrase] = useState(settings.announcePhrase);
   useEffect(() => onVoicesReady(() => setVoice(announcementVoice(settings.language)?.name.replace(/^Microsoft\s+/, '').replace(/\s+(Desktop|-).*$/, '') || null)), [settings.language]);
   useEffect(() => { void api.getSpeechState().then(result => { if (result.ok) setSpeech(result.value); }); return api.onSpeechState(setSpeech); }, []);
-  const example = settings.language === 'zh' ? '{项目}，{任务}，完成啦。' : '{project}: {task}, done.';
+  const example = settings.language === 'zh' ? '{项目}，{任务}，完成。' : '{project}: {task}, done.';
   const savePhrase = () => { if (phrase.trim() !== settings.announcePhrase) update({ announcePhrase: phrase }); };
   const status = speech?.ready ? t('一轮完成时由本地自然女声播报哪个项目完成了什么')
     : speech?.phase === 'downloading' ? t('自然女声下载中 {percent}%，下载前先用系统语音', { percent: speech.percent })
@@ -164,7 +164,7 @@ function AnnounceSettings({ settings, update }: { settings: Settings; update: (p
     <label className="setting-row"><span><Waveform size={19} /><span><b>{t('语音播报')}</b><small title={speech?.error ? t(speech.error) : undefined}>{status}</small></span></span><input type="checkbox" checked={settings.announce} onChange={event => { update({ announce: event.target.checked }); if (event.target.checked && !speech?.ready) void api.prepareSpeech(); }} /></label>
     {settings.announce && <SummarySettings settings={settings} update={update} />}
     {settings.announce && <div className="announce-options">
-      <input aria-label={t('播报语')} placeholder={t('留空轮换内置提示语，如：{example}', { example })} value={phrase} maxLength={80} onChange={event => setPhrase(event.target.value)} onBlur={savePhrase} onKeyDown={event => { if (event.key === 'Enter') savePhrase(); }} />
+      <input aria-label={t('播报语')} placeholder={t('留空使用简短的默认播报，如：{example}', { example })} value={phrase} maxLength={80} onChange={event => setPhrase(event.target.value)} onBlur={savePhrase} onKeyDown={event => { if (event.key === 'Enter') savePhrase(); }} />
       {!speech?.ready && speech?.phase !== 'downloading' && <button type="button" className="button secondary small" onClick={() => void api.prepareSpeech()}>{t('下载自然女声')}</button>}
       <button type="button" className="button secondary small" onClick={() => { savePhrase(); announce(t('示例项目'), t('给登录页加上验证码'), { ...settings, announcePhrase: phrase.trim() }); }}>{t('试听')}</button>
     </div>}

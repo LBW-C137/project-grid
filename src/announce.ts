@@ -6,18 +6,12 @@ import type { Settings } from './types';
 const preferred = { zh: /huihui|yaoyao|xiaoxiao|xiaoyi/i, en: /zira|aria|jenny|hazel|susan/i };
 const locale = { zh: 'zh-CN', en: 'en-US' };
 
-// With a task the notice says which project finished what; without one, only which project.
+// One short sentence: which project finished, and what when the prompt named it. Kept plain on purpose:
+// it is heard many times a day.
 const phrases = {
-  zh: {
-    task: ['{项目}，{任务}，完成啦。', '{项目}那边，{任务}，已经做好了。', '好消息，{项目}的{任务}完成了。'],
-    plain: ['{项目}这一轮完成啦，快来看看吧。', '好消息，{项目}已经做完了。', '{项目}的任务完成啦，等你查看哦。'],
-  },
-  en: {
-    task: ['{project}: {task}, done.', '{project} has finished {task}.', 'Good news, {project} is done with {task}.'],
-    plain: ['{project} is all done. Come take a look!', 'Good news, {project} just finished.', '{project} has wrapped up this round.'],
-  },
+  zh: { task: '{项目}，{任务}，完成。', plain: '{项目}完成。' },
+  en: { task: '{project}: {task}, done.', plain: '{project} done.' },
 };
-let turn = 0;
 
 export function announcementVoice(language: Settings['language']) {
   const voices = window.speechSynthesis?.getVoices() || [];
@@ -28,8 +22,7 @@ export function announcementVoice(language: Settings['language']) {
 // summary: a sentence about what the round achieved, written by the agent's own CLI; it is spoken as it is.
 export function announcementText(name: string, task: string, settings: Pick<Settings, 'announcePhrase' | 'language'>, summary = '') {
   if (summary) return settings.language === 'en' ? `${name}: ${summary}` : `${name}，${summary}`;
-  const set = phrases[settings.language][task ? 'task' : 'plain'];
-  const template = settings.announcePhrase || set[turn++ % set.length];
+  const template = settings.announcePhrase || phrases[settings.language][task ? 'task' : 'plain'];
   return template.replace(/\{(项目|project)\}/gi, name).replace(/\{(任务|task)\}/gi, task).replace(/[，,]\s*[，,]/g, '，');
 }
 
@@ -49,7 +42,7 @@ function systemVoice(text: string, language: Settings['language']) {
 }
 
 let context: AudioContext | null = null;
-async function play({ samples, sampleRate }: { samples: Float32Array<ArrayBuffer>; sampleRate: number }) {
+async function play({ samples, sampleRate }: { samples: Float32Array<ArrayBuffer>; sampleRate: number }, onStart = () => {}) {
   context ??= new AudioContext();
   if (context.state === 'suspended') await context.resume();
   const buffer = context.createBuffer(1, samples.length, sampleRate);
@@ -58,16 +51,18 @@ async function play({ samples, sampleRate }: { samples: Float32Array<ArrayBuffer
   let peak = 0; for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
   const gain = context.createGain(); gain.gain.value = peak > 0 ? Math.min(6, .9 / peak) : 1;
   const source = context.createBufferSource(); source.buffer = buffer; source.connect(gain); gain.connect(context.destination);
-  await new Promise<void>(resolve => { source.onended = () => resolve(); source.start(); });
+  await new Promise<void>(resolve => { source.onended = () => resolve(); source.start(); onStart(); });
 }
 
 // One notice at a time: rounds that finish together are read one after another.
 let queue = Promise.resolve();
+// Each finished round reaches here once (the main process grants one notice per round); it is spoken once.
 export function announce(name: string, task: string, settings: Pick<Settings, 'announcePhrase' | 'language'>, summary = '') {
   const text = announcementText(name, task, settings, summary);
   queue = queue.then(async () => {
     const result = await window.projectGrid.speak(text).catch(() => null);
-    if (result?.ok) await play(result.value).catch(() => systemVoice(text, settings.language));
+    let started = false;
+    if (result?.ok) await play(result.value, () => { started = true; }).catch(() => { if (!started) return systemVoice(text, settings.language); });
     else await systemVoice(text, settings.language);
   });
   return text;
