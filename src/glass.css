@@ -14,8 +14,8 @@
   --glass-hairline: transparent;
   /* Edge light for large panes: a soft highlight along the top that fades out down the sides,
      like light catching the upper edge of a sheet of glass. There is deliberately no outline. */
-  --glass-rim: linear-gradient(172deg, rgba(255, 255, 255, .42) 0%, rgba(255, 255, 255, .12) 5%, rgba(255, 255, 255, .03) 20%, rgba(255, 255, 255, 0) 42%);
-  --glass-lift: inset 0 1px 0 rgba(255, 255, 255, .1), inset 0 0 20px rgba(255, 255, 255, .035), 0 1px 2px rgba(2, 14, 26, .16), 0 3px 6px -3px rgba(2, 14, 26, .22);
+  --glass-rim: linear-gradient(150deg, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, .2) 22%, rgba(255, 255, 255, .1) 50%, rgba(255, 255, 255, .16) 78%, rgba(255, 255, 255, .3) 100%);
+  --glass-lift: inset 0 0 24px rgba(255, 255, 255, .04), 0 0 0 1px rgba(255, 255, 255, .03), 0 18px 40px -24px rgba(2, 14, 26, .35);
   --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .62), inset 1px 0 0 rgba(255, 255, 255, .22), inset -1px 0 0 rgba(255, 255, 255, .1), inset 0 -1px 0 rgba(255, 255, 255, .16), inset 0 0 26px rgba(255, 255, 255, .045), 0 8px 24px -8px rgba(2, 14, 26, .34), 0 1px 3px rgba(2, 14, 26, .14);
   --glass-radius: 14px;
   --layout-gap: 6px;
@@ -36,7 +36,7 @@
 .titlebar, .focus-sidebar, .project-panel, .settings-dialog, .file-preview {
   backdrop-filter: var(--liquid-backdrop, blur(6px) saturate(165%));
 }
-.titlebar { height: 48px; flex-basis: 48px; margin: 0; border: 0; border-bottom: 1px solid rgba(255, 255, 255, .1); border-radius: 0; background: rgba(9, 24, 34, .52); backdrop-filter: blur(18px) saturate(125%); box-shadow: none; overflow: hidden; text-shadow: var(--text-shadow); }
+.titlebar { height: 48px; flex-basis: 48px; margin: 0; border: 0; border-radius: 0; background: transparent; backdrop-filter: none; box-shadow: none; overflow: hidden; text-shadow: 0 1px 2px rgba(0, 10, 20, .45); }
 /* The title bar balances its two ends: brand and project count on the left, and the search, add and settings
    controls on the right, all about 28px tall. */
 .titlebar-brand { padding-left: 22px; gap: 11px; color: #e3ebf5; font-size: 15px; letter-spacing: .1px; }
@@ -104,8 +104,10 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .reorder-hint { position: fixed; z-index: 110; top: 60px; left: 50%; transform: translateX(-50%); padding: 10px 16px; max-width: calc(100vw - 40px); border: 1px solid #d4e8ff65; border-radius: 999px; color: #f0f7ff; background: var(--glass-sheen), #233746e8; backdrop-filter: blur(24px) saturate(140%); box-shadow: var(--glass-shadow); pointer-events: none; font-size: 12px; }
 .reorder-hint span { margin-left: 16px; color: #bdd1e1; font-size: 11px; }
 .project-panel:focus-within:not(.has-unread):not(.round-complete) { border-color: rgba(255, 255, 255, .34); box-shadow: var(--glass-lift), 0 0 0 1px #cbe9ff30; }
-.panel-header { background: transparent; border-radius: calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px) 0 0; border-color: rgba(255, 255, 255, .14); height: 44px; flex-basis: 44px; text-shadow: var(--text-shadow); }
-.panel-name { color: #f1f6fc; }.panel-name small { color: #c3d3e2; }.panel-index { color: #bdcfdf; }
+.panel-header { background: transparent; border-radius: calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px) 0 0; border-color: transparent; height: 44px; flex-basis: 44px; text-shadow: var(--text-shadow); }
+.panel-name { color: #f1f6fc; }.panel-name small { color: #c3d3e2; }
+.panel-index { display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 5px; border-radius: 7px; color: #e4eef8; background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+.project-panel:is(.is-working, .has-unread, .round-complete, .has-error) .panel-index { background: rgba(var(--signal-rgb), .2); box-shadow: inset 0 0 0 1px rgba(var(--signal-rgb), .45); color: #ffffff; }
 .status-badge { color: #a1b2c7; }.status-badge.blue { color: #a3cbed; }.status-badge.green { color: #a2d8b8; }.status-badge.red { color: #ffb1bb; }
 .panel-header .icon-button { color: #a5b7cb; }
 .panel-meta { color: #c3d3e2; }.text-button { color: #c2d5ec; }.session-label { color: #aac7e7; }

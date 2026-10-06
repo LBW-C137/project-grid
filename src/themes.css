@@ -56,7 +56,7 @@
 }
 
 /* Palette changes affect materials, never terminal ANSI colors or task signals. */
-:root:not([data-theme="forest"]) .titlebar { background: var(--theme-chrome); border-color: rgba(255, 255, 255, .1); }
+:root:not([data-theme="forest"]) .titlebar { background: transparent; }
 :root:not([data-theme="forest"]) .focus-sidebar { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--glass-hairline); }
 :root:not([data-theme="forest"]) :is(.settings-dialog, .dropdown) { background: var(--glass-sheen), var(--glass-strong); border-color: var(--theme-line); color: var(--theme-ink); }
 :root:not([data-theme="forest"]) .file-preview { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--glass-hairline); }
