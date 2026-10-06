@@ -8,14 +8,14 @@
 <p align="center">A local workspace for parallel Codex and Claude Code projects, live terminals, and completion alerts.</p>
 
 <p align="center">
-  <a href="https://github.com/noeigenstate/project-manager/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/project-manager?style=flat-square&color=78bfa1&label=release" alt="Latest release" /></a>
-  <a href="https://github.com/noeigenstate/project-manager/actions/workflows/build-windows.yml"><img src="https://github.com/noeigenstate/project-manager/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build and desktop tests" /></a>
+  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/project-grid?style=flat-square&color=78bfa1&label=release" alt="Latest release" /></a>
+  <a href="https://github.com/noeigenstate/project-grid/actions/workflows/build-windows.yml"><img src="https://github.com/noeigenstate/project-grid/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build and desktop tests" /></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20%C2%B7%20x64-8ebce5?style=flat-square" alt="Windows 10 / 11 x64" />
   <img src="https://img.shields.io/badge/Desktop-Installer%20%2B%20Portable-d8dfe8?style=flat-square" alt="Installer and portable editions" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/noeigenstate/project-manager/releases/latest"><strong>下载 Windows 版</strong></a> ·
+  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>下载 Windows 版</strong></a> ·
   <a href="#亮点功能">亮点功能</a> ·
   <a href="#开始使用">开始使用</a> ·
   <a href="#未来展望">未来展望</a> ·
@@ -164,7 +164,7 @@ Project Grid 基于 Codex CLI 和 Claude Code 这两个命令行工具，至少�
 
 **Windows 10 / 11 · x64。Codex CLI 或 Claude Code 安装在实际运行项目的本机或远程主机上（Claude Code 目前支持本地项目）。**
 
-1. 从 [Releases 下载最新版](https://github.com/noeigenstate/project-manager/releases/latest)，运行 `Project-Grid-Setup-版本号-x64.exe` 完成安装，后续可自动检查和下载更新。临时使用也可选择免安装的 `Project-Grid-版本号-win-x64.exe`。
+1. 从 [Releases 下载最新版](https://github.com/noeigenstate/project-grid/releases/latest)，运行 `Project-Grid-Setup-版本号-x64.exe` 完成安装，后续可自动检查和下载更新。临时使用也可选择免安装的 `Project-Grid-版本号-win-x64.exe`。
 2. 按 **Ctrl+Shift+N**（可在设置中改）打开「添加项目」，选择「本地项目」或「SSH 远程项目」。远程项目填写主机别名与 Linux 目录；服务器需要 Python 3.6+、Bash。移除过的本地项目会留在「最近的项目」里，点击即可重新添加，也可逐个删除或清空。在终端输入 `codex`，或点击 **启动 Codex**。
 3. 红框亮起后点开，查看结果并继续对话。完成后点击 **返回总览**。
 4. 查看本轮结果后，直接输入下一条指令；不需要人工标记项目完成。
@@ -227,7 +227,7 @@ HTML 在独立来源的隔离框架中运行，不能访问应用的 Node.js 或
 
 ## 未来展望
 
-接下来希望让多项目协作更顺手。以下是规划方向，尚未上线，欢迎通过 [Issues](https://github.com/noeigenstate/project-manager/issues) 讨论优先级。
+接下来希望让多项目协作更顺手。以下是规划方向，尚未上线，欢迎通过 [Issues](https://github.com/noeigenstate/project-grid/issues) 讨论优先级。
 
 - [ ] **项目分组与快捷切换**：按客户、产品或开发阶段组织工作区。
 - [ ] **更丰富的 Agent 接入**：让更多命令行编码助手接入统一的完成提醒。
@@ -240,8 +240,8 @@ HTML 在独立来源的隔离框架中运行，不能访问应用的 Node.js 或
 使用 Windows 与 Node.js 24：
 
 ```powershell
-git clone https://github.com/noeigenstate/project-manager.git
-cd project-manager
+git clone https://github.com/noeigenstate/project-grid.git
+cd project-grid
 npm ci
 npm start
 ```
@@ -261,6 +261,6 @@ npm run dist           # 构建 Windows 安装版、便携版与更新文件
 
 <p align="center">
   <strong>让任务继续运行，让注意力回到需要你的项目。</strong><br />
-  <a href="https://github.com/noeigenstate/project-manager/releases/latest">下载体验</a> ·
-  <a href="https://github.com/noeigenstate/project-manager/issues">反馈问题与建议</a>
+  <a href="https://github.com/noeigenstate/project-grid/releases/latest">下载体验</a> ·
+  <a href="https://github.com/noeigenstate/project-grid/issues">反馈问题与建议</a>
 </p>

@@ -6,7 +6,7 @@ Windows 多项目终端工作台。每个目录对应一个真实终端，Codex 
 
 ## 使用
 
-从 [Releases](https://github.com/noeigenstate/project-manager/releases/latest) 下载 Windows `.exe` 即可使用。正式版本在 Releases 中长期保留，普通 CI 构建仍可从 Actions 的 Artifacts 下载。
+从 [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 下载 Windows `.exe` 即可使用。正式版本在 Releases 中长期保留，普通 CI 构建仍可从 Actions 的 Artifacts 下载。
 
 打包后的应用位于 `release/`。推荐运行 `Project-Grid-Setup-<版本>-x64.exe` 安装，获得自动更新功能；`Project-Grid-<版本>-win-x64.exe` 为便携版。迁移旧版时，先等任务结束，从设置或托盘退出旧版，再运行安装包。项目列表与会话历史会保留，旧人工完成项目保持停止。
 
@@ -231,7 +231,7 @@ npm run dist
 
 ## GitHub 自动构建
 
-[Windows 构建工作流](https://github.com/noeigenstate/project-manager/actions/workflows/build-windows.yml) 使用 GitHub 托管的 `windows-latest` runner，无需配置单独的 webhook 服务。
+[Windows 构建工作流](https://github.com/noeigenstate/project-grid/actions/workflows/build-windows.yml) 使用 GitHub 托管的 `windows-latest` runner，无需配置单独的 webhook 服务。
 
 - 推送到 `main`、推送 `v*` 标签、提交面向 `main` 的 PR，或在 Actions 页面点击 **Run workflow** 都会触发。
 - 流程：`npm ci` → 单元测试 → 生成 Windows 安装版与便携版 → 校验自动更新文件 → 打包版桌面测试 → 上传可执行文件和 SHA-256 校验信息。

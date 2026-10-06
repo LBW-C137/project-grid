@@ -614,7 +614,7 @@ function registerIpc() {
   });
   handle('updates:state', () => updateManager.getState());
   handle('updates:check', () => updateManager.check());
-  handle('updates:download-page', () => shell.openExternal('https://github.com/noeigenstate/project-manager/releases/latest'));
+  handle('updates:download-page', () => shell.openExternal('https://github.com/noeigenstate/project-grid/releases/latest'));
   handle('updates:install', async () => {
     if (installingUpdate) return false;
     if (!updateManager.canInstall()) throw new Error('更新尚未下载完成。');

@@ -21,7 +21,7 @@ assert.ok(fs.statSync(path.join(release, installer + '.blockmap')).size > 0);
 const config = yaml.load(fs.readFileSync(path.join(release, 'win-unpacked', 'resources', 'app-update.yml'), 'utf8'));
 assert.equal(config.provider, 'github');
 assert.equal(config.owner, 'noeigenstate');
-assert.equal(config.repo, 'project-manager');
+assert.equal(config.repo, 'project-grid');
 const resources = require('resedit');
 const exe = resources.NtExecutable.from(fs.readFileSync(path.join(release, 'win-unpacked', 'Project Grid.exe')));
 const entries = resources.NtExecutableResource.from(exe).entries;
