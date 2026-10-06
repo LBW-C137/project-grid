@@ -27,7 +27,7 @@ export function ShortcutSettings({ settings, update }: { settings: Settings; upd
     return () => window.removeEventListener('keydown', record, true);
   }, [recording, settings.shortcuts]);
   return <section className="settings-section" id="settings-shortcuts" aria-label={t('键盘快捷键')}><div className="shortcut-settings">
-    <div className="update-heading"><h3>{t('键盘快捷键')}</h3><button type="button" className="text-button" disabled={!Object.keys(settings.shortcuts).length} onClick={() => { setRecording(null); setMessage(''); update({ shortcuts: {} }); }}>{t('恢复默认')}</button></div>
+    <div className="update-heading"><span className="shortcut-note">{t('点击按键后按下新的组合；Esc 取消。')}</span><button type="button" className="text-button" disabled={!Object.keys(settings.shortcuts).length} onClick={() => { setRecording(null); setMessage(''); update({ shortcuts: {} }); }}>{t('恢复默认')}</button></div>
     <div className="shortcut-list">{SHORTCUT_ACTIONS.map(action => <div className="shortcut-row" key={action.id}>
       <span>{t(action.label)}</span>
       <button type="button" className={`shortcut-key ${recording === action.id ? 'is-recording' : ''}`} aria-label={t('{action}的快捷键', { action: t(action.label) })} aria-pressed={recording === action.id}

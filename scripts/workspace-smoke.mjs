@@ -244,6 +244,9 @@ try {
   await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press('Control+,');
   await page.getByRole('heading', { name: '工作台设置', exact: true }).waitFor();
+  // One category shows at a time; the others are not even rendered.
+  assert.equal(await page.getByRole('button', { name: '搜索项目的快捷键', exact: true }).count(), 0);
+  await page.locator('.settings-nav').getByRole('button', { name: '键盘快捷键', exact: true }).click();
   const searchKey = page.getByRole('button', { name: '搜索项目的快捷键', exact: true });
   assert.equal(await searchKey.innerText(), 'Ctrl+Shift+F');
   await searchKey.click(); await page.keyboard.press('Control+Shift+K');
@@ -260,6 +263,7 @@ try {
   await page.getByRole('textbox', { name: '搜索项目', exact: true }).waitFor();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+,');
+  await page.locator('.settings-nav').getByRole('button', { name: '键盘快捷键', exact: true }).click();
   await page.getByRole('button', { name: '恢复默认', exact: true }).click();
   await waitFor(async () => (await searchKey.innerText()) === 'Ctrl+Shift+F', 'restore defaults');
   assert.deepEqual((await page.evaluate(() => window.projectGrid.getState())).value.settings.shortcuts, {});

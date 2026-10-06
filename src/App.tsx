@@ -3,7 +3,7 @@ import {
   SquaresFour, FolderSimplePlus, Bell, MagnifyingGlass, ArrowsOutSimple,
   Play, Plus, Terminal as TerminalIcon, Check, DotsThree, GitBranch, X, Minus, Square,
   GearSix, CheckCircle, FolderOpen, Power, ArrowCounterClockwise,
-  Monitor, Info, Circle, SpeakerHigh, Globe, Microphone, Waveform, BookOpen, FloppyDisk, ListChecks,
+  Monitor, Info, Circle, SpeakerHigh, Globe, Microphone, Waveform, BookOpen, FloppyDisk, ListChecks, Palette, Robot, Keyboard,
 } from '@phosphor-icons/react';
 import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
 import { ProjectTerminals } from './ProjectTerminals';
@@ -14,7 +14,7 @@ import { SSHAuthDialog } from './SSHAuthDialog';
 import { useProjectReorder } from './useProjectReorder';
 import { useProjectFocusMotion } from './useProjectFocusMotion';
 import { applyTheme, themes } from './themes';
-import { applyMotion, motionReduced } from './motion';
+import { applyMotion } from './motion';
 import { LiquidGlass } from './LiquidGlass';
 import { VoiceButton, VoiceModelStatus, VoiceOverlay } from './VoiceButton';
 import { announce, announcementVoice, onVoicesReady } from './announce';
@@ -176,32 +176,38 @@ function SettingsDialog({ settings, agents, onAgents, initialSection, updates, o
   updates: AppUpdateState | null; onCheckUpdate: () => void; onInstallUpdate: () => void; onDownloadPage: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const nav = useRef<HTMLElement>(null);
+  const pane = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState(initialSection);
-  const sections = [{ id: 'appearance', title: t('外观') }, { id: 'notifications', title: t('提醒') }, { id: 'terminal', title: t('终端与编辑') }, { id: 'agents', title: t('编码助手') }, { id: 'shortcuts', title: t('键盘快捷键') }, { id: 'about', title: t('更新与关于') }];
-  const jump = (id: string) => { dialog.current?.querySelector<HTMLElement>(`#settings-${id}`)?.scrollIntoView({ block: 'start', behavior: motionReduced() ? 'auto' : 'smooth' }); };
-  const trackSection = () => {
-    const root = dialog.current;
-    if (!root) return;
-    const top = root.getBoundingClientRect().top + (nav.current?.offsetHeight || 0) + 18;
-    const current = [...root.querySelectorAll<HTMLElement>('.settings-section')].filter(section => section.getBoundingClientRect().top <= top).at(-1);
-    setActiveSection(root.scrollTop > 0 && root.scrollTop + root.clientHeight >= root.scrollHeight - 2 ? 'about' : current?.id.replace('settings-', '') || 'appearance');
+  // One category at a time: the sidebar chooses it and the pane beside it shows only that category.
+  const sections = [
+    { id: 'appearance', title: t('外观'), hint: t('主题、语言、材质与动画'), icon: <Palette size={17} /> },
+    { id: 'notifications', title: t('提醒'), hint: t('通知、声音与语音播报'), icon: <Bell size={17} /> },
+    { id: 'terminal', title: t('终端与编辑'), hint: t('终端、会话恢复与编辑器'), icon: <TerminalIcon size={17} /> },
+    { id: 'agents', title: t('编码助手'), hint: t('Codex 与 Claude Code'), icon: <Robot size={17} /> },
+    { id: 'shortcuts', title: t('键盘快捷键'), hint: t('查看和修改快捷键'), icon: <Keyboard size={17} /> },
+    { id: 'about', title: t('更新与关于'), hint: t('版本与更新'), icon: <Info size={17} /> },
+  ];
+  const current = sections.find(section => section.id === activeSection) || sections[0];
+  const choose = (id: string) => { setActiveSection(id); pane.current?.scrollTo({ top: 0 }); };
+  useEffect(() => { dialog.current?.showModal(); }, []);
+  // Up and down move between categories while the sidebar has focus.
+  const navKeys = (event: React.KeyboardEvent) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const index = sections.findIndex(section => section.id === current.id), next = sections[(index + (event.key === 'ArrowDown' ? 1 : sections.length - 1)) % sections.length];
+    choose(next.id); dialog.current?.querySelector<HTMLElement>(`[data-settings-tab="${next.id}"]`)?.focus();
   };
-  useEffect(() => {
-    dialog.current?.showModal();
-    // Wrapped pills change height with language and window size; keep jumped titles below them.
-    const resize = new ResizeObserver(() => { dialog.current?.style.setProperty('--settings-nav-offset', `${(nav.current?.offsetHeight || 0) + 16}px`); trackSection(); });
-    if (nav.current) resize.observe(nav.current);
-    dialog.current?.style.setProperty('--settings-nav-offset', `${(nav.current?.offsetHeight || 0) + 16}px`);
-    if (initialSection !== 'appearance') jump(initialSection); else trackSection();
-    return () => resize.disconnect();
-  }, []);
-  return <dialog className="settings-dialog" ref={dialog} onScroll={trackSection} onCancel={close} onClick={event => { if (event.target === event.currentTarget) close(); }}>
-    <div className="dialog-content">
-      <div className="dialog-heading"><div><span className="eyebrow">PREFERENCES</span><h2>{t('工作台设置')}</h2></div></div>
-      <nav className="settings-nav" ref={nav} aria-label={t('设置分类')}>{sections.map(section => <button type="button" key={section.id} aria-controls={`settings-${section.id}`} aria-current={activeSection === section.id ? 'true' : undefined} onClick={() => jump(section.id)}>{section.title}</button>)}</nav>
-      <p className="settings-intro">{t('按照你的开发习惯调整提醒和终端。')}</p>
-      <section className="settings-section" id="settings-appearance" aria-label={t('外观')}><h3>{t('外观')}</h3>
+  return <dialog className="settings-dialog settings-paned" ref={dialog} onCancel={close} onClick={event => { if (event.target === event.currentTarget) close(); }}>
+    <div className="settings-shell">
+      <aside className="settings-sidebar">
+        <div className="settings-brand"><span className="eyebrow">PREFERENCES</span><h2>{t('工作台设置')}</h2></div>
+        <nav className="settings-nav" aria-label={t('设置分类')} onKeyDown={navKeys}>{sections.map(section => <button type="button" key={section.id} data-settings-tab={section.id} aria-controls={`settings-${section.id}`} aria-current={current.id === section.id ? 'page' : undefined} onClick={() => choose(section.id)}>{section.icon}<span>{section.title}</span></button>)}</nav>
+        <div className="settings-sidebar-footer"><button className="text-button" onClick={onGuide}><BookOpen size={15} />{t('使用指南')}</button><button className="text-button danger-text" onClick={quit}><Power size={15} />{t('退出应用')}</button></div>
+      </aside>
+      <div className="settings-main">
+        <header className="settings-main-head"><h3>{current.title}</h3><p>{current.hint}</p></header>
+        <div className="settings-pane" ref={pane}>
+      <section className="settings-section" id="settings-appearance" aria-label={t('外观')} hidden={current.id !== 'appearance'}>
       <fieldset className="theme-picker"><legend>{t('外观主题')}</legend><div className="theme-options">
         {themes.map(theme => <label key={theme.id} className={`theme-option ${settings.theme === theme.id ? 'is-selected' : ''}`}>
           <input type="radio" name="theme" value={theme.id} checked={settings.theme === theme.id} aria-label={t(theme.name)} onChange={() => update({ theme: theme.id })} />
@@ -214,23 +220,23 @@ function SettingsDialog({ settings, agents, onAgents, initialSection, updates, o
       <label className="setting-row"><span><ArrowsOutSimple size={19} /><span><b>{t('界面动画')}</b><small>{t('窗口平滑放大与呼吸灯；默认不受 Windows“动画效果”开关影响')}</small></span></span><select aria-label={t('界面动画')} value={settings.focusAnimation} onChange={e => update({ focusAnimation: e.target.value as Settings['focusAnimation'] })}><option value="smooth">{t('开启')}</option><option value="system">{t('跟随系统')}</option><option value="off">{currentLanguage() === 'en' ? 'Off' : '关闭'}</option></select></label>
       <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端字号')}</b><small>{t('全屏与网格共用字号')}</small></span></span><select aria-label={t('终端字号')} value={settings.fontSize} onChange={e => update({ fontSize: Number(e.target.value) })}>{[10, 11, 12, 13, 14, 16, 18, 20].map(n => <option key={n} value={n}>{n} px</option>)}</select></label>
       </section>
-      <section className="settings-section" id="settings-notifications" aria-label={t('提醒')}><h3>{t('提醒')}</h3>
+      <section className="settings-section" id="settings-notifications" aria-label={t('提醒')} hidden={current.id !== 'notifications'}>
       <label className="setting-row"><span><Bell size={19} /><span><b>{t('桌面通知')}</b><small>{t('一轮结束时发送系统通知')}</small></span></span><input type="checkbox" checked={settings.notifications} onChange={e => update({ notifications: e.target.checked })} /></label>
       <label className="setting-row"><span><SpeakerHigh size={19} /><span><b>{t('通知声音')}</b><small>{t('播放系统默认提示音')}</small></span></span><input type="checkbox" checked={settings.sound} onChange={e => update({ sound: e.target.checked })} /></label>
       <AnnounceSettings settings={settings} update={update} />
       </section>
-      <section className="settings-section" id="settings-terminal" aria-label={t('终端与编辑')}><h3>{t('终端与编辑')}</h3>
+      <section className="settings-section" id="settings-terminal" aria-label={t('终端与编辑')} hidden={current.id !== 'terminal'}>
       <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端')}</b><small>{t('新开或重启的本地终端使用；SSH 项目始终使用 Bash')}</small></span></span><select aria-label={t('终端')} value={settings.shell} onChange={event => update({ shell: event.target.value as Settings['shell'] })}><option value="powershell">PowerShell</option><option value="cmd">{t('命令提示符 (cmd)')}</option></select></label>
       <label className="setting-row"><span><ArrowCounterClockwise size={19} /><span><b>{t('启动时恢复工作')}</b><small>{t('恢复 Codex 与 Claude Code 的最近会话，被中断的任务自动发送“继续”')}</small></span></span><input type="checkbox" checked={settings.restoreSessions} onChange={event => update({ restoreSessions: event.target.checked })} /></label>
       <label className="setting-row"><span><Monitor size={19} /><span><b>{t('关闭到托盘')}</b><small>{t('关闭窗口后，终端和任务继续运行')}</small></span></span><input type="checkbox" checked={settings.closeToTray} onChange={e => update({ closeToTray: e.target.checked })} /></label>
       <label className="setting-row"><span><FloppyDisk size={19} /><span><b>{t('自动保存')}</b><small>{t('停止输入约 1 秒后、切换文件或离开窗口时保存编辑中的文件；关闭后按 Ctrl+S 保存')}</small></span></span><input type="checkbox" checked={settings.autoSave} onChange={event => update({ autoSave: event.target.checked })} /></label>
       <div className="setting-row"><span><Microphone size={19} /><span><b>{t('本地语音输入')}</b><small>{t('按 {key} 或点击终端上的麦克风说话，按回车识别并发送，Esc 取消', { key: shortcut('voice') })}</small></span></span><VoiceModelStatus /></div>
       </section>
-      <section className="settings-section" id="settings-agents" aria-label={t('编码助手')}><h3>{t('编码助手')}</h3>
+      <section className="settings-section" id="settings-agents" aria-label={t('编码助手')} hidden={current.id !== 'agents'}>
       <AgentsSettings agents={agents} onChange={onAgents} />
       </section>
-      <ShortcutSettings settings={settings} update={update} />
-      <section className="settings-section" id="settings-about" aria-label={t('更新与关于')}><h3>{t('更新与关于')}</h3>
+      {current.id === 'shortcuts' && <ShortcutSettings settings={settings} update={update} />}
+      <section className="settings-section" id="settings-about" aria-label={t('更新与关于')} hidden={current.id !== 'about'}>
       {updates && <section className="update-section" aria-label={t('应用更新')}>
         <div className="update-heading"><b>{t('应用更新')}</b><span>{t('当前版本 v{version}', { version: updates.currentVersion })}</span></div>
         <p role="status">{updates.status === 'unavailable' ? t('当前为便携版或开发版。安装 Windows 版后，即可自动检查和下载更新。')
@@ -247,7 +253,9 @@ function SettingsDialog({ settings, agents, onAgents, initialSection, updates, o
       </section>}
       <div className="settings-note"><Info size={15} /><p>{t('一轮结束时，方框从边缘缓缓呼吸三次，之后留一层柔光等你查看；在终端里发送新指令也算已查看。绿色常亮表示已查看的本轮完成。没有新指令时不会重复提醒。')}</p></div>
       </section>
-      <div className="dialog-footer"><span className="guide-actions"><button className="text-button danger-text" onClick={quit}><Power size={15} />{t('退出应用')}</button><button className="text-button" onClick={onGuide}><BookOpen size={15} />{t('使用指南')}</button></span><button className="button primary" onClick={close}>{t('完成')}</button></div>
+        </div>
+        <div className="settings-main-foot"><button className="button primary" onClick={close}>{t('完成')}</button></div>
+      </div>
     </div>
   </dialog>;
 }
