@@ -68,6 +68,10 @@ try {
   // Expanded, the pane beside the terminal lists the steps, newest first, and the running edit is marked.
   await page.getByRole('button', { name: '全屏查看 Parent task status', exact: true }).click();
   const pane = page.locator('.activity-pane'); await pane.waitFor();
+  // The overview below the live feed counts the calls by kind and names the files the round changed.
+  const overview = pane.locator('.activity-overview'); await overview.waitFor();
+  await waitFor(async () => (await overview.locator('.overview-stats > div').first().locator('b').innerText()) === '2', 'overview counts the calls');
+  assert.equal(await overview.locator('.overview-group code').first().innerText(), 'src/login.ts');
   await waitFor(async () => await pane.locator('.activity-item').count() === 2, 'activity pane lists the steps');
   assert.equal(await pane.locator('.activity-item').first().locator('code').innerText(), 'src/login.ts');
   assert.ok((await pane.locator('.activity-now').getAttribute('class')).includes('is-editing'));

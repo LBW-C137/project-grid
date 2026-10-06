@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CircleNotch, FileText, Globe, MagnifyingGlass, PencilSimple, Plugs, Robot, Sparkle, Terminal, Wrench } from '@phosphor-icons/react';
 import type { AgentAction, AgentActionBrief, Project, ProjectTerminal } from './types';
 import { t } from './i18n';
@@ -51,6 +51,9 @@ export function ActivityPane({ project, terminal }: { project: Project; terminal
     <div className={`activity-now ${running?.kind === 'edit' ? 'is-editing' : ''} ${working ? 'is-working' : ''}`} role="status" title={status}>
       {working && <CircleNotch size={14} className="loading-spinner" />}<span>{status}</span>
     </div>
+    <div className="activity-split">
+    <section className="activity-live" aria-label={t('实时动态')}>
+    <h4 className="activity-section-title">{t('实时动态')}</h4>
     <div className="activity-list" role="list">
       {!actions.length && <p className="activity-empty">{!terminal.codexActive
         ? project.kind === 'ssh' ? t('远程项目暂不显示活动。') : t('在终端里启动 Codex 或 Claude Code 后，这里显示它每一步在做什么：改了哪些文件、运行了什么命令、调用了哪些技能和 MCP 工具。')
@@ -67,5 +70,47 @@ export function ActivityPane({ project, terminal }: { project: Project; terminal
         </div>;
       })}
     </div>
+    </section>
+    <RoundOverview terminal={terminal} actions={actions} working={working} />
+    </div>
   </aside>;
+}
+
+const COUNTED: AgentActionBrief['kind'][] = ['edit', 'command', 'read', 'search', 'web', 'agent', 'skill', 'mcp', 'other'];
+const seconds = (ms: number) => { const total = Math.max(0, Math.round(ms / 1000)), m = Math.floor(total / 60); return m ? t('{m} 分 {s} 秒', { m, s: total % 60 }) : t('{s} 秒', { s: total }); };
+
+// The round at a glance: what it was asked to do, how far it has got, how many tools of each kind it called,
+// which files it touched, and the skills and MCP tools it used with what they are for.
+function RoundOverview({ terminal, actions, working }: { terminal: ProjectTerminal; actions: AgentAction[]; working: boolean }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (!working) return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [working]);
+  const summary = useMemo(() => {
+    const counts = new Map<AgentActionBrief['kind'], number>(), files = new Set<string>(), skills = new Map<string, string>(), servers = new Map<string, Set<string>>();
+    for (const action of actions) {
+      counts.set(action.kind, (counts.get(action.kind) || 0) + 1);
+      if (action.kind === 'edit' && action.target) for (const file of action.target.replace(/\s\+\d+$/, '').split('、')) if (file.trim()) files.add(file.trim());
+      if (action.kind === 'skill' && action.target) skills.set(action.target, action.description || skills.get(action.target) || '');
+      if (action.kind === 'mcp') { const [server, tool] = action.target.split(' · '); if (!servers.has(server)) servers.set(server, new Set()); if (tool) servers.get(server)!.add(tool); }
+    }
+    return { counts, files: [...files], skills: [...skills], servers: [...servers], done: actions.filter(a => a.done).length, failed: actions.filter(a => a.failed).length };
+  }, [actions]);
+  const started = actions[0]?.at, ended = working ? now : actions.at(-1)?.at;
+  const most = Math.max(1, ...summary.counts.values());
+  return <section className="activity-overview" aria-label={t('本轮概览')}>
+    <h4 className="activity-section-title">{t('本轮概览')}</h4>
+    <div className="overview-body">
+      {(terminal.task || !terminal.codexActive) && <p className="overview-task" title={terminal.task}>{terminal.task || t('还没有开始任务')}</p>}
+      <div className="overview-stats">
+        <div><b>{actions.length}</b><span>{t('工具调用')}</span></div>
+        <div><b>{summary.done}</b><span>{t('已完成')}</span></div>
+        <div className={summary.failed ? 'is-failed' : ''}><b>{summary.failed}</b><span>{t('失败')}</span></div>
+        <div><b>{started && ended ? seconds(ended - started) : '—'}</b><span>{working ? t('已进行') : t('用时')}</span></div>
+      </div>
+      {actions.length > 0 && <div className="overview-progress" role="progressbar" aria-label={t('已完成的步骤')} aria-valuemin={0} aria-valuemax={actions.length} aria-valuenow={summary.done}><i style={{ width: `${(summary.done / actions.length) * 100}%` }} className={working ? 'is-working' : ''} /></div>}
+      {summary.counts.size > 0 && <div className="overview-kinds">{COUNTED.filter(kind => summary.counts.get(kind)).map(kind => { const Icon = ICONS[kind], count = summary.counts.get(kind)!; return <div key={kind} className={`overview-kind activity-${kind}`}><span className="activity-icon" aria-hidden="true"><Icon size={13} /></span><span>{t(KIND_LABELS[kind])}</span><i><em style={{ width: `${(count / most) * 100}%` }} /></i><b>{count}</b></div>; })}</div>}
+      {summary.files.length > 0 && <div className="overview-group"><h5>{t('修改的文件')}<span>{summary.files.length}</span></h5>{summary.files.slice(-6).reverse().map(file => <code key={file} title={file}>{file}</code>)}{summary.files.length > 6 && <small>{t('还有 {count} 个', { count: summary.files.length - 6 })}</small>}</div>}
+      {summary.skills.length > 0 && <div className="overview-group"><h5>{t('技能')}<span>{summary.skills.length}</span></h5>{summary.skills.map(([name, description]) => <div key={name} className="overview-named"><b>{name}</b>{description && <p title={description}>{description}</p>}</div>)}</div>}
+      {summary.servers.length > 0 && <div className="overview-group"><h5>MCP<span>{summary.servers.length}</span></h5>{summary.servers.map(([server, tools]) => <div key={server} className="overview-named"><b>{server}</b><p>{[...tools].join('、') || t('工具')}</p></div>)}</div>}
+    </div>
+  </section>;
 }

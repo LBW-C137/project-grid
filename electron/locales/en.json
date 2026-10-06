@@ -743,5 +743,19 @@
   "点击按键后按下新的组合；Esc 取消。": "Click a key, then press the new combination; Esc cancels.",
   "设置改为左侧分类栏，每次只显示一个分类的内容。": "Settings now have a sidebar of categories and show one category at a time.",
   "一轮完成只播报一次，默认播报改为一句简短的话，例如「界面开发，给登录页加上验证码，完成」。": "A finished round is spoken once, and the default notice is one short sentence, such as “UI work: add a captcha to the login page, done.”",
-  "留空使用简短的默认播报，如：{example}": "Leave empty for the short default notice, such as: {example}"
+  "留空使用简短的默认播报，如：{example}": "Leave empty for the short default notice, such as: {example}",
+  "实时动态": "Live",
+  "本轮概览": "This round",
+  "还没有开始任务": "No task yet",
+  "工具调用": "Tool calls",
+  "已完成": "Done",
+  "已进行": "Running for",
+  "用时": "Took",
+  "已完成的步骤": "Steps done",
+  "修改的文件": "Files changed",
+  "还有 {count} 个": "{count} more",
+  "工具": "tools",
+  "{m} 分 {s} 秒": "{m} min {s} s",
+  "{s} 秒": "{s} s",
+  "活动栏分成上下两部分：上面实时显示每一步，下面是本轮概览——任务、进度、各类工具调用次数、修改的文件、用到的技能和 MCP。": "The activity pane has two parts: each step live on top, and below an overview of the round — the task, progress, calls of each kind, files changed, and the skills and MCP tools used."
 }

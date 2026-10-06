@@ -9,7 +9,7 @@ export type Project = {
   codexActive: boolean; agent: 'codex' | 'claude' | null; codexActivity: 'unknown' | 'working' | 'complete' | 'interrupted'; shellReady: boolean; codexAvailable: boolean | null; error: string | null;
   terminals: ProjectTerminal[];
 };
-export type ProjectTerminal = { action: AgentActionBrief | null; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
+export type ProjectTerminal = { action: AgentActionBrief | null; task: string; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
 // A model reached over HTTP for the spoken summary. The API key is not part of the settings.
 export type SummaryEndpoint = { provider: string; protocol: 'openai' | 'anthropic'; baseUrl: string; model: string };
 export type SummaryKeys = { keys: { cloud: boolean; local: boolean } };

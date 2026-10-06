@@ -1,6 +1,7 @@
 // What the usage guide's last page lists for this release. Update it with every version: the guide opens on
 // first use and after each update, on this page for people who are updating.
 export const WHATS_NEW: string[] = [
+  '活动栏分成上下两部分：上面实时显示每一步，下面是本轮概览——任务、进度、各类工具调用次数、修改的文件、用到的技能和 MCP。',
   '一轮完成只播报一次，默认播报改为一句简短的话，例如「界面开发，给登录页加上验证码，完成」。',
   '设置改为左侧分类栏，每次只显示一个分类的内容。',
   '语音播报的内容可在设置里选择：快速播报（默认）、由 Codex / Claude Code 总结、云端模型，或 Ollama、vLLM 等本地模型，用一句话说明这一轮的结果。',

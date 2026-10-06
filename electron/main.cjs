@@ -90,7 +90,9 @@ function publicState() {
           codexActivity: s?.codexActivity || 'unknown', shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null,
           // The step a working agent is on, for the card's one-line status; the full list is sent separately.
-          action: s?.codexActive && s.codexActivity === 'working' ? briefAction(s.actions.current()) : null };
+          action: s?.codexActive && s.codexActivity === 'working' ? briefAction(s.actions.current()) : null,
+          // What the round was asked to do, in a few words, for the activity overview.
+          task: s?.codexActive ? s.lastTask || '' : '' };
       });
       const first = terminals[0];
       const activeCodex = terminals.filter(item => item.codexActive);
