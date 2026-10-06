@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Microphone, SpinnerGap } from '@phosphor-icons/react';
 import { toggleDictation, useVoice } from './voice-input';
+import './voice-overlay.css';
 import { t } from './i18n';
 import { shortcut } from './shortcuts';
 
@@ -54,6 +55,27 @@ function useCardBox(terminalId: string | null) {
   return box;
 }
 
+// The bars of one side of the sound wave, from the sphere outward: tall near it, lower further out, then dots.
+const BARS = [34, 58, 72, 52, 64, 40, 48, 30, 22, 14];
+const DOTS = 5;
+function Wave({ side }: { side: 'left' | 'right' }) {
+  return <div className={`voice-wave is-${side}`}>
+    {BARS.map((height, index) => <i key={index} style={{ '--bar': `${height}px`, '--delay': `${(index * .11) % 1.3}s` } as CSSProperties} />)}
+    {Array.from({ length: DOTS }, (_, index) => <i key={`dot${index}`} className="is-dot" />)}
+  </div>;
+}
+// Sparks around the sphere: [left %, top %, delay s].
+const SPARKS: [number, number, number][] = [[21, 18, 0], [80, 12, 0.6], [86, 34, 1.1], [17, 72, 1.6], [79, 80, 0.3], [70, 4, 1.9]];
+// A microphone drawn to sit in the sphere: a rounded capsule, its stand and stem, lit from above.
+function MicrophoneGlyph() {
+  return <svg viewBox="0 0 50 66" fill="none">
+    <defs><linearGradient id="voice-mic" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#d6e8ff" /></linearGradient></defs>
+    <rect x="13" y="2" width="24" height="38" rx="12" fill="url(#voice-mic)" />
+    <path d="M5 30c0 11 9 20 20 20s20-9 20-20" stroke="url(#voice-mic)" strokeWidth="4.5" strokeLinecap="round" />
+    <path d="M25 50v12" stroke="url(#voice-mic)" strokeWidth="4.5" strokeLinecap="round" />
+  </svg>;
+}
+
 // Ctrl+T anywhere in the window starts dictation into the current terminal. While it records, a microphone
 // sits in the middle of that terminal's project card; Enter (or Ctrl+T again) inserts the text and sends it, Esc cancels.
 // The voice shortcut itself is handled with the other app shortcuts in App.
@@ -64,10 +86,13 @@ export function VoiceOverlay() {
   if (!recording && !voice.busy) return null;
   // Without a visible card (for example, while a file preview covers it) the window centre is used.
   return <div className="voice-overlay-anchor" style={box || undefined}><div className="voice-overlay" role="status" aria-live="polite" aria-label={t('语音输入')}>
-    <div className={`voice-orb ${recording ? 'is-recording' : 'is-busy'}`} style={{ '--voice-level': voice.level.toFixed(2) } as CSSProperties}>
-      {recording ? <Microphone size={34} weight="fill" /> : <SpinnerGap className="loading-spinner" size={34} />}
+    <div className={`voice-stage ${recording ? 'is-recording' : 'is-busy'}`} style={{ '--voice-level': voice.level.toFixed(2) } as CSSProperties} aria-hidden="true">
+      <Wave side="left" /><Wave side="right" />
+      <i className="voice-halo is-far" /><i className="voice-halo is-near" />
+      {SPARKS.map(([x, y, delay], index) => <i key={index} className="voice-spark" style={{ left: `${x}%`, top: `${y}%`, '--delay': `${delay}s` } as CSSProperties} />)}
+      <div className={`voice-orb ${recording ? 'is-recording' : 'is-busy'}`}>{recording ? <MicrophoneGlyph /> : <SpinnerGap className="loading-spinner" />}</div>
     </div>
-    <b>{recording ? t('正在听…') : voice.sending ? t('正在识别并发送…') : t('正在识别…')}</b>
-    {recording && <span className="voice-overlay-keys"><kbd>Enter</kbd>{t('发送')}<kbd>Esc</kbd>{t('取消')}</span>}
+    <b className="voice-title">{recording ? t('正在聆听…') : voice.sending ? t('正在识别并发送…') : t('正在识别…')}</b>
+    {recording && <span className="voice-overlay-keys"><kbd>Enter</kbd><span>{t('发送')}</span><kbd>Esc</kbd><span>{t('取消')}</span></span>}
   </div></div>;
 }

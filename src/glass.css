@@ -317,34 +317,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 /* Ctrl+T dictation: a microphone floats in the middle of the project card it types into (the anchor
    takes that card's box). It never takes the pointer, so the terminal stays visible and clickable underneath. */
 .voice-overlay-anchor { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; pointer-events: none; }
-/* The dictation overlay is a thick piece of glass floating over the card: the backdrop is bent at its
-   rim and blurred, light falls from the upper left (a specular edge, a soft sheen across the top half),
-   the lower edge shows its thickness, and it casts a near and a far shadow. It tips up into place. */
-.voice-overlay { position: relative; min-width: 232px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 30px 34px 22px; border: 0; border-radius: 14px; color: #f6fbff; isolation: isolate;
-  background: radial-gradient(120% 90% at 16% 0%, rgba(255, 255, 255, .3), rgba(255, 255, 255, .06) 42%, transparent 64%), linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .02) 46%, rgba(4, 14, 24, .24)), rgba(16, 38, 54, .46);
-  backdrop-filter: url("#project-grid-refraction") blur(16px) saturate(175%) brightness(1.06);
-  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .78), inset 0 0 0 1px rgba(255, 255, 255, .2), inset 0 20px 30px -20px rgba(255, 255, 255, .3), inset 0 -12px 18px -10px rgba(255, 255, 255, .16), inset 0 -1.5px 0 rgba(4, 14, 24, .5),
-    0 9px 0 -2px rgba(3, 12, 20, .55), 0 10px 0 -2px rgba(255, 255, 255, .07), 0 16px 24px -10px rgba(0, 8, 16, .55), 0 40px 64px -16px rgba(0, 8, 16, .78);
-  text-shadow: var(--text-shadow); pointer-events: none; transform-origin: 50% 100%; animation: voice-rise .26s cubic-bezier(.2, .9, .25, 1.15); }
-/* The sheen across the upper half, and a rim that takes a little colour from the light, as cut glass does. */
-.voice-overlay::before { content: ''; position: absolute; z-index: -1; inset: 1px 1px 54% 1px; border-radius: 13.5px 13.5px 46% 46% / 13.5px 13.5px 13px 13px; background: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .03) 70%, transparent); pointer-events: none; }
-.voice-overlay::after { content: ''; position: absolute; inset: 0; padding: 1px; border-radius: inherit; pointer-events: none;
-  background: linear-gradient(140deg, rgba(255, 255, 255, .92), rgba(160, 212, 255, .3) 28%, rgba(255, 255, 255, .04) 54%, rgba(255, 186, 228, .34) 80%, rgba(255, 255, 255, .62));
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
-@keyframes voice-rise { from { opacity: 0; transform: perspective(700px) translateY(16px) rotateX(16deg) scale(.94); } }
-/* The microphone sits in a glass bead lit from the same side; rings spread from it with the voice. */
-.voice-orb { position: relative; display: flex; align-items: center; justify-content: center; width: 78px; height: 78px; margin: 4px 0 16px; border-radius: 50%; color: #ffffff;
-  background: radial-gradient(circle at 31% 25%, rgba(255, 255, 255, .95) 0 5%, rgba(255, 255, 255, .34) 13%, transparent 33%), radial-gradient(circle at 50% 118%, rgba(132, 226, 255, .85), transparent 58%), radial-gradient(circle at 50% 46%, #4ea7ff, #1f63da 60%, #133d9c);
-  box-shadow: inset 0 -9px 14px rgba(6, 20, 70, .55), inset 0 6px 10px rgba(255, 255, 255, .34), inset 0 0 0 1px rgba(255, 255, 255, .3),
-    0 0 0 calc(3px + var(--voice-level, 0) * 9px) rgba(160, 215, 255, .32), 0 0 0 calc(7px + var(--voice-level, 0) * 22px) rgba(72, 160, 255, .2),
-    0 16px 26px -8px rgba(10, 60, 160, .75), 0 0 36px rgba(72, 160, 255, .5);
-  transition: box-shadow .08s linear; }
-.voice-orb svg { filter: drop-shadow(0 2px 3px rgba(4, 20, 70, .55)); }
-.voice-orb.is-busy { color: #d8ecff; background: radial-gradient(circle at 31% 25%, rgba(255, 255, 255, .8) 0 5%, rgba(255, 255, 255, .22) 13%, transparent 33%), radial-gradient(circle at 50% 118%, rgba(132, 226, 255, .32), transparent 58%), rgba(120, 190, 255, .16);
-  box-shadow: inset 0 -9px 14px rgba(6, 20, 50, .4), inset 0 6px 10px rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, .34), 0 14px 24px -10px rgba(0, 8, 16, .6); }
-.voice-overlay b { font-size: 15px; font-weight: 600; }
-.voice-overlay-keys { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 11px; color: #c9dbea; }
-.voice-overlay-keys kbd:last-of-type { margin-left: 8px; }
 .file-tree { min-height: 0; flex: 1; overflow: auto; padding: 4px 6px 20px; user-select: none; }
 .tree-filename { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tree-placeholder { color: #8a9eb7; font-size: 11px; line-height: 27px; }
