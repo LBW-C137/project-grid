@@ -732,5 +732,6 @@
   "API 密钥格式不正确。": "That does not look like an API key.",
   "此系统无法加密保存密钥，未保存。": "This system cannot encrypt the key, so it was not saved.",
   "编码助手没有给出总结：可能未安装、未登录，或超过了 30 秒。": "The coding assistant gave no summary: it may not be installed or signed in, or it took over 30 seconds.",
-  "语音播报的内容可在设置里选择：快速播报（默认）、由 Codex / Claude Code 总结、云端模型，或 Ollama、vLLM 等本地模型，用一句话说明这一轮的结果。": "Choose what the spoken notice says in Settings: a quick notice (the default), a summary by Codex / Claude Code, a cloud model, or a local model such as Ollama or vLLM that puts the round’s result in one sentence."
+  "语音播报的内容可在设置里选择：快速播报（默认）、由 Codex / Claude Code 总结、云端模型，或 Ollama、vLLM 等本地模型，用一句话说明这一轮的结果。": "Choose what the spoken notice says in Settings: a quick notice (the default), a summary by Codex / Claude Code, a cloud model, or a local model such as Ollama or vLLM that puts the round’s result in one sentence.",
+  "总览里鼠标移到哪个项目，哪个项目就轻轻浮起，投下柔和的阴影；全屏时顶栏自动收起，鼠标碰到屏幕顶边再出现。": "In the overview the project under the pointer lifts gently and casts a soft shadow; in full screen the title bar hides and returns when the pointer touches the top edge."
 }
