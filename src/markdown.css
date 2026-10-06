@@ -11,13 +11,13 @@
 .markdown-body a:hover { filter: brightness(1.16); }.markdown-body a:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 3px; }
 .markdown-body blockquote { margin: 19px 0; border-left: 3px solid var(--theme-accent); padding: 2px 18px; color: var(--theme-muted); background: var(--theme-hover); }
 .markdown-body code, .markdown-body pre { font-family: var(--font-mono); font-size: 12px; }
-.markdown-body :not(pre) > code { padding: 2px 6px; border-radius: 5px; background: var(--theme-code); color: var(--theme-accent); }
-.markdown-body pre { padding: 18px 20px; border: 1px solid var(--theme-line); border-radius: 12px; overflow: auto; line-height: 1.65; background: var(--theme-code); }
+.markdown-body :not(pre) > code { padding: 2px 6px; border-radius: 2.5px; background: var(--theme-code); color: var(--theme-accent); }
+.markdown-body pre { padding: 18px 20px; border: 1px solid var(--theme-line); border-radius: 6px; overflow: auto; line-height: 1.65; background: var(--theme-code); }
 .markdown-body pre code { padding: 0; white-space: pre; }
 .markdown-body table { display: block; width: max-content; max-width: 100%; overflow: auto; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
 .markdown-body th, .markdown-body td { padding: 9px 15px; border: 1px solid var(--theme-line); text-align: left; }
 .markdown-body th { background: var(--theme-hover); font-weight: 600; }.markdown-body tbody tr:nth-child(even) { background: #ffffff03; }
-.markdown-body img { display: inline-block; max-width: 100%; height: auto; border-radius: 10px; vertical-align: middle; }
+.markdown-body img { display: inline-block; max-width: 100%; height: auto; border-radius: 5px; vertical-align: middle; }
 .markdown-body input[type="checkbox"] { accent-color: var(--theme-accent); margin-right: 7px; vertical-align: middle; }
 .markdown-body hr { border: 0; border-top: 1px solid var(--theme-line); margin: 28px 0; }
-.markdown-body kbd { color: var(--theme-ink); border: 1px solid var(--theme-line); border-radius: 4px; padding: 1px 5px; }
+.markdown-body kbd { color: var(--theme-ink); border: 1px solid var(--theme-line); border-radius: 2px; padding: 1px 5px; }

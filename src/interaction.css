@@ -40,7 +40,7 @@
 :is(.settings-nav button, .preview-option, .status-button, .text-button, .explorer-tabs button) { transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s cubic-bezier(.2, .8, .2, 1); }
 :is(.settings-nav button, .preview-option, .status-button, .text-button):active:not(:disabled) { transform: scale(.95); }
 .status-button:hover .status-dot { transform: scale(1.25); }.status-dot { transition: transform .18s cubic-bezier(.2, .8, .2, 1); }
-.setting-row { transition: background .18s ease; border-radius: 8px; }
+.setting-row { transition: background .18s ease; border-radius: 4px; }
 .setting-row:hover { background: rgba(255, 255, 255, .035); }
 :is(.setting-row select, .search-input, .announce-options input) { transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
 .setting-row select:hover { border-color: #b8d7ef80; }

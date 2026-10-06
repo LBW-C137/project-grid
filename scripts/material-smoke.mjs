@@ -65,7 +65,7 @@ try {
   await checkEdges('overview');
   await checkGaps('overview');
   const geometry = await page.locator('.project-grid').evaluate(grid => ({ gap: getComputedStyle(grid).gap, radius: getComputedStyle(grid.querySelector('.project-panel')).borderTopLeftRadius, header: getComputedStyle(grid.querySelector('.panel-header')).borderTopLeftRadius }));
-  assert.deepEqual(geometry, { gap: `${layoutGap}px`, radius: '14px', header: '13px' });
+  assert.deepEqual(geometry, { gap: `${layoutGap}px`, radius: '7px', header: '6px' });
   for (const project of projects.slice(0, 6)) await page.evaluate(id => window.projectGrid.startTerminal(id), project.id);
   await waitFor(async () => (await state()).projects.slice(0, 6).every(project => project.shellReady), 'six real shells ready');
   const lens = await page.locator('.app-shell').evaluate(node => node.style.getPropertyValue('--liquid-backdrop'));
