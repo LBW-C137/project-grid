@@ -769,5 +769,7 @@
   "输入命令，Enter 发送": "Type a command; Enter sends",
   "中断（Esc）": "Interrupt (Esc)",
   "阅读视图：按文档排版显示对话": "Reading view: the conversation laid out as a document",
-  "在卡片标题栏点「阅读视图」，Claude Code 与 Codex 的对话按文档排版：标题、列表、可复制的代码块、折叠的工具调用；在底部输入框发消息，随时切回终端。": "Use \"Reading view\" in a card header and the Claude Code or Codex conversation is laid out as a document: headings, lists, copyable code blocks, folded tool calls; write in the box at the bottom and switch back to the terminal at any time."
+  "在卡片标题栏点「阅读视图」，Claude Code 与 Codex 的对话按文档排版：标题、列表、可复制的代码块、折叠的工具调用；在底部输入框发消息，随时切回终端。": "Use \"Reading view\" in a card header and the Claude Code or Codex conversation is laid out as a document: headings, lists, copyable code blocks, folded tool calls; write in the box at the bottom and switch back to the terminal at any time.",
+  "语音输入窗口重新设计：蓝色玻璃球麦克风、两侧随声音起伏的声波，以及「正在聆听…」。": "A redesigned dictation window: a blue glass microphone sphere, sound waves on both sides that move with your voice, and “Listening…”.",
+  "顶栏融入壁纸，卡片边缘改为一圈柔和的光；卡片标题栏缩小，所有圆角减半。": "The title bar blends into the wallpaper and cards have a soft edge of light; card headers are smaller and every corner is half as round."
 }
