@@ -63,3 +63,4 @@
 .reading-send:not(:disabled) { color: #ffffff; background: rgba(143, 203, 255, .28); }
 .has-splits .reading-scroll { padding: 10px 12px 6px; }
 .reading-composer textarea:focus-visible { outline: none; box-shadow: none; }
+

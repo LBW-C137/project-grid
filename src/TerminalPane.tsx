@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalPacket } from './types';
 import { createTerminalLinkProvider } from './terminal-links';
+import { styleTerminal } from './terminal-styling';
 import '@xterm/xterm/css/xterm.css';
 import { t } from './i18n';
 
@@ -65,7 +66,9 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const terminal = new Terminal({
       fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace",
       fontSize, lineHeight: 1.3, fontWeight: '400', fontWeightBold: '700', scrollback: 3000, minimumContrastRatio: 7,
-      cursorBlink: true, cursorStyle: 'bar', allowProposedApi: false, allowTransparency: true,
+      cursorBlink: true, cursorStyle: 'bar',
+      // Decorations (the heading and bullet styling) are still an experimental part of xterm's API.
+      allowProposedApi: true, allowTransparency: true,
       // Bundled ConPTY reflows the prompt on resize; the cursor line must follow
       // that reflow too, or later output can overwrite old prompt characters.
       reflowCursorLine: !remote,
@@ -87,6 +90,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     // 21376 is xterm's capability threshold for VT wrapping and reflow.
     if (!remote) terminal.options.windowsPty = { backend: 'conpty', buildNumber: 21376 };
     const links = terminal.registerLinkProvider(createTerminalLinkProvider(terminal, activateLink, hoverLink, leaveLink));
+    const styling = styleTerminal(terminal);
     term.current = terminal; fit.current = fitAddon;
     let disposed = false;
     let ready = false;
@@ -162,7 +166,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const frame = requestAnimationFrame(resize);
     return () => {
       disposed = true; queued = [];
-      unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(settle);
+      unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); styling.dispose(); observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(settle);
       terminal.textarea?.removeEventListener('focus', focusIn); terminal.textarea?.removeEventListener('blur', focusOut); focusOut();
       terminal.dispose(); term.current = null; fit.current = null;
     };
