@@ -512,6 +512,8 @@ try {
   await page.screenshot({ path: path.join(output, 'grid.png') });
   await page.getByRole('button', { name: /设置/ }).click();
   await page.waitForSelector('dialog[open]');
+  // Settings show one category at a time; updates live under "更新与关于".
+  await page.locator('.settings-nav').getByRole('button', { name: '更新与关于', exact: true }).click();
   await page.getByRole('region', { name: '应用更新', exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.projectGrid.getUpdateState())).value.supported, false, 'unpacked and development builds cannot install over an installed app');
   assert.equal((await page.evaluate(() => window.projectGrid.installUpdate())).ok, false, 'installing before a verified download is rejected');
