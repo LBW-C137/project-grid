@@ -132,7 +132,9 @@ try {
     globalThis.focusMotionSamples = [];
     const started = performance.now();
     const sample = () => {
-      globalThis.focusMotionSamples.push({ time: performance.now() - started, width: panel.getBoundingClientRect().width, moving: panel.classList.contains('focus-motion-panel') });
+      // clock: the animation's own time, which a slow or busy machine cannot compress the way it bunches frames.
+      const animation = panel.getAnimations().find(item => item.effect?.getKeyframes().some(frame => frame.transform));
+      globalThis.focusMotionSamples.push({ time: performance.now() - started, clock: animation ? Number(animation.currentTime) : null, width: panel.getBoundingClientRect().width, moving: panel.classList.contains('focus-motion-panel') });
       if (performance.now() - started < 1600) requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
@@ -144,7 +146,8 @@ try {
   const samples = await page.evaluate(() => globalThis.focusMotionSamples);
   const growing = samples.filter(sample => sample.moving && sample.width > naturalStart + (naturalEnd - naturalStart) * .05 && sample.width < naturalStart + (naturalEnd - naturalStart) * .92);
   assert.ok(growing.length >= 4, 'natural playback must render several visibly different intermediate sizes');
-  assert.ok(growing.at(-1).time - growing[0].time >= 200, 'visible enlargement must be gradual, not concentrated into the first few frames');
+  const span = growing.every(sample => sample.clock !== null) ? growing.at(-1).clock - growing[0].clock : growing.at(-1).time - growing[0].time;
+  assert.ok(span >= 200, `visible enlargement must be gradual, not concentrated into the first few frames (${Math.round(span)} ms)`);
   await fs.writeFile(path.join(output, 'natural-motion.json'), JSON.stringify(samples));
   await page.keyboard.press('Control+Shift+g'); await settled(false);
   console.log('PASS: only the header/expand button opens the card; unpaused animation works without test-only rendering flags');
