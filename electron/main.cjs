@@ -30,6 +30,7 @@ const { SpeechManager } = require('./speech.cjs');
 const { summarizeTask } = require('./task-summary.cjs');
 const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
 const { summarizeRound, claudeReply, codexReply } = require('./round-summary.cjs');
+const { ConversationLog, claudeConversation, codexConversation } = require('./conversation.cjs');
 const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARGETS } = require('./summary-models.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
@@ -232,6 +233,16 @@ function publishAction(s, change) {
     scheduleState();
   }, 120);
 }
+// The conversation for the reading view reaches the window the same way, in small batches.
+function publishConversation(s, change) {
+  if (sessions.get(s.terminalId) !== s) return;
+  (s.conversationChanges ||= []).push(change);
+  s.conversationTimer ||= setTimeout(() => {
+    const changes = s.conversationChanges; s.conversationChanges = []; s.conversationTimer = null;
+    if (sessions.get(s.terminalId) !== s) return;
+    send('terminal:conversation', changes.length > 40 || changes.some(item => item.reset) ? { id: s.terminalId, list: s.conversation.list } : { id: s.terminalId, changes: changes.map(item => item.entry) });
+  }, 120);
+}
 // A skill step names the skill; what the skill is for comes from its SKILL.md, a moment later.
 function describeActions(s, cwd, actions) {
   for (const action of actions || []) {
@@ -245,10 +256,10 @@ function followClaude(project, s, event) {
   const home = path.resolve(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
   if (!file || path.basename(file) !== `${event.sessionId}.jsonl` || !file.toLowerCase().startsWith(home.toLowerCase() + path.sep)) return;
   if (s.claudeTranscript?.filename !== file) {
-    s.claudeTranscript = new TranscriptTail(file); s.actions.reset();
+    s.claudeTranscript = new TranscriptTail(file); s.actions.reset(); s.conversation.reset();
     s.activityMonitor?.stop();
     const tail = s.claudeTranscript;
-    s.activityMonitor = monitorActivity(async () => { await tail.read(record => { noteReply(s, claudeReply(record)); describeActions(s, project.path, claudeRecord(s.actions, record, project.path)); }); return null; }, () => {});
+    s.activityMonitor = monitorActivity(async () => { await tail.read(record => { noteReply(s, claudeReply(record)); claudeConversation(s.conversation, record, project.path); describeActions(s, project.path, claudeRecord(s.actions, record, project.path)); }); return null; }, () => {});
   } else void s.activityMonitor?.poll();
 }
 
@@ -312,7 +323,7 @@ function onEvent(event) {
     s.error = null;
     s.submissions.reset();
     s.codexActivity = 'unknown'; s.activitySince = Date.now(); s.activityInputAt = 0;
-    s.actions.reset(); s.claudeTranscript = null;
+    s.actions.reset(); s.conversation.reset(); s.claudeTranscript = null;
     s.agent = event.agent === 'claude' ? 'claude' : 'codex';
     s.activityMonitor?.stop(); s.activityMonitor = null;
     // A terminal restores the agent it last ran. Switching agents drops the other one's conversation id.
@@ -327,7 +338,7 @@ function onEvent(event) {
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
     const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0,
-      onRecord: record => { noteReply(s, codexReply(record)); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path)); } });
+      onRecord: record => { noteReply(s, codexReply(record)); codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path)); } });
     s.activityMonitor = monitorActivity(
       () => reader ? reader.read() : project.terminals?.length && !s.reportedThreadId ? Promise.resolve(null) : s.terminal.request('codex-status', { since: remoteSince, threadId: s.reportedThreadId }),
       snapshot => {
@@ -469,6 +480,7 @@ function startTerminal(id) {
     flushTimer: null, lastActivityAt: Date.now(), error: null, submissions: new SubmissionTracker(),
   };
   s.actions = new ActionLog(change => publishAction(s, change));
+  s.conversation = new ConversationLog(change => publishConversation(s, change));
   sessions.set(id, s);
   store.setRestore(id, { terminal: true, ...(restorePlans.has(id) ? {} : { codex: false }) });
   startupErrors.delete(id);
@@ -516,7 +528,7 @@ function disposeTerminal(id) {
   const s = sessions.get(id);
   if (!s) return;
   sessions.delete(id);
-  clearTimeout(s.flushTimer); clearTimeout(s.actionTimer);
+  clearTimeout(s.flushTimer); clearTimeout(s.actionTimer); clearTimeout(s.conversationTimer);
   s.activityMonitor?.stop();
   try { s.terminal.kill(); } catch { }
   if (s.bootstrapFile) fs.rmSync(s.bootstrapFile, { force: true });
@@ -808,6 +820,7 @@ function registerIpc() {
     disposeTerminal(id); startTerminal(id); return true;
   });
   handle('terminal:actions', id => { findProject(id); return sessions.get(id)?.actions.list || []; });
+  handle('terminal:conversation', id => { findProject(id); return sessions.get(id)?.conversation.list || []; });
   handle('terminal:attach', id => {
     findProject(id);
     const s = sessions.get(id);

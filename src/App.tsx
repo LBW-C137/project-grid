@@ -3,12 +3,13 @@ import {
   SquaresFour, FolderSimplePlus, Bell, MagnifyingGlass, ArrowsOutSimple,
   Play, Plus, Terminal as TerminalIcon, Check, DotsThree, GitBranch, X, Minus, Square,
   GearSix, CheckCircle, FolderOpen, Power, ArrowCounterClockwise,
-  Monitor, Info, Circle, SpeakerHigh, Globe, Microphone, Waveform, BookOpen, FloppyDisk, ListChecks, Palette, Robot, Keyboard,
+  Monitor, Info, Circle, SpeakerHigh, Globe, Microphone, Waveform, BookOpen, FloppyDisk, ListChecks, Palette, Robot, Keyboard, Article,
 } from '@phosphor-icons/react';
 import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
 import { ProjectTerminals } from './ProjectTerminals';
 import { ProjectExplorer } from './ProjectExplorer';
 import { ActivityPane } from './ActivityPane';
+import { setReading, useReading } from './reading-mode';
 import { AddProjectDialog } from './AddProjectDialog';
 import { SSHAuthDialog } from './SSHAuthDialog';
 import { useProjectReorder } from './useProjectReorder';
@@ -106,6 +107,8 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, activity
   }, [menuOpen]);
   const action = (callback: () => void) => { setMenuOpen(false); callback(); };
   const showActivity = focused && activityOpen;
+  // Reading view or raw terminal, for the terminal in use.
+  const readingTerminals = useReading(), readingOn = !!currentTerminal.sessionId && readingTerminals.includes(currentTerminal.id);
   return <article
     className={`project-panel ${showActivity ? 'has-activity' : ''} ${project.unread && !working ? 'has-unread' : ''} ${freshCompletion ? 'attention-active' : ''} ${working ? 'is-working' : ''} ${roundComplete ? 'round-complete' : ''} ${focused ? 'is-focused' : ''} ${project.error ? 'has-error' : ''} ${dragging ? 'drag-source' : ''} ${dropTarget ? 'drop-target' : ''}`}
     data-project-id={project.id} data-status={working ? 'working' : project.unread ? 'unread' : project.status}
@@ -129,6 +132,7 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, activity
       {!multiple && stopped && hasTerminal && <button className="text-button panel-action" aria-label={t('重新启动')} onClick={() => onAction(api.startTerminal(first.id))}><Play size={12} weight="fill" /><span>{t('重启')}</span></button>}
       {!multiple && first.codexActive && <span className="session-label"><span className="session-dot" />{agentName(first.agent).toUpperCase()}</span>}
       {!multiple && <VoiceButton terminalId={first.id} sessionId={first.sessionId} name={project.name} onError={onError} />}
+      {currentTerminal.sessionId && <IconButton label={readingOn ? t('切换到终端') : t('阅读视图：按文档排版显示对话')} className={readingOn ? 'is-active' : ''} onClick={() => setReading(currentTerminal.id, !readingOn)}>{readingOn ? <TerminalIcon size={16} /> : <Article size={16} />}</IconButton>}
       {focused && <IconButton label={activityOpen ? t('隐藏活动栏') : t('显示活动栏：它正在做什么')} className={activityOpen ? 'is-active' : ''} onClick={onToggleActivity}><ListChecks size={16} /></IconButton>}
       {!focused && <IconButton label={t('全屏查看 {name}', { name: project.name })} onClick={() => onFocus(project.id)}><ArrowsOutSimple size={16} /></IconButton>}
       <div className="panel-menu-anchor" ref={menu}>

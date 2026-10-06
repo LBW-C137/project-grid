@@ -34,6 +34,9 @@ export type AgentActionKind = 'edit' | 'command' | 'read' | 'search' | 'web' | '
 export type AgentActionBrief = { kind: AgentActionKind; tool: string; target: string; detail: string; done: boolean };
 export type AgentAction = AgentActionBrief & { id: string; at: number; description: string; failed: boolean; server?: string };
 export type AgentActionPacket = { id: string; list?: AgentAction[]; changes?: AgentAction[] };
+// One message or tool call of an agent's conversation, for the reading view.
+export type ConversationEntry = { id: string; at: number; role: 'user' | 'assistant' | 'tool'; text?: string; tool?: AgentActionBrief & { failed: boolean } };
+export type ConversationPacket = { id: string; list?: ConversationEntry[]; changes?: ConversationEntry[] };
 export type GitDiffLine = { type: ' ' | '+' | '-' | '\\'; text: string };
 export type GitHunk = { header: string; oldStart: number; oldLines: number; newStart: number; newLines: number; lines: GitDiffLine[]; patch: string };
 export type GitDiff = { repository: boolean; binary: boolean; text: boolean; added: number; removed: number; hunks: GitHunk[]; patch: string };
@@ -128,7 +131,7 @@ export type Bridge = {
   onTerminalData(callback: (packet: TerminalPacket) => void): () => void;
   onFocusProject(callback: (id: string) => void): () => void;
   onError(callback: (message: string) => void): () => void;
-  minimize(): void; maximize(): void; toggleFullScreen(): void; isFullScreen(): Promise<Result<boolean>>; onFullScreen(callback: (fullScreen: boolean) => void): () => void; terminalActions(id: string): Promise<Result<AgentAction[]>>; onTerminalAction(callback: (packet: AgentActionPacket) => void): () => void; close(): void; focusMode(enabled: boolean): void;
+  minimize(): void; maximize(): void; toggleFullScreen(): void; isFullScreen(): Promise<Result<boolean>>; onFullScreen(callback: (fullScreen: boolean) => void): () => void; terminalActions(id: string): Promise<Result<AgentAction[]>>; terminalConversation(id: string): Promise<Result<ConversationEntry[]>>; onTerminalConversation(callback: (packet: ConversationPacket) => void): () => void; onTerminalAction(callback: (packet: AgentActionPacket) => void): () => void; close(): void; focusMode(enabled: boolean): void;
   quit(): Promise<Result<boolean>>;
 };
 declare global { interface Window { projectGrid: Bridge; } }
