@@ -32,7 +32,11 @@ async function settled(focused) {
 async function landed(id) {
   const gap = await page.locator(`[data-project-id="${id}"]`).evaluate(panel => {
     const actual = panel.getBoundingClientRect(), slot = panel.parentElement.getBoundingClientRect();
-    return Math.abs(actual.left - slot.left) + Math.abs(actual.top - slot.top) + Math.abs(actual.width - slot.width) + Math.abs(actual.height - slot.height);
+    // A card under the pointer in the overview is raised a few pixels by the hover lift; that is its own
+    // pure vertical move, not where the animation put it. Anything else (scale, sideways, size) still counts.
+    const lift = new DOMMatrix(getComputedStyle(panel).transform);
+    const raised = lift.is2D && lift.a === 1 && lift.d === 1 && lift.b === 0 && lift.c === 0 && lift.e === 0 && lift.f <= 0 && lift.f >= -4 ? lift.f : 0;
+    return Math.abs(actual.left - slot.left) + Math.abs(actual.top - raised - slot.top) + Math.abs(actual.width - slot.width) + Math.abs(actual.height - slot.height);
   });
   assert.ok(gap < 2, `panel must land in its layout slot, gap=${gap}`);
 }
@@ -118,7 +122,8 @@ try {
   await settled(false); await landed(id);
   assert.ok(await panel.evaluate(panel => panel.querySelector('.terminal-host') === globalThis.motionTerminal));
   assert.equal((await page.evaluate(() => window.projectGrid.getState())).value.projects.find(project => project.id === id).sessionId, sessionId);
-  assert.ok((await panel.innerText()).includes('PENDING_INPUT'), 'unsubmitted terminal input survives both transitions');
+  // A narrow card wraps the line, so the rows are joined before looking for the draft.
+  assert.ok((await panel.innerText()).replace(/\s+/g, '').includes("Write-Output'PENDING_INPUT'"), 'unsubmitted terminal input survives both transitions');
   console.log('PASS: last card expands and shrinks through intermediate bounds, with the same live terminal and pending input');
 
   // Observe natural playback as well as the paused screenshots above. The old
