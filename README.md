@@ -98,7 +98,7 @@ macOS 首次使用语音输入时会请求麦克风权限，可以在「系统�
 
 ### macOS 安装
 
-**0.6.7 新增 macOS 版**，支持 Apple 芯片 Mac（M1 或更新型号）和 macOS 12 或更高版本。GitHub [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 提供 `Project-Grid-<version>-mac-arm64.dmg`、`Project-Grid-<version>-mac-arm64.zip` 和校验文件 `SHA256SUMS-mac.txt`。
+**0.6.8 新增 macOS 版**，支持 Apple 芯片 Mac（M1 或更新型号）和 macOS 12 或更高版本。GitHub [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 提供 `Project-Grid-<version>-mac-arm64.dmg`、`Project-Grid-<version>-mac-arm64.zip` 和校验文件 `SHA256SUMS-mac.txt`。
 
 推荐在终端运行以下命令安装，更新时也用同一条命令：
 
@@ -110,20 +110,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scri
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `PROJECT_GRID_VERSION=0.6.7`：安装指定版本。
+- `PROJECT_GRID_VERSION=0.6.8`：安装指定版本。
 - `PROJECT_GRID_INSTALL_DIR=~/Applications`：指定安装目录。
 - `PROJECT_GRID_OPEN=0`：安装后不打开应用。
 
-例如，安装 0.6.7：
+例如，安装 0.6.8：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | PROJECT_GRID_VERSION=0.6.7 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | PROJECT_GRID_VERSION=0.6.8 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Project-Grid-0.6.7-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Project-Grid-0.6.8-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：
@@ -177,7 +177,7 @@ Project Grid 本身**不收集任何数据，没有统计上报**。它只会访
 <details>
 <summary><strong>支持 macOS / Linux 吗？</strong></summary>
 
-支持 Windows 10 / 11 x64；从 0.6.7 起也支持 Apple 芯片 Mac（M1 或更新型号），需要 macOS 12 或更高版本，不支持 Intel Mac。远程项目可以是任意装有 Python 3.6+ 和 Bash 的 Linux 服务器。Linux 桌面版仍在规划中，欢迎在 [Issues](https://github.com/noeigenstate/project-grid/issues) 里告诉我们你的需求。
+支持 Windows 10 / 11 x64；从 0.6.8 起也支持 Apple 芯片 Mac（M1 或更新型号），需要 macOS 12 或更高版本，不支持 Intel Mac。远程项目可以是任意装有 Python 3.6+ 和 Bash 的 Linux 服务器。Linux 桌面版仍在规划中，欢迎在 [Issues](https://github.com/noeigenstate/project-grid/issues) 里告诉我们你的需求。
 
 </details>
 

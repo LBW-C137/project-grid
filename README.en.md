@@ -100,7 +100,7 @@ Choosing PowerShell or Command Prompt, Windows PATH refresh, Start-menu shortcut
 
 ### macOS installation
 
-**Version 0.6.7 adds the macOS edition**, for Apple silicon Macs (M1 or later) running macOS 12 or later. GitHub [Releases](https://github.com/noeigenstate/project-grid/releases/latest) provides `Project-Grid-<version>-mac-arm64.dmg`, `Project-Grid-<version>-mac-arm64.zip` and the checksum file `SHA256SUMS-mac.txt`.
+**Version 0.6.8 adds the macOS edition**, for Apple silicon Macs (M1 or later) running macOS 12 or later. GitHub [Releases](https://github.com/noeigenstate/project-grid/releases/latest) provides `Project-Grid-<version>-mac-arm64.dmg`, `Project-Grid-<version>-mac-arm64.zip` and the checksum file `SHA256SUMS-mac.txt`.
 
 The recommended way to install or update is to run this command in a terminal:
 
@@ -112,20 +112,20 @@ The script downloads the latest release ZIP, verifies its SHA-256 checksum, inst
 
 Set these variables before `bash` on the right side of the pipe:
 
-- `PROJECT_GRID_VERSION=0.6.7`: install a specific release.
+- `PROJECT_GRID_VERSION=0.6.8`: install a specific release.
 - `PROJECT_GRID_INSTALL_DIR=~/Applications`: choose an installation folder.
 - `PROJECT_GRID_OPEN=0`: do not open the app after installation.
 
-For example, to install 0.6.7:
+For example, to install 0.6.8:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | PROJECT_GRID_VERSION=0.6.7 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | PROJECT_GRID_VERSION=0.6.8 bash
 ```
 
 You can also use a local copy of the install script with a ZIP you already downloaded:
 
 ```bash
-bash install-macos.sh ~/Downloads/Project-Grid-0.6.7-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Project-Grid-0.6.8-mac-arm64.zip
 ```
 
 The app is ad-hoc signed, with no Apple Developer ID, and is not notarized. If you download the DMG in a browser and drag the app to Applications, macOS shows “cannot verify the developer” on first open. Allow it once in System Settings › Privacy & Security › Open Anyway, or run:
@@ -179,7 +179,7 @@ The terminals are the same; the difference is that Project Grid **knows what sta
 <details>
 <summary><strong>macOS or Linux?</strong></summary>
 
-Windows 10 / 11 x64 is supported. Since 0.6.7, Apple silicon Macs (M1 or later) are also supported on macOS 12 or later; Intel Macs are not supported. Remote projects can be any Linux server with Python 3.6+ and Bash. Linux desktop builds are still on the roadmap; tell us you want them in [Issues](https://github.com/noeigenstate/project-grid/issues).
+Windows 10 / 11 x64 is supported. Since 0.6.8, Apple silicon Macs (M1 or later) are also supported on macOS 12 or later; Intel Macs are not supported. Remote projects can be any Linux server with Python 3.6+ and Bash. Linux desktop builds are still on the roadmap; tell us you want them in [Issues](https://github.com/noeigenstate/project-grid/issues).
 
 </details>
 

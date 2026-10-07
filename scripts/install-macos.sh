@@ -5,10 +5,10 @@
 # app opens directly, without Gatekeeper's "cannot verify the developer" prompt; a DMG downloaded in a browser
 # does show it. Nothing needs an administrator password.
 # Options (environment variables):
-#   PROJECT_GRID_VERSION=0.6.7          a given release instead of the latest
+#   PROJECT_GRID_VERSION=0.6.8          a given release instead of the latest
 #   PROJECT_GRID_INSTALL_DIR=~/Applications   another folder than /Applications
 #   PROJECT_GRID_OPEN=0                 install without opening the app
-# A downloaded zip can be installed directly: bash install-macos.sh ~/Downloads/Project-Grid-0.6.7-mac-arm64.zip
+# A downloaded zip can be installed directly: bash install-macos.sh ~/Downloads/Project-Grid-0.6.8-mac-arm64.zip
 set -euo pipefail
 
 repo=noeigenstate/project-grid
