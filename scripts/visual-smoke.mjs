@@ -48,7 +48,7 @@ try {
   await page.evaluate(() => document.activeElement?.blur()); await page.mouse.move(2, 2);
   assert.equal(await page.locator('.panel-edge-light').count(), 0, 'old decorative strips are removed');
   assert.equal(await panel(0).evaluate(node => getComputedStyle(node).animationName), 'none', 'the text surface is not animated');
-  // A working turn is shown by a steady, clearly visible ring. Nothing flashes until the turn finishes.
+  // A working turn turns the whole pane of glass blue, steadily, with no ring. Nothing flashes until the turn finishes.
   const liveSamples = [];
   for (const mode of ['normal', 'hover', 'input-focus']) {
     if (mode === 'hover') await panel(0).locator('.panel-header').hover();
@@ -57,14 +57,14 @@ try {
       const edge = node.querySelector('.panel-signal'), glow = node.querySelector('.panel-glow'), text = node.querySelector('.xterm-rows');
       const values = [];
       for (let index = 0; index < 12; index++) {
-        values.push({ edge: Number(getComputedStyle(edge).opacity), glow: Number(getComputedStyle(glow).opacity), text: { opacity: getComputedStyle(text).opacity, color: getComputedStyle(text).color, animation: getComputedStyle(text).animationName } });
+        values.push({ edge: Number(getComputedStyle(edge).opacity), glow: Number(getComputedStyle(glow).opacity), tint: getComputedStyle(node).backgroundImage, text: { opacity: getComputedStyle(text).opacity, color: getComputedStyle(text).color, animation: getComputedStyle(text).animationName } });
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       return values;
     });
     for (const sample of samples) {
       assert.deepEqual(sample, samples[0], `${mode}: working lights and reading surface stay steady`);
-      assert.ok(sample.edge >= .55 && sample.glow === 0, `${mode}: a steady visible ring, no glow ${JSON.stringify(sample)}`);
+      assert.ok(sample.edge === 0 && sample.glow === 0 && /rgba\(28, 82, 156/.test(sample.tint), `${mode}: a steady blue pane, no ring and no glow ${JSON.stringify({ ...sample, tint: sample.tint.slice(0, 80) })}`);
       assert.equal(sample.text.opacity, '1'); assert.equal(sample.text.animation, 'none');
     }
     liveSamples.push({ mode, samples });
@@ -204,7 +204,7 @@ try {
   await waitFor(async () => await breathing(0) > 0, 'turning animation back on resumes breathing');
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, timings, glowReach, lens, liveSamples, compact, compactEdges, errors }, null, 2));
-  console.log(`PASS: steady working ring, a slow diffuse breathing glow on completion, quiet unviewed glow, quiet idle, all themes, high DPI, compact controls, explorer and preserved small-card input. Screenshots: ${output}`);
+  console.log(`PASS: steady blue working pane, a slow diffuse breathing glow on completion, quiet unviewed glow, quiet idle, all themes, high DPI, compact controls, explorer and preserved small-card input. Screenshots: ${output}`);
 } catch (error) {
   console.error(error);
   if (page) {
