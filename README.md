@@ -5,17 +5,18 @@
 <h1 align="center">Project Grid · 项目矩阵</h1>
 
 <p align="center"><strong>同时让 Codex 和 Claude Code 跑六个项目，你只在它们需要你的时候回来。</strong></p>
-<p align="center">为并行使用 AI 编码助手而生的 Windows 工作台：一屏看全所有项目，谁在干活、谁做完了、谁在等你，一眼就知道。</p>
+<p align="center">为并行使用 AI 编码助手而生的 Windows / macOS 工作台：一屏看全所有项目，谁在干活、谁做完了、谁在等你，一眼就知道。</p>
 
 <p align="center">
   <a href="https://github.com/noeigenstate/project-grid/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/project-grid?style=flat-square&color=78bfa1&label=release" alt="Latest release" /></a>
   <a href="https://github.com/noeigenstate/project-grid/releases"><img src="https://img.shields.io/github/downloads/noeigenstate/project-grid/total?style=flat-square&color=8ebce5&label=downloads" alt="Downloads" /></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-8ebce5?style=flat-square" alt="Windows 10 / 11 x64" />
+  <img src="https://img.shields.io/badge/macOS-12%2B%20Apple%20silicon-8ebce5?style=flat-square" alt="macOS 12+ Apple silicon" />
   <img src="https://img.shields.io/badge/Codex%20%2B%20Claude%20Code-supported-d8a6e8?style=flat-square" alt="Codex and Claude Code" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ 下载 Windows 版</strong></a> ·
+  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ 下载 Windows / macOS 版</strong></a> ·
   <a href="#它解决什么问题">为什么</a> ·
   <a href="#亮点">亮点</a> ·
   <a href="#三步开始">开始使用</a> ·
@@ -69,23 +70,75 @@ AI 编码助手一跑就是几分钟。只盯一个项目太浪费，开五个�
 
 按 **Ctrl+T** 对当前终端说话，回车发送。语音识别在本机离线完成，**录音不会上传**，无需 API 密钥。
 
+macOS 首次使用语音输入时会请求麦克风权限，可以在「系统设置 › 隐私与安全性 › 麦克风」中管理。
+
 一轮做完时会用自然的女声播报，例如「支付服务，退款接口加幂等校验，完成」。想听更有用的内容？设置里可以让 Codex / Claude Code 自己总结一句结果，或接入云端模型、Ollama / vLLM 等本地模型来总结。
 
 ### 还有这些
 
 - **重开即续上**：启动时恢复上次的终端和 Codex / Claude Code 会话，被打断的任务自动发送「继续」。
 - **SSH 远程项目**：沿用 VS Code Remote-SSH 的主机配置，终端、文件、Git、预览全部走 SSH，不用把项目下载下来。
-- **文件就在手边**：目录树、自动保存的编辑器，图片、网页、视频、Markdown 直接预览；`Ctrl+点击`终端里的路径直接打开。
+- **文件就在手边**：目录树、自动保存的编辑器，图片、网页、视频、Markdown 直接预览；Windows 用 `Ctrl+点击`、macOS 用 `⌘+点击`直接打开终端里的路径。
 - **好看，也清楚**：液态玻璃界面配三套自然壁纸主题；想要最锐利的文字，切换到「实色」材质即可。
-- **中英双语、快捷键可改、自动更新**；第一次打开时在界面上一步步带你上手。
+- **中英双语、快捷键可改、Windows 自动更新**；第一次打开时在界面上一步步带你上手。
 
 ## 三步开始
 
-**需要：** Windows 10 / 11（x64），以及 [Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://docs.anthropic.com/claude-code) 至少一个——没装也没关系，「设置 › 编码助手」里可以一键安装。
+**需要：** Windows 10 / 11（x64），或搭载 Apple 芯片（M1 或更新型号）、运行 macOS 12 或更高版本的 Mac；不支持 Intel Mac。还需要 [Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://docs.anthropic.com/claude-code) 至少一个——没装也没关系，「设置 › 编码助手」里可以一键安装。
 
-1. **下载安装**：从 [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 下载 `Project-Grid-Setup-版本号-x64.exe`（也有免安装的便携版）。
+1. **下载安装**：按下面对应平台的说明安装。
 2. **添加项目**：按 `Ctrl+Shift+N` 选择项目文件夹，可以一次选多个，也可以添加 SSH 远程项目。
 3. **开始工作**：在卡片的终端里输入 `codex` 或 `claude`，下达指令，然后去忙别的。粉色亮起时回来看结果。
+
+### Windows 安装
+
+从 [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 下载 `Project-Grid-Setup-版本号-x64.exe`（也有免安装的便携版）。
+
+选择 PowerShell 或命令提示符、Windows PATH 刷新、开始菜单快捷方式、NSIS 安装程序和自动更新仅适用于 Windows。
+
+### macOS 安装
+
+**0.6.7 新增 macOS 版**，支持 Apple 芯片 Mac（M1 或更新型号）和 macOS 12 或更高版本。GitHub [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 提供 `Project-Grid-<version>-mac-arm64.dmg`、`Project-Grid-<version>-mac-arm64.zip` 和校验文件 `SHA256SUMS-mac.txt`。
+
+推荐在终端运行以下命令安装，更新时也用同一条命令：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | bash
+```
+
+脚本下载最新版本的 ZIP，验证 SHA-256 校验和，安装到 `/Applications`（该目录不可写时改用 `~/Applications`），然后打开应用。无需管理员密码；`curl` 下载的文件不带隔离标记，因此打开时不会出现 Gatekeeper 提示。**macOS 版不会自动更新**，再次运行安装命令即可更新。
+
+可以在管道后的 `bash` 前设置这些变量：
+
+- `PROJECT_GRID_VERSION=0.6.7`：安装指定版本。
+- `PROJECT_GRID_INSTALL_DIR=~/Applications`：指定安装目录。
+- `PROJECT_GRID_OPEN=0`：安装后不打开应用。
+
+例如，安装 0.6.7：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | PROJECT_GRID_VERSION=0.6.7 bash
+```
+
+如果已经下载了 ZIP，也可以用本地的安装脚本安装：
+
+```bash
+bash install-macos.sh ~/Downloads/Project-Grid-0.6.7-mac-arm64.zip
+```
+
+应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Project Grid.app"
+```
+
+### macOS 终端与快捷键
+
+本地终端以登录 shell 方式运行 zsh（`/bin/zsh`），照常加载你自己的 `~/.zshenv`、`~/.zprofile`、`~/.zshrc` 和 `~/.zlogin`。Project Grid 在此基础上加入提示符状态报告和 `codex` / `claude` 包装层，支持轮次状态、Claude Code hooks、完成提醒和会话恢复，不修改任何用户文件。你为 `codex` 或 `claude` 定义的别名仍然有效。SSH 项目的用法与 Windows 相同。
+
+终端中用 `⌘C` / `⌘V` / `⌘A` 复制、粘贴和全选，`Control+C` 中断命令，`⌘+点击`打开链接。`⌘Q` 退出（终端仍在运行时会先询问），`⌘H` 隐藏，`⌘M` 最小化。设置里的项目快捷键仍默认使用 Control，例如 `Control+Shift+N` 添加项目。
+
+放大项目只会在当前窗口内展开，不会切换到全屏空间（Space）。需要全屏时，使用窗口的绿色按钮或全屏快捷键。
 
 <details>
 <summary><strong>常用快捷键</strong>（都可以在设置里改）</summary>
@@ -124,7 +177,7 @@ Project Grid 本身**不收集任何数据，没有统计上报**。它只会访
 <details>
 <summary><strong>支持 macOS / Linux 吗？</strong></summary>
 
-目前只有 Windows 10 / 11 x64 桌面版。远程项目可以是任意装有 Python 3.6+ 和 Bash 的 Linux 服务器。macOS 与 Linux 桌面版在规划中，欢迎在 [Issues](https://github.com/noeigenstate/project-grid/issues) 里告诉我们你的需求。
+支持 Windows 10 / 11 x64；从 0.6.7 起也支持 Apple 芯片 Mac（M1 或更新型号），需要 macOS 12 或更高版本，不支持 Intel Mac。远程项目可以是任意装有 Python 3.6+ 和 Bash 的 Linux 服务器。Linux 桌面版仍在规划中，欢迎在 [Issues](https://github.com/noeigenstate/project-grid/issues) 里告诉我们你的需求。
 
 </details>
 
@@ -142,7 +195,7 @@ Project Grid 本身**不收集任何数据，没有统计上报**。它只会访
 - [ ] 项目分组与快捷切换
 - [ ] 更多命令行编码助手接入统一提醒
 - [ ] 每一轮的结果与产物记录，方便回看
-- [ ] macOS / Linux 桌面版，WSL 工作区
+- [ ] Linux 桌面版，WSL 工作区
 
 有想法？欢迎提 [Issue](https://github.com/noeigenstate/project-grid/issues)。觉得有用的话，点个 ⭐ Star 让更多人看到。
 

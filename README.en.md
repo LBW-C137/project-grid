@@ -5,17 +5,18 @@
 <h1 align="center">Project Grid</h1>
 
 <p align="center"><strong>Run Codex and Claude Code on six projects at once. Come back only when one of them needs you.</strong></p>
-<p align="center">A Windows workspace built for parallel AI coding agents: every project on one screen, and at a glance you know which one is working, which one is done and which one is waiting for you.</p>
+<p align="center">A Windows / macOS workspace built for parallel AI coding agents: every project on one screen, and at a glance you know which one is working, which one is done and which one is waiting for you.</p>
 
 <p align="center">
   <a href="https://github.com/noeigenstate/project-grid/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/project-grid?style=flat-square&color=78bfa1&label=release" alt="Latest release" /></a>
   <a href="https://github.com/noeigenstate/project-grid/releases"><img src="https://img.shields.io/github/downloads/noeigenstate/project-grid/total?style=flat-square&color=8ebce5&label=downloads" alt="Downloads" /></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-8ebce5?style=flat-square" alt="Windows 10 / 11 x64" />
+  <img src="https://img.shields.io/badge/macOS-12%2B%20Apple%20silicon-8ebce5?style=flat-square" alt="macOS 12+ Apple silicon" />
   <img src="https://img.shields.io/badge/Codex%20%2B%20Claude%20Code-supported-d8a6e8?style=flat-square" alt="Codex and Claude Code" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ Download for Windows</strong></a> ·
+  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ Download for Windows / macOS</strong></a> ·
   <a href="#why">Why</a> ·
   <a href="#highlights">Highlights</a> ·
   <a href="#get-started">Get started</a> ·
@@ -69,25 +70,77 @@ When a round ends, open a changed file from the Git tab and see it the way `git 
 
 Press **Ctrl+T** and talk to the current terminal; Enter sends. Speech recognition runs offline on your machine: **nothing is uploaded** and no API key is needed.
 
+On macOS, voice input asks for microphone permission the first time. Manage it under System Settings › Privacy & Security › Microphone.
+
 When a round finishes, a natural voice tells you which project finished what. Want something more useful? Have Codex or Claude Code sum up the result in one sentence, or use a cloud model, or a local one through Ollama or vLLM.
 
 ### And also
 
 - **Pick up where you left off**: on start, your terminals and Codex / Claude Code sessions come back, and an interrupted task is told to continue.
 - **SSH projects**: reuse your VS Code Remote-SSH hosts; terminal, files, Git and previews all go over SSH without copying the project down.
-- **Files at hand**: file tree, an auto-saving editor, previews for images, web pages, video and Markdown; `Ctrl+click` a path in the terminal to open it.
+- **Files at hand**: file tree, an auto-saving editor, previews for images, web pages, video and Markdown; open a path in the terminal with `Ctrl+click` on Windows or `⌘+click` on macOS.
 - **Beautiful and legible**: a liquid-glass interface with three nature themes; switch to the solid surface for the sharpest text.
-- **Chinese and English, rebindable shortcuts, automatic updates**, and an in-app tutorial the first time you open it.
+- **Chinese and English, rebindable shortcuts, automatic updates on Windows**, and an in-app tutorial the first time you open it.
 
 ## Get started
 
-**You need:** Windows 10 / 11 (x64), and [Codex CLI](https://github.com/openai/codex) or [Claude Code](https://docs.anthropic.com/claude-code). Not installed yet? Settings › Coding assistants installs either with one click.
+**You need:** Windows 10 / 11 (x64), or an Apple silicon Mac (M1 or later) running macOS 12 or later; Intel Macs are not supported. You also need [Codex CLI](https://github.com/openai/codex) or [Claude Code](https://docs.anthropic.com/claude-code). Not installed yet? Settings › Coding assistants installs either with one click.
 
-1. **Install**: download `Project-Grid-Setup-<version>-x64.exe` from [Releases](https://github.com/noeigenstate/project-grid/releases/latest) (a portable build is there too).
+1. **Install**: follow the instructions for your platform below.
 2. **Add projects**: press `Ctrl+Shift+N` and pick one or more folders, or add an SSH project.
 3. **Work**: type `codex` or `claude` in a card's terminal, give it a task, and go do something else. Come back when it glows pink.
 
 Switch the interface to English under Settings › Appearance › Language.
+
+### Windows installation
+
+Download `Project-Grid-Setup-<version>-x64.exe` from [Releases](https://github.com/noeigenstate/project-grid/releases/latest) (a portable build is there too).
+
+Choosing PowerShell or Command Prompt, Windows PATH refresh, Start-menu shortcuts, the NSIS installer and automatic updates apply only to Windows.
+
+### macOS installation
+
+**Version 0.6.7 adds the macOS edition**, for Apple silicon Macs (M1 or later) running macOS 12 or later. GitHub [Releases](https://github.com/noeigenstate/project-grid/releases/latest) provides `Project-Grid-<version>-mac-arm64.dmg`, `Project-Grid-<version>-mac-arm64.zip` and the checksum file `SHA256SUMS-mac.txt`.
+
+The recommended way to install or update is to run this command in a terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | bash
+```
+
+The script downloads the latest release ZIP, verifies its SHA-256 checksum, installs to `/Applications` (or `~/Applications` when `/Applications` is not writable), then opens the app. No administrator password is needed. Downloads made with `curl` carry no quarantine flag, so the app opens without a Gatekeeper prompt. **The macOS edition does not update itself**; run the install command again to update.
+
+Set these variables before `bash` on the right side of the pipe:
+
+- `PROJECT_GRID_VERSION=0.6.7`: install a specific release.
+- `PROJECT_GRID_INSTALL_DIR=~/Applications`: choose an installation folder.
+- `PROJECT_GRID_OPEN=0`: do not open the app after installation.
+
+For example, to install 0.6.7:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | PROJECT_GRID_VERSION=0.6.7 bash
+```
+
+You can also use a local copy of the install script with a ZIP you already downloaded:
+
+```bash
+bash install-macos.sh ~/Downloads/Project-Grid-0.6.7-mac-arm64.zip
+```
+
+The app is ad-hoc signed, with no Apple Developer ID, and is not notarized. If you download the DMG in a browser and drag the app to Applications, macOS shows “cannot verify the developer” on first open. Allow it once in System Settings › Privacy & Security › Open Anyway, or run:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Project Grid.app"
+```
+
+### macOS terminals and shortcuts
+
+Local terminals run zsh (`/bin/zsh`) as a login shell, loading your own `~/.zshenv`, `~/.zprofile`, `~/.zshrc` and `~/.zlogin` as usual. Project Grid adds prompt reporting and `codex` / `claude` wrappers for turn status, Claude Code hooks, completion alerts and session restore without modifying any user file. Your aliases for `codex` or `claude` keep working. SSH projects work as on Windows.
+
+In terminals, `⌘C` / `⌘V` / `⌘A` copy, paste and select all; `Control+C` interrupts a command; `⌘+click` opens links. `⌘Q` quits (asking first when terminals are running), `⌘H` hides and `⌘M` minimizes. Project shortcuts in Settings keep their Control-based defaults, such as `Control+Shift+N` to add a project.
+
+Expanding a project stays inside the current window and does not switch to a full-screen Space. Use the green window button or the full-screen shortcut for full screen.
 
 <details>
 <summary><strong>Keyboard shortcuts</strong> (all rebindable in Settings)</summary>
@@ -126,7 +179,7 @@ The terminals are the same; the difference is that Project Grid **knows what sta
 <details>
 <summary><strong>macOS or Linux?</strong></summary>
 
-For now, Windows 10 / 11 x64 only. Remote projects can be any Linux server with Python 3.6+ and Bash. macOS and Linux desktop builds are on the roadmap; tell us you want them in [Issues](https://github.com/noeigenstate/project-grid/issues).
+Windows 10 / 11 x64 is supported. Since 0.6.7, Apple silicon Macs (M1 or later) are also supported on macOS 12 or later; Intel Macs are not supported. Remote projects can be any Linux server with Python 3.6+ and Bash. Linux desktop builds are still on the roadmap; tell us you want them in [Issues](https://github.com/noeigenstate/project-grid/issues).
 
 </details>
 
@@ -144,7 +197,7 @@ More detail on session restore, SSH, previews, spoken notices, and building and 
 - [ ] Project groups and quick switching
 - [ ] Unified alerts for more command-line coding agents
 - [ ] A record of each round's results and artifacts
-- [ ] macOS / Linux desktop builds, WSL workspaces
+- [ ] Linux desktop builds, WSL workspaces
 
 Ideas are welcome in [Issues](https://github.com/noeigenstate/project-grid/issues). If Project Grid is useful to you, a ⭐ star helps others find it.
 
