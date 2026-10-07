@@ -3,8 +3,8 @@ const { randomUUID, randomBytes } = require('node:crypto');
 
 // A Unix socket path holds at most 104 bytes on macOS, and the per-user temporary folder there is already about 50.
 function socketAddress(name, folder = require('node:os').tmpdir()) {
-  const address = require('node:path').join(folder, `${name}.sock`);
-  return Buffer.byteLength(address) <= 100 ? address : require('node:path').join('/tmp', `${name}.sock`);
+  const address = require('node:path').posix.join(folder, `${name}.sock`);
+  return Buffer.byteLength(address) <= 100 ? address : `/tmp/${name}.sock`;
 }
 
 // A per-launch local pipe; the renderer never receives session credentials.
