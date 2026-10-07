@@ -387,7 +387,7 @@ async function resumeAfterPrompt(project, session) {
       if (sessions.get(session.terminalId) !== session || !session.ready || session.inputDirty || session.codexActive) return;
       store.expectCompletion(project.id, restore.interrupted === true);
       session.ready = false;
-      session.gate.input(command);
+      session.gate.afterPrompt(command);
       broadcast();
     } catch (error) { session.error = `恢复会话失败：${error.message}`; broadcast(); }
     return;
@@ -404,7 +404,8 @@ async function resumeAfterPrompt(project, session) {
       // continuation of interrupted work may produce another completion alert.
       store.expectCompletion(project.id, info?.state === 'interrupted' && plan.codex);
       session.ready = false;
-      session.gate.input(command);
+      // The prompt has not been drawn yet; a remote shell asks no question to wait for.
+      if (project.kind === 'ssh') session.gate.input(command); else session.gate.afterPrompt(command);
       broadcast();
     }
   } catch (error) { session.error = `恢复会话失败：${error.message}`; broadcast(); }

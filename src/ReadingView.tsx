@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
-import { CaretDown, CaretRight, CircleNotch, PaperPlaneRight, Stop, Terminal } from '@phosphor-icons/react';
+import { CaretDown, CaretRight, CircleNotch, Image as ImageIcon, PaperPlaneRight, Stop, Terminal } from '@phosphor-icons/react';
 import type { ConversationEntry, ProjectTerminal } from './types';
 import { actionText, stepVerb } from './ActivityPane';
+import { dictateInto } from './voice-input';
 import './reading.css';
 import { t } from './i18n';
 
@@ -66,10 +67,13 @@ function ToolGroup({ entries, live }: { entries: ConversationEntry[]; live: bool
 
 // The agent's conversation laid out for reading: your prompts, its answers as Markdown with copyable code,
 // and its tool calls folded between them. The real terminal stays underneath; what is written here goes to
-// it, and the toggle in the card header switches back to it at any time.
-export function ReadingView({ terminal, onShowTerminal, onError, onOpenLink }: { terminal: ProjectTerminal; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
+// it, and the toggle in the card header switches back to it at any time. autoFocus: the card is expanded and
+// this is its terminal in use, so the message box takes the keyboard (never a small card's).
+export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOpenLink }: { terminal: ProjectTerminal; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
   const [entries, setEntries] = useState<ConversationEntry[]>([]);
   const [draft, setDraft] = useState('');
+  // Images pasted for the next message. The agent holds them itself; this only counts them.
+  const [images, setImages] = useState(0);
   const scroller = useRef<HTMLDivElement>(null), stick = useRef(true), input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     let active = true; setEntries([]);
@@ -87,18 +91,41 @@ export function ReadingView({ terminal, onShowTerminal, onError, onOpenLink }: {
   }, [terminal.id, terminal.sessionId]);
   // Follow new output while the reader is at the bottom; leave them where they are when they scrolled up.
   useLayoutEffect(() => { if (stick.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; }, [entries]);
-  useEffect(() => { input.current?.focus(); }, [terminal.id]);
+  useEffect(() => { if (autoFocus) input.current?.focus(); }, [terminal.id, autoFocus]);
   const working = terminal.codexActive && terminal.codexActivity === 'working';
   const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
   const grouped = useMemo(() => blocks(entries), [entries]);
   // Sent the way dictation sends: pasted as one piece, then Enter once the paste has landed.
-  const send = async () => {
-    const text = draft.trim(); if (!text || !terminal.sessionId) return;
-    const pasted = await window.projectGrid.pasteTerminal(terminal.id, text, terminal.sessionId);
-    if (!pasted.ok) { onError(pasted.error); return; }
-    setDraft(''); stick.current = true;
-    await new Promise(resolve => setTimeout(resolve, 400));
+  const send = async (text = draft.trim()) => {
+    if ((!text && !images) || !terminal.sessionId) return;
+    if (text) {
+      const pasted = await window.projectGrid.pasteTerminal(terminal.id, text, terminal.sessionId);
+      if (!pasted.ok) { onError(pasted.error); return; }
+    }
+    setDraft(''); setImages(0); stick.current = true;
+    if (text) await new Promise(resolve => setTimeout(resolve, 400));
     window.projectGrid.writeTerminal(terminal.id, '\r');
+  };
+  const sendRef = useRef(send); sendRef.current = send;
+  // Dictation into this terminal lands here while the reading view shows: the words appear at the cursor as
+  // soon as they are recognised, and Enter (or the shortcut again) sends the whole message.
+  useEffect(() => dictateInto(terminal.id, (text, submit) => {
+    const node = input.current, value = node?.value ?? '', here = !!node && document.activeElement === node;
+    const at = here ? node.selectionStart : value.length, end = here ? node.selectionEnd : value.length;
+    const next = value.slice(0, at) + text + value.slice(end);
+    if (submit) { void sendRef.current(next.trim()); return; }
+    setDraft(next);
+    requestAnimationFrame(() => { node?.focus(); node?.setSelectionRange(at + text.length, at + text.length); });
+  }), [terminal.id]);
+  // An image pasted here goes to the agent the way it takes one in its own input: it reads the clipboard on its
+  // paste key (Ctrl+V in Codex, Alt+V in Claude Code on Windows) and attaches the image to the next message.
+  const pasteImage = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const data = event.clipboardData;
+    if (data.getData('text/plain') || ![...data.items].some(item => item.kind === 'file' && item.type.startsWith('image/'))) return;
+    event.preventDefault();
+    if (!terminal.codexActive || !terminal.sessionId) { onError(t('启动 Codex 或 Claude Code 后才能粘贴图片。')); return; }
+    window.projectGrid.writeTerminal(terminal.id, terminal.agent === 'claude' ? '\x1bv' : '\x16');
+    setImages(count => count + 1);
   };
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
@@ -120,11 +147,12 @@ export function ReadingView({ terminal, onShowTerminal, onError, onOpenLink }: {
     <div className={`reading-status ${working ? 'is-working' : ''}`} role="status">
       {working ? <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })}</span></> : <span>{terminal.codexActive ? terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令') : t('终端就绪')}</span>}
     </div>
+    {images > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: images })}</div>}
     <div className="reading-composer">
-      <textarea ref={input} rows={1} aria-label={t('给 {agent} 的消息', { agent })} placeholder={terminal.codexActive ? t('给 {agent} 发消息，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={keys}
+      <textarea ref={input} rows={1} onPaste={pasteImage} aria-label={t('给 {agent} 的消息', { agent })} placeholder={terminal.codexActive ? t('给 {agent} 发消息，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={keys}
         onFocus={() => window.projectGrid.terminalFocus(terminal.id, false)} />
       {working && <button type="button" className="icon-button" title={t('中断（Esc）')} aria-label={t('中断（Esc）')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b')}><Stop size={15} weight="fill" /></button>}
-      <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={!draft.trim() || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
+      <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={(!draft.trim() && !images) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
     </div>
   </div>;
 }

@@ -353,6 +353,31 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .editor-gutter { flex: none; overflow: hidden; padding: 0 12px 0 18px; box-sizing: border-box; border-right: 1px solid #b5d7ff17; color: #8ea7bf; font: 400 14px/1.7 var(--font-mono); text-align: right; user-select: none; }
 .editor-gutter > div > span { display: block; }
 .editor-gutter .is-current { color: #ffffff; }
+/* Git in the editor: change bars in the gutter (green added, blue modified, red notch where lines were deleted). */
+.editor-gutter > div > span { position: relative; }
+.editor-gutter :is(.git-added, .git-modified)::before { content: ''; position: absolute; left: 5px; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; }
+.editor-gutter .git-added::before { background: #5ccf88; }
+.editor-gutter .git-modified::before { background: #5aa4f5; }
+.editor-gutter :is(.git-deleted-after, .git-deleted-before)::after { content: ''; position: absolute; left: 4px; border-left: 6px solid #ef6461; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.editor-gutter .git-deleted-after::after { bottom: -4px; }
+.editor-gutter .git-deleted-before::after { top: -4px; }
+/* Merge conflicts: the current side tinted green, the incoming side blue, behind the text; the user's choice
+   buttons sit at the end of the <<<<<<< line, above the text. */
+.editor-surface { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+.editor-surface > .file-text-editor { position: relative; z-index: 1; }
+.conflict-bands, .conflict-actions { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.conflict-bands { z-index: 0; }
+.conflict-bands i { position: absolute; left: 0; right: 0; }
+.conflict-current { background: #3fb9502a; }
+.conflict-incoming { background: #3f8cff2a; }
+.conflict-base { background: #c8c8c81a; }
+.conflict-marker { background: #ffffff16; }
+.conflict-marker.current { background: #3fb9505c; }
+.conflict-marker.incoming { background: #3f8cff5c; }
+.conflict-actions { z-index: 2; }
+.conflict-actions > div { position: absolute; right: 14px; display: flex; align-items: center; gap: 6px; }
+.conflict-actions button { pointer-events: auto; padding: 1px 9px; border: 1px solid #ffffff40; border-radius: 6px; background: #0b1b29e0; color: #e8f4ff; font-size: 11px; line-height: 1.6; cursor: pointer; }
+.conflict-actions button:hover { background: #24425ce8; border-color: #ffffff70; }
 .markdown-editor-surface, .markdown-source-pane { display: flex; flex: 1; min-height: 0; min-width: 0; flex-direction: column; }
 .markdown-source-pane[hidden] { display: none; }
 .file-text-editor::selection { background: #486779; }
@@ -517,8 +542,10 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .panel-meta { font-size: 11px; }
 
 /* The activity pane in two parts: the live feed of steps on top, the round at a glance below. */
-.activity-split { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); }
-.activity-live, .activity-overview { display: flex; flex-direction: column; min-height: 0; }
+/* The live feed and the overview share the height equally. One column no wider than the pane: a long step or
+   prompt is cut with an ellipsis instead of widening the column past the window. */
+.activity-split { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
+.activity-live, .activity-overview { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .activity-overview { border-top: 1px solid rgba(220, 237, 255, .12); background: rgba(4, 14, 24, .14); }
 .activity-section-title { margin: 0; padding: 9px 14px 6px; font-size: 11px; font-weight: 600; letter-spacing: .4px; color: #9fb5ce; }
 .overview-body { flex: 1; min-height: 0; overflow: auto; padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; }
@@ -528,22 +555,12 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .overview-prompts li.is-working { background: rgba(90, 170, 255, .12); border-left-color: #7cc0ff; }
 .overview-prompts li span { font-size: 10.5px; color: #8ea6c1; }
 .overview-prompts li.is-working span { color: #9fd0ff; font-weight: 600; }
-.overview-prompts li p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #e7f1fa; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.overview-prompts li p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #e7f1fa; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .overview-task { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.5; color: #f1f7ff; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .overview-stats > div { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border-radius: 4px; background: rgba(255, 255, 255, .05); min-width: 0; }
 .overview-stats b { font-size: 14px; font-weight: 600; color: #f4faff; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .overview-stats span { font-size: 11px; color: #9fb5ce; }.overview-stats .is-failed b { color: #ffb1ac; }
-.overview-progress { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .08); overflow: hidden; }
-.overview-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6fc3ff, #9fe3c4); transition: width .3s ease; }
-.overview-progress i.is-working { background: linear-gradient(90deg, #6fc3ff, #b9a6ff); }
-.overview-kinds { display: grid; gap: 5px; }
-.overview-kind { display: grid; grid-template-columns: 18px 54px minmax(0, 1fr) 26px; align-items: center; gap: 6px; font-size: 11px; color: #c9dbea; }
-.overview-kind .activity-icon { padding: 0; }.overview-kind > i { height: 5px; border-radius: 2.5px; background: rgba(255, 255, 255, .06); overflow: hidden; }
-.overview-kind > i > em { display: block; height: 100%; border-radius: inherit; background: currentColor; opacity: .55; }
-.overview-kind > b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: #f1f7ff; }
-.overview-kind.activity-edit { color: #ffcf8f; }.overview-kind.activity-command { color: #a9d4f5; }.overview-kind.activity-skill { color: #d0b6f7; }.overview-kind.activity-mcp { color: #a2e1e7; }.overview-kind.activity-read, .overview-kind.activity-search { color: #b7c7d8; }
-.overview-kind > span:not(.activity-icon) { color: #c9dbea; }
 .overview-group { display: flex; flex-direction: column; gap: 4px; }
 .overview-group h5 { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; font-size: 11px; font-weight: 600; color: #9fb5ce; }
 .overview-group h5 span { padding: 0 6px; border-radius: 4px; background: rgba(255, 255, 255, .08); color: #dce9f5; font-variant-numeric: tabular-nums; }

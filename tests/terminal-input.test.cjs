@@ -87,3 +87,38 @@ test('input waits while PowerShell asks where the cursor is, then goes in order'
   assert.deepEqual(written.slice(6), ['z'], 'an old unanswered question no longer holds input');
   gate.dispose();
 });
+
+test('a command restored at a prompt waits for that prompt\'s question and answer, not only an open one', t => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const written = [];
+  const gate = new InputGate(data => written.push(data), { wait: 1500, settle: 150 });
+  // The prompt event comes before the prompt is drawn: nothing is asked yet, and still the command waits.
+  gate.afterPrompt('claude --continue\r');
+  assert.deepEqual(written, [], 'held before the question is asked');
+  gate.output('PS C:\\p> \x1b[6n'); gate.input('\x1b[5;12R');
+  assert.deepEqual(written, ['\x1b[5;12R'], 'after the answer, a moment more');
+  // A second question in that moment holds the command until its own answer.
+  t.mock.timers.tick(100); gate.output('\x1b[6n');
+  t.mock.timers.tick(200); assert.deepEqual(written, ['\x1b[5;12R']);
+  gate.input('\x1b[5;12R');
+  assert.deepEqual(written, ['\x1b[5;12R', '\x1b[5;12R', 'claude --continue\r'], 'whole, with its first letter');
+  // Keys typed while a restored command waits go after it.
+  gate.afterPrompt('codex resume abc\r'); gate.input('x');
+  gate.output('\x1b[6n'); gate.input('\x1b[1;1R'); t.mock.timers.tick(150);
+  assert.deepEqual(written.slice(3), ['\x1b[1;1R', 'codex resume abc\r', 'x']);
+  // A shell that never asks (or a window not showing the terminal) holds it no longer than wait.
+  gate.afterPrompt('codex\r'); t.mock.timers.tick(1499);
+  assert.equal(written.length, 6); t.mock.timers.tick(1);
+  assert.deepEqual(written.slice(6), ['codex\r']);
+  // A busy window (many terminals starting at once) may answer late: a restored command waits up to patience
+  // for an open question, though typed keys would have gone after wait.
+  gate.afterPrompt('claude --continue\r'); gate.output('\x1b[6n'); t.mock.timers.tick(5000);
+  assert.equal(written.length, 7, 'still waiting for the late answer');
+  gate.input('\x1b[2;1R'); t.mock.timers.tick(150);
+  assert.deepEqual(written.slice(7), ['\x1b[2;1R', 'claude --continue\r']);
+  gate.afterPrompt('codex\r'); gate.output('\x1b[6n'); t.mock.timers.tick(7999);
+  assert.equal(written.length, 9); t.mock.timers.tick(1);
+  assert.deepEqual(written.slice(9), ['codex\r'], 'an answer that never comes holds it no longer than patience');
+  gate.dispose();
+});

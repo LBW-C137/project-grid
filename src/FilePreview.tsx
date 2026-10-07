@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowClockwise, CaretLeft, CaretRight, Copy, FileText, FilmStrip, Globe, Image as ImageIcon, MagnifyingGlassMinus, MagnifyingGlassPlus, PencilSimple, SpinnerGap, Terminal, X } from '@phosphor-icons/react';
-import type { FilePreview as Preview, Result } from './types';
+import type { FilePreview as Preview, GitDiff, Result } from './types';
+import { CodeEditor, findConflicts, resolveConflict, type Conflict } from './CodeEditor';
 import { t } from './i18n';
 const MarkdownPreview = lazy(() => import('./MarkdownPreview').then(module => ({ default: module.MarkdownPreview })));
 
@@ -21,31 +22,6 @@ function TextContent({ content }: { content: string }) {
   return <div className="file-code-scroll" ref={viewport} onScroll={event => { const top = event.currentTarget.scrollTop; setScroll(value => ({ ...value, top })); }}>
     <div className="file-code-page" style={{ height: lines.length * 22 + 44, minWidth: Math.min(width, 2000) * 7.3 + 90 }}>
       <div className="file-code" style={{ top: first * 22 }}><div className="line-numbers" aria-hidden="true">{lines.slice(first, last).map((_, index) => <span key={first + index}>{first + index + 1}</span>)}</div><pre tabIndex={0} aria-label={t('文件文本内容')}><code>{lines.slice(first, last).join('\n') || ' '}</code></pre></div>
-    </div>
-  </div>;
-}
-
-// Line numbers beside the editor. The textarea never wraps, so each text line is one row; only the rows in
-// view are drawn, shifted by the textarea's own scroll, and the caret's line is highlighted.
-function EditorGutter({ editor, text }: { editor: RefObject<HTMLTextAreaElement | null>; text: string }) {
-  const [view, setView] = useState({ top: 0, height: 0, line: 24, padding: 0 });
-  const [caret, setCaret] = useState(0);
-  const count = useMemo(() => { let lines = 1; for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) lines++; return lines; }, [text]);
-  useEffect(() => {
-    const node = editor.current; if (!node) return;
-    const measure = () => { const style = getComputedStyle(node); setView({ top: node.scrollTop, height: node.clientHeight, line: parseFloat(style.lineHeight) || 24, padding: parseFloat(style.paddingTop) || 0 }); };
-    const scroll = () => setView(value => ({ ...value, top: node.scrollTop }));
-    const select = () => { if (document.activeElement === node) setCaret(node.value.slice(0, node.selectionStart).split('\n').length - 1); };
-    measure(); select();
-    const resize = new ResizeObserver(measure); resize.observe(node);
-    node.addEventListener('scroll', scroll); node.addEventListener('focus', select); document.addEventListener('selectionchange', select);
-    return () => { resize.disconnect(); node.removeEventListener('scroll', scroll); node.removeEventListener('focus', select); document.removeEventListener('selectionchange', select); };
-  }, [editor]);
-  const first = Math.max(0, Math.floor((view.top - view.padding) / view.line) - 2);
-  const last = Math.min(count, first + Math.ceil(view.height / view.line) + 4);
-  return <div className="editor-gutter" aria-hidden="true" style={{ width: `calc(${Math.max(2, String(count).length)}ch + 30px)` }}>
-    <div style={{ transform: `translateY(${view.padding + first * view.line - view.top}px)` }}>
-      {Array.from({ length: Math.max(0, last - first) }, (_, index) => first + index).map(line => <span key={line} className={line === caret ? 'is-current' : undefined} style={{ height: view.line }}>{line + 1}</span>)}
     </div>
   </div>;
 }
@@ -89,6 +65,10 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
   const markdown = preview?.kind === 'markdown';
   const showingText = preview?.kind === 'text' || markdown || (preview?.kind === 'html' && (mode === 'source' || editing));
   const dirty = editing && draft !== (text || '').replace(/\r\n/g, '\n');
+  // Git: lines changed in the working tree but not staged, as the Git sidebar lists them (read again after
+  // each save), and conflicts left in the text.
+  const [diff, setDiff] = useState<GitDiff | null>(null);
+  const conflictCount = useMemo(() => editing ? findConflicts(draft).length : 0, [editing, draft]);
   dirtyRef.current = dirty;
 
   // quiet: an automatic save. The editor stays enabled and keeps its focus, and whatever was typed
@@ -142,6 +122,22 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
   const beginEditing = () => { if (text === null) return; if (!editing) setDraft(text.replace(/\r\n/g, '\n')); setEditing(true); setMode('source'); setSaveMessage(''); requestAnimationFrame(() => editor.current?.focus()); };
 
   useEffect(() => { setImageError(false); setVideoError(false); }, [previewUrl]);
+  useEffect(() => {
+    let active = true; setDiff(null);
+    // Paged large files number each page from 1, which Git's line numbers would not match.
+    if (!editing || !textPage || textPage.count > 1) return;
+    // An untracked file is compared with nothing, so all of it is new; a file with unresolved conflicts shows
+    // its conflict regions instead.
+    (async () => {
+      const status = await window.projectGrid.gitStatus(projectId);
+      if (!active || !status.ok || !status.value.repository) return;
+      const file = status.value.files.find(item => item.path === filePath);
+      if (file?.conflict) return;
+      const result = await window.projectGrid.gitDiff(projectId, filePath, { untracked: file?.untracked === true });
+      if (active && result.ok && result.value.repository && !result.value.binary) setDiff(result.value);
+    })().catch(() => {});
+    return () => { active = false; };
+  }, [projectId, filePath, editing, textPage?.count, preview?.revision]);
   useEffect(() => { if (textPage) setPageInput(String(textPage.index + 1)); }, [textPage?.index]);
   useEffect(() => () => { if (previewId) window.projectGrid.closePreview(previewId).catch(() => {}); }, [previewId]);
   useEffect(() => {
@@ -166,12 +162,19 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
   const changeZoom = (step: number) => setZoom(value => Math.max(.1, Math.min(4, (value === 'fit' ? 1 : value) + step)));
   const Icon = preview?.kind === 'image' ? ImageIcon : preview?.kind === 'video' ? FilmStrip : preview?.kind === 'html' ? Globe : FileText;
 
-  const editorField = <div className="file-editor"><EditorGutter editor={editor} text={draft} /><textarea ref={editor} className="file-text-editor" aria-label={t('文件编辑器')} value={draft} spellCheck={false} wrap="off" disabled={saving}
+  // A conflict is resolved only when the user picks a side; it is an ordinary edit (Ctrl+Z undoes it) saved with Ctrl+S.
+  const resolve = (conflict: Conflict, choice: 'current' | 'incoming' | 'both') => {
+    const node = editor.current; if (!node) return;
+    const { from, to, replacement } = resolveConflict(node.value, conflict, choice);
+    node.focus(); node.setSelectionRange(from, to);
+    if (!document.execCommand(replacement ? 'insertText' : 'delete', false, replacement)) setDraft(node.value.slice(0, from) + replacement + node.value.slice(to));
+  };
+  const editorField = <CodeEditor editor={editor} text={draft} diff={diff} onResolve={resolve}><textarea ref={editor} className="file-text-editor" aria-label={t('文件编辑器')} value={draft} spellCheck={false} wrap="off" disabled={saving}
     onChange={event => { setDraft(event.target.value); setSaveMessage(''); }} onFocus={() => { window.projectGrid.terminalFocus(projectId, false); window.projectGrid.fileTreeFocus(projectId, false); }}
     onKeyDown={event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); }
       if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); document.execCommand('insertText', false, '  '); }
-    }} /></div>;
+    }} /></CodeEditor>;
   const markdownBody = markdown && previewUrl ? <Suspense fallback={<div className="file-preview-message">{t('正在渲染 Markdown…')}</div>}><MarkdownPreview content={editing ? draft : text || ''} baseUrl={previewUrl} onOpenLink={onOpenLink} /></Suspense> : null;
   let body;
   if (editing && text !== null) body = markdown ? <div className="markdown-editor-surface"><div className="markdown-source-pane" hidden={mode === 'preview'}>{editorField}</div>{mode === 'preview' && markdownBody}</div> : editorField;
@@ -194,7 +197,7 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
   else body = <div className="file-preview-message"><FileText size={28} /><p>{preview?.kind === 'unsupported' ? t(preview.reason) : t('无法预览此文件。')}</p></div>;
 
   return <section className="file-preview" aria-label={t('文件预览')} onKeyDown={event => { if (editing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); } }}>
-    <div className="file-tabs"><button className="terminal-tab" onClick={onClose}><Terminal size={15} />{t('返回终端')}</button><div className="selected-file-tab"><Icon size={15} /><span>{filePath.split('/').at(-1)}{dirty ? ' •' : ''}</span><button className="icon-button" title={t('关闭文件预览')} aria-label={t('关闭文件预览')} onClick={onClose}><X size={14} /></button></div><span className={`preview-readonly ${editing && dirty ? 'is-dirty' : ''}`} role="status">{t(markdown && mode === 'preview' ? dirty ? '预览 · 未保存' : 'Markdown 预览' : editing ? saving ? '编辑模式 · 保存中…' : autoSave ? '编辑模式 · 自动保存' : dirty ? '编辑模式 · 未保存，Ctrl+S 保存' : '编辑模式' : preview?.kind === 'image' ? '图片预览' : preview?.kind === 'video' ? '视频预览' : preview?.kind === 'html' ? '网页预览' : '文本预览')}</span></div>
+    <div className="file-tabs"><button className="terminal-tab" onClick={onClose}><Terminal size={15} />{t('返回终端')}</button><div className="selected-file-tab"><Icon size={15} /><span>{filePath.split('/').at(-1)}{dirty ? ' •' : ''}</span><button className="icon-button" title={t('关闭文件预览')} aria-label={t('关闭文件预览')} onClick={onClose}><X size={14} /></button></div><span className={`preview-readonly ${editing && (dirty || conflictCount) ? 'is-dirty' : ''}`} role="status">{t(markdown && mode === 'preview' ? dirty ? '预览 · 未保存' : 'Markdown 预览' : editing ? saving ? '编辑模式 · 保存中…' : autoSave ? '编辑模式 · 自动保存' : dirty ? '编辑模式 · 未保存，Ctrl+S 保存' : '编辑模式' : preview?.kind === 'image' ? '图片预览' : preview?.kind === 'video' ? '视频预览' : preview?.kind === 'html' ? '网页预览' : '文本预览')}{editing && conflictCount ? t(' · {count} 处冲突', { count: conflictCount }) : ''}</span></div>
     <div className="file-preview-toolbar"><span title={filePath}>{filePath.split('/').join('  /  ')}</span><div>
       {preview?.kind === 'image' && <div className="image-controls">
         <button className="preview-option" aria-pressed={zoom === 'fit'} onClick={() => setZoom('fit')}>{t('适应窗口')}</button>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowCounterClockwise, Play, Terminal as TerminalIcon, X } from '@phosphor-icons/react';
 import { TerminalPane } from './TerminalPane';
 import { ReadingView } from './ReadingView';
-import { setReading, useReading } from './reading-mode';
+import { agentExited, readingShown, setReading, useTerminalChoice } from './reading-mode';
 import { VoiceButton } from './VoiceButton';
 import type { Project, ProjectTerminal, Result } from './types';
 import { t } from './i18n';
@@ -25,7 +25,8 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
   const columns = Math.min(Math.ceil(Math.sqrt(terminals.length)), width < 600 ? 1 : width < 1150 ? 2 : 3);
   const rows = Math.ceil(terminals.length / columns);
   const selected = terminals.some(item => item.id === activeId) ? activeId : terminals[0]?.id;
-  const reading = useReading();
+  const raw = useTerminalChoice();
+  useEffect(() => { terminals.forEach(agentExited); }, [terminals]);
   useEffect(() => {
     const node = area.current; if (!node) return;
     const observer = new ResizeObserver(() => setWidth(node.clientWidth));
@@ -41,8 +42,8 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
           <button className="icon-button" title={t('关闭此终端')} aria-label={t('关闭 {name}', { name })} onClick={() => void onAction(window.projectGrid.closeTerminal(terminal.id))}><X size={13} /></button>
         </header>}
         <div className="terminal-split-body">
-          {terminal.sessionId && reading.includes(terminal.id) && <ReadingView terminal={terminal} onShowTerminal={() => setReading(terminal.id, false)} onError={onError} onOpenLink={target => onOpenLink(project.id, target)} />}
-          {terminal.sessionId ? <TerminalPane id={terminal.id} sessionId={terminal.sessionId} fontSize={fontSize} focused={focused && selected === terminal.id && !reading.includes(terminal.id)} onError={onError} onOpenLink={(_id, target) => onOpenLink(project.id, target)} remote={project.kind === 'ssh'} />
+          {readingShown(terminal, raw) && <ReadingView terminal={terminal} autoFocus={focused && selected === terminal.id} onShowTerminal={() => setReading(terminal.id, false)} onError={onError} onOpenLink={target => onOpenLink(project.id, target)} />}
+          {terminal.sessionId ? <TerminalPane id={terminal.id} sessionId={terminal.sessionId} fontSize={fontSize} focused={focused && selected === terminal.id && !readingShown(terminal, raw)} onError={onError} onOpenLink={(_id, target) => onOpenLink(project.id, target)} remote={project.kind === 'ssh'} />
             : <div className="terminal-empty"><TerminalIcon size={28} weight="light" /><p>{t('项目已就位')}</p><span>{t('启动终端，在这里开始开发')}</span><button className="button secondary small" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}><Play size={13} weight="fill" />{t('启动终端')}</button></div>}
         </div>
         {multiple && <footer className="terminal-split-footer"><span>{terminal.error ? t(terminal.error) : project.kind === 'ssh' ? 'SSH' : terminal.shell === 'cmd' ? t('命令提示符') : 'PowerShell'}</span><div>

@@ -100,28 +100,51 @@ class PromptMarkers {
 // answer waits while a question is open, at most a moment, and then goes in order.
 const QUESTION = /\x1b\[\??6n/g, ANSWER = /\x1b\[\??\d+;\d+R/g;
 class InputGate {
-  constructor(write, { now = Date.now, wait = 1500 } = {}) { Object.assign(this, { write, now, wait }); this.open = 0; this.askedAt = 0; this.held = []; this.timer = null; }
+  constructor(write, { now = Date.now, wait = 1500, settle = 150, patience = 8000 } = {}) {
+    Object.assign(this, { write, now, wait, settle, patience });
+    this.open = 0; this.askedAt = 0; this.held = []; this.timer = null; this.expecting = false; this.settling = false;
+  }
   // What the shell printed.
-  output(data) { const asked = String(data).match(QUESTION)?.length || 0; if (asked) { this.open += asked; this.askedAt = this.now(); } }
-  // What goes to the shell: keys, pasted text, a restored command, or the window's answers.
+  output(data) {
+    const asked = String(data).match(QUESTION)?.length || 0;
+    if (!asked) return;
+    this.open += asked; this.askedAt = this.now(); this.expecting = false;
+    // A restored command has no one waiting on it, so it gives a busy window (many terminals starting at once)
+    // longer to answer than typed keys do.
+    if (this.held.length) this.arm(this.settling ? this.patience : this.wait);
+  }
+  // What goes to the shell: keys, pasted text, or the window's answers.
   input(data) {
     if (isTerminalResponse(data)) {
       const answers = data.match(ANSWER)?.length || 0;
       this.write(data);
-      if (answers) { this.open = Math.max(0, this.open - answers); if (!this.open) this.release(); }
+      if (answers) { this.open = Math.max(0, this.open - answers); if (!this.open) this.answered(); }
       return;
     }
-    if (this.held.length || (this.open && this.now() - this.askedAt < this.wait)) { this.held.push(data); this.schedule(); return; }
+    if (this.held.length || (this.open && this.now() - this.askedAt < this.wait)) { this.held.push(data); if (!this.timer) this.arm(Math.max(0, this.askedAt + this.wait - this.now())); return; }
     this.open = 0; this.write(data);
   }
-  release() { clearTimeout(this.timer); this.timer = null; const held = this.held; this.held = []; for (const data of held) this.write(data); }
+  // A command restored at a new prompt. The prompt event is sent before PowerShell draws the prompt and asks,
+  // so there is no question to wait behind yet, and "claude" arrived as "laude". The command waits for the
+  // question to be asked (at most wait, for a shell that never asks) and answered (at most patience), and a
+  // moment more in case another question follows.
+  afterPrompt(data) {
+    this.held.push(data); this.settling = true;
+    if (!this.open) this.expecting = true;
+    this.arm(this.open ? this.patience : this.wait);
+  }
+  answered() {
+    if (this.expecting || !this.held.length) return;
+    if (this.settling) { this.settling = false; this.arm(this.settle); } else this.release();
+  }
+  release() { clearTimeout(this.timer); this.timer = null; this.expecting = this.settling = false; const held = this.held; this.held = []; for (const data of held) this.write(data); }
   // An answer that never comes (no window showing the terminal yet) does not hold input for longer than wait.
-  schedule() {
-    if (this.timer) return;
-    this.timer = setTimeout(() => { this.timer = null; this.open = 0; this.release(); }, Math.max(0, this.askedAt + this.wait - this.now()));
+  arm(delay) {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => { this.timer = null; this.open = 0; this.release(); }, delay);
     this.timer.unref?.();
   }
-  dispose() { clearTimeout(this.timer); this.timer = null; this.held = []; }
+  dispose() { clearTimeout(this.timer); this.timer = null; this.held = []; this.expecting = this.settling = false; }
 }
 
 module.exports = { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, PROMPT_MARKER, InputGate };

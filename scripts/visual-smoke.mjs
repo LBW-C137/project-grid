@@ -44,6 +44,8 @@ try {
   const quote = value => "'" + value.replaceAll("'", "''") + "'";
   await write(0, `Clear-Host; Write-Host 'Project Grid / 界面开发'; Write-Host ''; Write-Host '  正在处理：验证独立项目的任务状态' -ForegroundColor Cyan; Write-Host '  背景任务运行中，可操作其他窗口。'; Write-Host ''; Send-ProjectGridEvent 'codex-started'; for ($pgVisual=0; $pgVisual -lt 2400 -and -not (Test-Path -LiteralPath ${quote(doneFile)}); $pgVisual++) { Start-Sleep -Milliseconds 100 }; Send-ProjectGridEvent 'codex-exited'\r`);
   await waitFor(async () => (await state()).projects[0].codexActive, 'offline task active');
+  // The running agent's conversation shows as a document by default; these checks are about the terminal surface.
+  await panel(0).locator('button[title="切换到终端"]').click();
   await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: { id: thread, cwd: projects[0].path, source: 'cli' } }) + '\n' + record('task_started', 'visual-turn'));
   await waitFor(async () => panel(0).getAttribute('data-status').then(status => status === 'working'), 'working lifecycle reaches UI');
   await page.evaluate(() => document.activeElement?.blur()); await page.mouse.move(2, 2);

@@ -751,7 +751,6 @@
   "已完成": "Done",
   "已进行": "Running for",
   "用时": "Took",
-  "已完成的步骤": "Steps done",
   "修改的文件": "Files changed",
   "还有 {count} 个": "{count} more",
   "工具": "tools",
@@ -818,5 +817,12 @@
   "活动栏的实时动态一行一步：「时间：正在做什么」，命令用一句话说明，鼠标悬停可看完整命令。": "The live activity shows one line a step, \"time: what it is doing\", with commands described in a few words; hover to see the full command.",
   "本轮概览列出你连续发出的提示：正在处理哪一条、哪些在排队，完成后自动从列表移除。": "The round overview lists the prompts you sent: which one is being worked on and which are waiting; each leaves the list when it is done.",
   "启动时恢复会话，或终端刚打开就输入命令，第一个字符不再丢失。": "Restoring a session at startup, or typing as soon as a terminal opens, no longer loses the first character.",
-  "每张卡片只有一圈边缘；正在处理时整块玻璃泛蓝，不再有粗蓝线。": "Each card has a single edge; while working the whole pane turns blue instead of showing a thick blue line."
+  "每张卡片只有一圈边缘；正在处理时整块玻璃泛蓝，不再有粗蓝线。": "Each card has a single edge; while working the whole pane turns blue instead of showing a thick blue line.",
+  "合并冲突（第 {line} 行）": "Merge conflict (line {line})",
+  "保留当前更改": "Keep current",
+  "保留传入的更改": "Keep incoming",
+  "保留双方": "Keep both",
+  " · {count} 处冲突": " · {count} conflicts",
+  "启动 Codex 或 Claude Code 后才能粘贴图片。": "Start Codex or Claude Code before pasting images.",
+  "已附加 {count} 张图片，随下一条消息发送": "{count} image(s) attached; they go with the next message"
 }

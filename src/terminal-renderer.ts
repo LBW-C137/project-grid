@@ -19,13 +19,35 @@ export const terminalRenderer = () => current;
 const GPU_LIMIT = 12;
 let active = 0;
 
+// The GPU renderer draws a background rectangle for each run of cells whose background field is not zero. Dim,
+// italic and underline-style text keep flags in that field too, so such text with the default background got a
+// rectangle in the theme's background colour at full opacity; over the window's transparent background that is
+// black, and Codex's dim lines showed on black bars. A rectangle for the default background (and not inverse)
+// is given no width, so the glass shows through as it does with the DOM renderer. The addon version is pinned;
+// if its internals change, this does nothing.
+const INVERSE = 0x4000000, COLOR_MODE = 0x3000000;
+type Rectangles = { _updateRectangle: (vertices: { attributes: Float32Array }, offset: number, fg: number, bg: number, ...rest: number[]) => void };
+let clearDefaultBackground = false;
+function keepDefaultBackgroundClear(addon: WebglAddon) {
+  if (clearDefaultBackground) return;
+  const rectangles = (addon as unknown as { _renderer?: { _rectangleRenderer?: { value?: Rectangles } } })._renderer?._rectangleRenderer?.value;
+  const prototype = rectangles && Object.getPrototypeOf(rectangles) as Rectangles;
+  const update = prototype?._updateRectangle;
+  if (!prototype || typeof update !== 'function') return;
+  clearDefaultBackground = true;
+  prototype._updateRectangle = function (this: Rectangles, vertices, offset, fg, bg, ...rest) {
+    update.call(this, vertices, offset, fg, bg, ...rest);
+    if (!(fg & INVERSE) && !(bg & COLOR_MODE)) vertices.attributes[offset + 2] = 0;
+  };
+}
+
 // Draws a terminal on the GPU until disposed. A lost context (a driver reset, the machine waking from sleep)
 // returns the terminal to the DOM renderer and calls lost, which may try again. Returns null when the GPU
 // renderer is not available (no WebGL, or the limit reached); the terminal then keeps the DOM renderer.
 function attachGpuRenderer(terminal: Terminal, lost: () => void): IDisposable | null {
   if (active >= GPU_LIMIT) return null;
   let addon: WebglAddon;
-  try { addon = new WebglAddon(); terminal.loadAddon(addon); } catch { return null; }
+  try { addon = new WebglAddon(); terminal.loadAddon(addon); keepDefaultBackgroundClear(addon); } catch { return null; }
   active++;
   let released = false;
   const release = () => { if (released) return; released = true; active--; try { addon.dispose(); } catch { /* Already gone with its terminal. */ } };

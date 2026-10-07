@@ -68,6 +68,12 @@ try {
   assert.equal(await page.locator('.focus-sidebar').getByRole('button', { name: '工作台设置', exact: true }).count(), 0);
   assert.ok(await page.locator('.titlebar').getByRole('button', { name: '工作台设置', exact: true }).isVisible());
   await page.screenshot({ path: path.join(output, 'explorer-status.png') });
+  // The editor marks the lines changed but not staged, as the working-tree list has them: app.ts has one.
+  await appFile.click();
+  await page.locator('.editor-gutter span.git-modified').first().waitFor();
+  assert.equal(await page.locator('.editor-gutter span.git-modified').count(), 1, 'the changed line of app.ts is marked');
+  await page.screenshot({ path: path.join(output, 'editor-git.png') });
+  await page.getByRole('button', { name: '返回终端', exact: true }).click();
   await page.getByRole('button', { name: 'Git 历史', exact: true }).click();
   const panel = page.getByLabel('Git 历史与更改', { exact: true });
   await panel.getByRole('button', { name: /查看提交.*合并工具栏功能/ }).waitFor();
@@ -157,9 +163,27 @@ try {
   await page.getByRole('button', { name: `全屏查看 ${plain.name}`, exact: true }).click();
   await page.getByRole('button', { name: 'Git 历史', exact: true }).click();
   await panel.getByText('此项目不是 Git 工作区', { exact: true }).waitFor();
+  // Merge conflicts in the editor: each region offers the user's choices and the text changes only when one
+  // is picked. The choice is an ordinary edit: Ctrl+Z undoes it, and it is saved like any other edit.
+  const conflicted = 'top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\nbottom\n', resolved = 'top\ntheirs\nbottom\n', conflictFile = path.join(plain.path, '冲突.txt');
+  await fs.writeFile(conflictFile, conflicted);
+  await page.locator('.explorer-tabs').getByRole('button', { name: '资源管理器', exact: true }).click();
+  await page.getByRole('button', { name: '刷新项目目录', exact: true }).click();
+  await page.getByRole('treeitem', { name: '冲突.txt', exact: true }).click();
+  const conflictEditor = page.getByRole('textbox', { name: '文件编辑器', exact: true });
+  await page.getByRole('group', { name: '合并冲突（第 2 行）', exact: true }).waitFor();
+  assert.match(await page.locator('.preview-readonly').innerText(), /1 处冲突/);
+  await page.screenshot({ path: path.join(output, 'editor-conflict.png') });
+  await page.getByRole('button', { name: '保留传入的更改', exact: true }).click();
+  await waitFor(async () => (await conflictEditor.inputValue()) === resolved, 'keeping the incoming side replaces only that region');
+  await page.keyboard.press('Control+z');
+  await waitFor(async () => (await conflictEditor.inputValue()) === conflicted, 'Ctrl+Z undoes the choice');
+  await page.getByRole('button', { name: '保留传入的更改', exact: true }).click(); await page.keyboard.press('Control+s');
+  await waitFor(async () => (await fs.readFile(conflictFile, 'utf8')) === resolved, 'saving writes the resolved file');
+  assert.equal(await page.getByRole('group', { name: '合并冲突（第 2 行）', exact: true }).count(), 0);
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, sessionPreserved: true, localAndSSH: true, narrowViewport, errors }, null, 2));
-  console.log(`PASS: explorer Git badges, sidebar switch, staged/worktree/history/merge files, automatic refresh, paused polling, guarded navigation and local/SSH. Evidence: ${output}`);
+  console.log(`PASS: editor change bars and user-chosen conflict resolution, explorer Git badges, sidebar switch, staged/worktree/history/merge files, automatic refresh, paused polling, guarded navigation and local/SSH. Evidence: ${output}`);
 } catch (error) { console.error(error); if (page) await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {}); throw error; }
 finally {
   try {

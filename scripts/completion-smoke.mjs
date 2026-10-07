@@ -85,6 +85,31 @@ try {
   await waitFor(async () => JSON.stringify(await prompts()) === JSON.stringify(['working:first instruction', 'queued:给登录页加上验证码。然后跑一下测试']), 'prompt list shows the working and the waiting prompt');
   assert.ok((await pane.locator('.activity-now').getAttribute('class')).includes('is-editing'));
   await page.waitForFunction(() => !document.querySelector('[data-focus-motion]')); await page.screenshot({ path: path.join(output, 'activity-pane.png') });
+  // While Codex runs, its conversation shows as a document by default; the header toggle shows the terminal.
+  const reading = page.locator('.project-panel .reading-view');
+  assert.ok(await reading.isVisible(), 'the reading view is the default while the agent runs');
+  // An image pasted into the message box goes to Codex on its own paste key and is announced above the box.
+  await reading.locator('textarea').evaluate(node => {
+    const data = new DataTransfer(); data.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', { type: 'image/png' }));
+    node.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await reading.locator('.reading-attachments').waitFor();
+  await page.getByRole('button', { name: '切换到终端', exact: true }).click();
+  await waitFor(async () => !await reading.count(), 'the toggle shows the terminal');
+  await page.getByRole('button', { name: '阅读视图：按文档排版显示对话', exact: true }).click(); await reading.waitFor();
+  // The overview has no progress or per-kind bars, and a long step is cut inside the pane instead of widening it.
+  assert.equal(await overview.locator('.overview-progress, .overview-kinds').count(), 0, 'no bars in the overview');
+  await fs.appendFile(transcript, JSON.stringify({ type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'custom_tool_call_output', call_id: 'call-2', output: [] } }) + '\n'
+    + step('call-3', 'apply_patch\n*** Begin Patch\n*** Update File: src/' + 'verification-code-'.repeat(12) + 'page.ts\n*** End Patch'));
+  await waitFor(async () => await pane.locator('.activity-item').count() === 3, 'the long step is listed');
+  const overflow = await pane.evaluate(node => {
+    const right = node.getBoundingClientRect().right + 1;
+    return [...node.querySelectorAll('.activity-split, .activity-live, .activity-overview, .overview-stats, .overview-prompts, .activity-item')].filter(item => item.getBoundingClientRect().right > right).map(item => item.className);
+  });
+  assert.deepEqual(overflow, [], 'nothing in the activity pane reaches past its edge');
+  const halves = await pane.evaluate(node => ['.activity-live', '.activity-overview'].map(selector => Math.round(node.querySelector(selector).getBoundingClientRect().height)));
+  assert.ok(Math.abs(halves[0] - halves[1]) <= 2, `the live feed and the overview share the height equally: ${halves}`);
+  await page.screenshot({ path: path.join(output, 'activity-pane-long-step.png') });
   await page.getByRole('button', { name: '隐藏活动栏', exact: true }).click(); await waitFor(async () => !await pane.count(), 'activity pane can be hidden');
   await page.getByRole('button', { name: '显示活动栏：它正在做什么', exact: true }).click(); await pane.waitFor();
   await page.getByRole('button', { name: '返回总览', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));

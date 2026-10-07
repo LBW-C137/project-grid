@@ -19,6 +19,13 @@ let started = false;
 let opening: Promise<unknown> = Promise.resolve();
 // The terminal the user last clicked or typed in, for Ctrl+T when keyboard focus is elsewhere.
 let lastTerminal: string | null = null;
+// A reading view showing a terminal's conversation takes the words dictated to that terminal into its message
+// box instead (submit: send them as the next message).
+const composers = new Map<string, (text: string, submit: boolean) => void>();
+export function dictateInto(id: string, insert: (text: string, submit: boolean) => void) {
+  composers.set(id, insert);
+  return () => { if (composers.get(id) === insert) composers.delete(id); };
+}
 // Codex and Claude Code treat an Enter that arrives right after pasted text as part of the paste
 // (a newline), so the submitting Enter waits until the paste has landed.
 const SUBMIT_DELAY = 400;
@@ -81,6 +88,8 @@ async function finish(submit = false) {
     const text = await window.projectGrid.transcribe(wav);
     if (!text.ok) throw new Error(text.error);
     if (!text.value.trim()) throw new Error(t('没有识别出文字，请再说一遍。'));
+    const composer = composers.get(current.id);
+    if (composer) { composer(text.value.trim(), submit); return; }
     const pasted = await window.projectGrid.pasteTerminal(current.id, text.value, current.sessionId);
     if (!pasted.ok) throw new Error(pasted.error);
     if (submit) { await new Promise(resolve => setTimeout(resolve, SUBMIT_DELAY)); window.projectGrid.writeTerminal(current.id, '\r'); }

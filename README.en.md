@@ -55,7 +55,7 @@ The grid arranges itself as you add projects, and the card under the pointer lif
 
 Switch any Claude Code or Codex terminal to a **reading view**: headings, coloured bullets, inline code, code blocks with a Copy button, tool calls folded into one line. The box at the bottom writes straight into the real terminal underneath, and the terminal is one click away.
 
-The **activity pane** lists every step live: files edited, commands run, skills and MCP tools called (with what they are for), and below it an overview of the round: the task, progress, calls of each kind and the files changed.
+The **activity pane** lists every step live: files edited, commands run, skills and MCP tools called (with what they are for), and below it an overview of the round: the prompts being worked on and waiting, calls made and finished, time taken and the files changed.
 
 ### ✅ Review the changes hunk by hunk
 

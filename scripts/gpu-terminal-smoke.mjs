@@ -44,18 +44,29 @@ try {
   assert.equal(await page.locator('.focus-mode').count(), 0, 'typing in a terminal never expands the project');
 
   // The canvas shows the text: bright pixels where the output is.
-  const brightPixels = async () => {
+  const countPixels = async (bright) => {
     const shot = (await host.screenshot()).toString('base64');
-    return page.evaluate(async data => {
+    return page.evaluate(async ({ data, bright }) => {
       const image = new Image(); image.src = `data:image/png;base64,${data}`; await image.decode();
       const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
       const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data; let count = 0;
-      for (let index = 0; index < pixels.length; index += 4) if (pixels[index] + pixels[index + 1] + pixels[index + 2] > 600) count++;
+      for (let index = 0; index < pixels.length; index += 4) { const sum = pixels[index] + pixels[index + 1] + pixels[index + 2]; if (bright ? sum > 600 : sum < 24) count++; }
       return count;
-    }, shot);
+    }, { data: shot, bright });
   };
-  assert.ok(await brightPixels() > 400, 'terminal text is drawn');
+  assert.ok(await countPixels(true) > 400, 'terminal text is drawn');
+
+  // Dim text that clears to the end of its line, as Codex draws its notes, stays on the glass: no black bar
+  // behind it (the GPU renderer used to paint the default background there at full opacity).
+  const darkBefore = await countPixels(false);
+  await page.keyboard.type('1..3 | % { Write-Host "$([char]27)[2mDIM_ROW_$_$([char]27)[K$([char]27)[3m italic$([char]27)[K$([char]27)[0m" }');
+  await page.keyboard.press('Enter');
+  await waitFor(async () => (await screen()).includes('DIM_ROW_3'), 'dim lines printed');
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const darkAfter = await countPixels(false);
+  await host.screenshot({ path: path.join(output, 'dim-text.png') });
+  assert.ok(darkAfter - darkBefore < 500, `dim and italic text leave the background clear (near-black pixels ${darkBefore} -> ${darkAfter})`);
 
   // Selecting by dragging and copying with Ctrl+C, inside the small card.
   const box = await host.boundingBox();
@@ -76,7 +87,7 @@ try {
   await host.click({ position: { x: 120, y: 60 } });
   await page.keyboard.type('Write-Output ("STILL" + "_LIVE")'); await page.keyboard.press('Enter');
   await waitFor(async () => (await screen()).includes('STILL_LIVE\r\n'), 'the session kept running through the switches');
-  assert.ok(await brightPixels() > 400, 'text is drawn again on the GPU');
+  assert.ok(await countPixels(true) > 400, 'text is drawn again on the GPU');
   assert.deepEqual(errors, []);
   console.log('PASS: GPU terminal renderer draws, types, selects and copies, and switches renderers without losing the session');
   }

@@ -118,6 +118,10 @@ try {
   await launch(); await verifyResume();
   console.log('PASS: real application restart retains and restores coding state');
   const panel = page.locator(`[data-project-id="${projects[0].id}"]`);
+  // A running agent's conversation shows as a document by default; the header toggle shows the terminal itself.
+  await panel.locator('.reading-view').waitFor();
+  await panel.locator('button[title="切换到终端"]').click();
+  assert.equal(await page.locator('.focus-mode').count(), 0, 'switching to the terminal keeps the small card');
   await waitFor(async () => panel.locator('.xterm-rows').innerText().then(text => text.includes('RESTORE_FIXTURE_READY')), 'rendered terminal text');
 
   // Keep the user's clipboard formats in this process only; never log them.

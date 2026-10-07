@@ -66,8 +66,11 @@ try {
   const original = await cellBackgrounds();
   assert.equal(original.DARK_SURFACE, 'rgb(30, 30, 30)');
   await write(projects[0].id, 'codex --no-alt-screen\r');
-  await waitFor(async () => terminal.locator('.xterm-rows').innerText().then(text => text.includes('Ask Codex to do anything')), 'real offline Codex input prompt');
   await waitFor(async () => (await state()).projects[0].terminals[0].codexActive, 'Codex identity reaches renderer');
+  // A running agent shows its conversation as a document by default; this test is about Codex's own input box in
+  // the terminal, so it switches to the terminal the way a user does.
+  await terminal.locator('.reading-view .reading-empty button').click();
+  await waitFor(async () => terminal.locator('.xterm-rows').innerText().then(text => text.includes('Ask Codex to do anything')), 'real offline Codex input prompt');
   assert.deepEqual(await cellBackgrounds(), original, 'another shell in the same project keeps all ANSI backgrounds');
   const sessions = (await state()).projects[0].terminals.map(terminal => terminal.sessionId);
   await terminal.locator('.terminal-host').evaluate(node => { globalThis.composerTerminal = node; });
@@ -114,6 +117,7 @@ try {
   const quote = value => "'" + value.replaceAll("'", "''") + "'";
   await write(controlId, `Clear-Host; Send-ProjectGridEvent 'codex-started'; ${paint}; for ($pgComposer=0; $pgComposer -lt 1200 -and -not (Test-Path -LiteralPath ${quote(doneFile)}); $pgComposer++) { Start-Sleep -Milliseconds 100 }; Send-ProjectGridEvent 'codex-exited'\r`);
   await waitFor(async () => (await state()).projects[0].terminals[1].codexActive, 'control becomes an authenticated Codex fixture');
+  await control.locator('.reading-view .reading-empty button').click();
   await waitFor(async () => (await cellBackgrounds()).DARK_SURFACE === 'rgba(0, 0, 0, 0)', 'same dark history surface becomes transparent');
   const agentColors = await cellBackgrounds();
   for (const label of ['DIFF_RED', 'DIFF_GREEN', 'ANSI_RED', 'INVERSE']) assert.equal(agentColors[label], original[label], `${label} background survives`);
