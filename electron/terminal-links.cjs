@@ -15,6 +15,8 @@ async function resolveTerminalLink(project, target) {
   if (/^file:\/\//i.test(value)) value = fileURLToPath(new URL(value));
   else if (/^[a-z][a-z\d+.-]*:/i.test(value) && !/^[a-z]:[\\/]/i.test(value)) throw new Error('只支持网页链接和项目内文件。');
   const candidates = [value, value.replace(/(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/, '')];
+  // A Windows-style relative path (.\docs\a.md) names the same file on macOS, where \ is otherwise a filename character.
+  if (path.sep === '/' && value.includes('\\') && !path.isAbsolute(value)) candidates.push(...candidates.map(candidate => candidate.replace(/\\/g, '/')));
   for (const candidate of new Set(candidates)) {
     const relativePath = path.relative(project.path, path.resolve(project.path, candidate));
     try {

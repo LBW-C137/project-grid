@@ -35,7 +35,8 @@ class SessionFiles {
       this.watcher = fs.watch(this.directory, { recursive: true, persistent: false }, (_type, name) => {
         // When the watched folder itself is deleted, Windows reports its own absolute path without end.
         // Stop watching at once; the next listing starts a new watcher if the folder is there again.
-        if (name && path.isAbsolute(String(name))) { this.unwatch(); this.missed = true; }
+        // macOS reports only the folder's own name, once, and nothing for the files that went with it.
+        if (name && (path.isAbsolute(String(name)) || String(name) === path.basename(this.directory) && !fs.existsSync(this.directory))) { this.unwatch(); this.missed = true; }
         else if (name) this.changed.add(path.join(this.directory, String(name)));
         else this.missed = true;
       });

@@ -36,6 +36,7 @@ const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARG
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
+const { ZSH, prepareZshStartup, zshEnvironment, terminalLocale, loginShellPath, mergePath } = require('./zsh-terminal.cjs');
 
 const root = path.join(__dirname, '..');
 const integrationDir = app.isPackaged ? path.join(process.resourcesPath, 'integration') : path.join(root, 'integration');
@@ -44,7 +45,7 @@ if (process.env.PROJECT_GRID_DATA_DIR) app.setPath('userData', path.resolve(proc
 app.setName('Project Grid');
 const installed = isInstalledBuild(app.isPackaged, process.execPath);
 const appUserModelId = windowsAppId({ packaged: app.isPackaged, installed, profile: process.env.PROJECT_GRID_DATA_DIR });
-app.setAppUserModelId(appUserModelId);
+if (process.platform === 'win32') app.setAppUserModelId(appUserModelId);
 protocol.registerSchemesAsPrivileged([
   { scheme: 'project-grid', privileges: { standard: true, secure: true, supportFetchAPI: true } },
   { scheme: 'project-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
@@ -65,6 +66,7 @@ let stateTimer;
 let runtimeDir;
 let sshAskpassPath;
 let sshAskpassDir;
+let zshStartup;
 let activeTerminal = null;
 let activeFileTree = null;
 let fileOperations, fileProgress = null;
@@ -140,9 +142,14 @@ function updateIndicators() {
     if (!unread) window.flashFrame(false);
   }
   if (tray && !tray.isDestroyed()) {
-    tray.setImage(nativeImage.createFromPath(path.join(root, 'assets', unread ? 'icon-alert.png' : 'icon.png')));
+    tray.setImage(trayImage(unread ? 'icon-alert.png' : 'icon.png'));
     tray.setToolTip(unread ? t('Project Grid · {count} 个项目待查看', { count: unread }) : t('Project Grid · 项目矩阵'));
   }
+}
+// The macOS menu bar draws an image at its own size in points, so the 256-pixel icon is scaled to fit it.
+function trayImage(name) {
+  const image = nativeImage.createFromPath(path.join(root, 'assets', name));
+  return process.platform === 'darwin' ? image.resize({ width: 18, height: 18 }) : image;
 }
 // The same "Ctrl+Shift+F" form the window records (src/shortcuts.ts), from an Electron input event.
 const SHORTCUT_KEYS = { Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`', Space: 'Space', Tab: 'Tab', Enter: 'Enter', NumpadEnter: 'Enter' };
@@ -152,6 +159,22 @@ function isAppShortcut(input) {
   if (!key) return false;
   const pressed = [input.control && 'Ctrl', input.alt && 'Alt', input.shift && 'Shift', key].filter(Boolean).join('+');
   return Object.values({ ...DEFAULT_SHORTCUTS, ...store.settings.shortcuts }).includes(pressed);
+}
+
+// macOS: the application menu gives ⌘Q, ⌘H and ⌘M their usual meaning. Copy and paste stay with the window's
+// own key handling (before-input-event and the terminals), so there is no Edit menu to compete with it.
+function macMenu() {
+  return Menu.buildFromTemplate([
+    { label: app.name, submenu: [
+      { role: 'about', label: t('关于 Project Grid') }, { type: 'separator' },
+      { role: 'hide', label: t('隐藏 Project Grid') }, { role: 'hideOthers', label: t('隐藏其他') }, { role: 'unhide', label: t('全部显示') }, { type: 'separator' },
+      { label: t('退出 Project Grid'), accelerator: 'Command+Q', click: () => { showWindow(); requestQuit().catch(report); } },
+    ] },
+    { label: t('窗口'), submenu: [
+      { role: 'minimize', label: t('最小化') }, { role: 'zoom', label: t('缩放') }, { role: 'togglefullscreen', label: t('切换全屏') },
+      { type: 'separator' }, { label: t('关闭窗口'), accelerator: 'Command+W', click: () => window?.close() },
+    ] },
+  ]);
 }
 
 // Rebuilt when the language changes; Electron menus keep the labels they were built with.
@@ -448,20 +471,24 @@ function startTerminal(id) {
   const old = sessions.get(id);
   if (old && old.status !== 'exited') return;
   if (old) disposeTerminal(id);
-  if (process.platform !== 'win32') throw new Error('此版本的终端集成面向 Windows 10/11。');
+  if (!['win32', 'darwin'].includes(process.platform)) throw new Error('此版本的终端集成面向 Windows 10/11 和 macOS。');
   if (project.kind !== 'ssh' && !fs.existsSync(project.path)) throw new Error('项目目录不存在，请重新添加。');
   const sessionId = randomUUID();
   const sessionKey = randomUUID();
   const startPath = restorePlans.get(id)?.cwd || store.findTerminal(id)?.record.restore?.cwd || project.path;
-  // Local terminals use the shell chosen in settings; SSH projects always run Bash on the server.
-  const shellKind = project.kind === 'ssh' ? 'bash' : store.settings.shell === 'cmd' ? 'cmd' : 'powershell';
-  const bootstrapFile = project.kind === 'ssh' ? null : path.join(runtimeDir, `${sessionId}.json`);
+  // Local terminals use the shell chosen in settings (zsh on macOS); SSH projects always run Bash on the server.
+  const shellKind = project.kind === 'ssh' ? 'bash' : process.platform === 'darwin' ? 'zsh' : store.settings.shell === 'cmd' ? 'cmd' : 'powershell';
+  const bootstrapFile = ['ssh', 'zsh'].includes(shellKind) ? null : path.join(runtimeDir, `${sessionId}.json`);
   if (bootstrapFile) fs.writeFileSync(bootstrapFile, JSON.stringify({
     projectId: id, projectPath: startPath, sessionKey, pipeName: eventServer.name,
     powershellPath, notifyPath: path.join(integrationDir, 'notify.ps1'), claudeHookPath: path.join(integrationDir, 'claude-hook.ps1'),
   }), { mode: 0o600 });
-  const env = createTerminalEnvironment(process.env, bootstrapFile || '');
-  if (project.kind === 'ssh' && !sshAskpassPath) {
+  let env = createTerminalEnvironment(process.env, bootstrapFile || '');
+  // zsh learns where to report from its environment (integration/zsh-integration.zsh), and reports through
+  // integration/agent-event.cjs run by this executable as Node.
+  if (shellKind === 'zsh') env = zshEnvironment(env, { folder: zshStartup, socket: eventServer.address, projectId: id, sessionKey,
+    node: process.execPath, helper: path.join(integrationDir, 'agent-event.cjs'), startDir: startPath, locale: terminalLocale(app.getPreferredSystemLanguages()) });
+  if (project.kind === 'ssh' && !sshAskpassPath && process.platform === 'win32') {
     // Windows OpenSSH 8.1 cannot spawn an askpass executable under a Unicode
     // directory. The system temp volume provides an ASCII/short-path location
     // even when the workspace volume has 8.3 names disabled.
@@ -473,6 +500,8 @@ function startTerminal(id) {
   }
   const terminal = project.kind === 'ssh' ? new RemoteConnection({ ...project, id }, { integrationDir, auth: sshAuth, sessionKey, onEvent, codingPath: startPath, askpassPath: sshAskpassPath,
     onReady: info => { branches.set(project.id, String(info.branch || '').slice(0, 120)); broadcast(); },
+  }) : shellKind === 'zsh' ? pty.spawn(ZSH, ['-l', '-i'], {
+    name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env,
   }) : shellKind === 'cmd' ? pty.spawn(cmdPath, ['/D', '/Q', '/K', path.join(integrationDir, 'bootstrap.cmd')], {
     name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env, useConpty: true, useConptyDll: true,
   }) : pty.spawn(powershellPath, ['-NoLogo', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', path.join(integrationDir, 'bootstrap.ps1')], {
@@ -682,7 +711,7 @@ function registerIpc() {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('无效的设置。');
     const language = store.settings.language;
     store.updateSettings(patch); broadcast();
-    if (store.settings.language !== language) trayMenu();
+    if (store.settings.language !== language) { trayMenu(); if (process.platform === 'darwin') Menu.setApplicationMenu(macMenu()); }
     if (patch.restoreSessions === false) restorePlans.clear();
   });
   handle('project:directory', (id, relativePath = '', offset = 0) => findProject(id).kind === 'ssh' ? remoteFor(id).request('directory', { path: relativePath, offset }) : listDirectory(findProject(id), relativePath, offset));
@@ -887,8 +916,9 @@ function registerIpc() {
   listen('window:maximize', () => window.isMaximized() ? window.unmaximize() : window.maximize());
   listen('window:fullscreen', () => { userFullScreen = !window.isFullScreen(); window.setFullScreen(userFullScreen); });
   listen('window:close', () => window.close());
-  // Keep full screen chosen with the shortcut when returning to the overview.
-  listen('window:focus-mode', enabled => { if (typeof enabled === 'boolean') window.setFullScreen(enabled || userFullScreen); });
+  // Keep full screen chosen with the shortcut when returning to the overview. On macOS full screen is a Space of
+  // its own with a sliding transition, so an expanded project stays in the window there.
+  listen('window:focus-mode', enabled => { if (typeof enabled === 'boolean' && process.platform !== 'darwin') window.setFullScreen(enabled || userFullScreen); });
   handle('window:is-fullscreen', () => window.isFullScreen());
   handle('app:quit', requestQuit);
 }
@@ -896,6 +926,8 @@ function registerIpc() {
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => showWindow());
+  // Clicking the Dock icon brings back a window that was closed to the menu bar.
+  app.on('activate', () => showWindow());
   app.whenReady().then(async () => {
     fs.mkdirSync(app.getPath('userData'), { recursive: true });
     let shellIcon = path.join(root, 'assets/icon.ico');
@@ -916,6 +948,12 @@ else {
         const refreshed = refreshSearchIcons({ localAppData: process.env.LOCALAPPDATA, userData: app.getPath('userData'), iconSource: shellIcon });
         if (refreshed.changes.length) execFile(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/ie4uinit.exe'), ['-show'], { windowsHide: true, timeout: 5000 }, () => {});
       } catch (error) { console.warn('Windows Search icon refresh:', error.message); }
+    }
+    if (process.platform === 'darwin') {
+      zshStartup = prepareZshStartup(path.join(app.getPath('userData'), 'zsh'), integrationDir);
+      // Started from the Dock, this process has only the system PATH; codex, claude and npm are found with the
+      // login shell's. Terminals build their own from the user's start-up files.
+      loginShellPath().then(value => { if (value) process.env.PATH = mergePath(value, process.env.PATH); agents.changed(); }).catch(() => {});
     }
     store = new WorkspaceStore(path.join(app.getPath('userData'), 'workspace.json'));
     summarySecrets = new SecretStore(path.join(app.getPath('userData'), 'summary-keys.json'), safeStorage);
@@ -963,7 +1001,9 @@ else {
     window = new BrowserWindow({
       width: 1500, height: 940, minWidth: 820, minHeight: 560,
       title: t('Project Grid · 项目矩阵'), backgroundColor: '#101216',
-      frame: false, show: false, icon: path.join(root, 'assets/icon.png'),
+      // macOS keeps its own window buttons over the title bar; Windows draws them in the page.
+      ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 12 } } : { frame: false }),
+      show: false, icon: path.join(root, 'assets/icon.png'),
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, nodeIntegrationInSubFrames: false, contextIsolation: true, sandbox: true, spellcheck: false, backgroundThrottling: false },
     });
     if (process.platform === 'win32') window.setAppDetails({ appId: appUserModelId, appIconPath: shellIcon, appIconIndex: 0,
@@ -995,7 +1035,7 @@ else {
       const key = input.key.toLowerCase();
       if (activeFileTree && (((input.control || input.meta) && ['a', 'c', 'v'].includes(key)) || ['delete', 'f2'].includes(key) || (key === 'insert' && (input.control || input.shift)))) return;
       let action;
-      if (input.control || input.meta) action = { c: 'copy', x: 'cut', v: input.shift ? 'pasteAndMatchStyle' : 'paste', a: 'selectAll', z: input.shift ? 'redo' : 'undo', y: 'redo', insert: 'copy' }[key];
+      if (process.platform === 'darwin' ? input.meta : input.control || input.meta) action = { c: 'copy', x: 'cut', v: input.shift ? 'pasteAndMatchStyle' : 'paste', a: 'selectAll', z: input.shift ? 'redo' : 'undo', y: 'redo', insert: 'copy' }[key];
       else if (input.shift && key === 'insert') action = 'paste';
       if (action) { event.preventDefault(); window.webContents[action](); }
     });
@@ -1020,11 +1060,11 @@ else {
       if (store.settings.closeToTray && tray) window.hide();
       else requestQuit().catch(report);
     });
-    tray = new Tray(nativeImage.createFromPath(path.join(root, 'assets/icon.png')));
+    tray = new Tray(trayImage('icon.png'));
     tray.setToolTip(t('Project Grid · 项目矩阵'));
     trayMenu();
     tray.on('click', () => showWindow());
-    Menu.setApplicationMenu(null);
+    Menu.setApplicationMenu(process.platform === 'darwin' ? macMenu() : null);
     for (const project of store.projects) captureBranch(project);
     await window.loadURL(devUrl || 'project-grid://app/index.html');
     updateIndicators();
@@ -1045,7 +1085,9 @@ else {
     app.exit(1);
   });
 }
-app.on('before-quit', () => {
+app.on('before-quit', event => {
+  // On macOS the Dock's Quit and logging out reach here directly; they ask about running terminals like ⌘Q.
+  if (process.platform === 'darwin' && !quitting && window && !window.isDestroyed()) { event.preventDefault(); showWindow(); requestQuit().catch(report); return; }
   clearTimeout(attentionTimer);
   voiceManager?.close(); speechManager?.close(); fileOperations?.cancel();
   quitting = true;

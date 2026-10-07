@@ -34,7 +34,9 @@
     "test:git": "node scripts/git-smoke.mjs",
     "test:cmd": "node scripts/cmd-smoke.mjs",
     "dist": "node -e \"require('electron')\" && npm run build && electron-builder --win --x64 --publish never",
-    "pack": "node -e \"require('electron')\" && npm run build && electron-builder --win --dir --x64"
+    "pack": "node -e \"require('electron')\" && npm run build && electron-builder --win --dir --x64",
+    "dist:mac": "node -e \"require('electron')\" && npm run build && electron-builder --mac --arm64 --publish never",
+    "pack:mac": "node -e \"require('electron')\" && npm run build && electron-builder --mac dir --arm64"
   },
   "dependencies": {
     "electron-updater": "6.8.9",
@@ -76,7 +78,6 @@
       "package.json",
       "!**/*.map",
       "!node_modules/node-pty/{src,third_party,scripts,typings}/**/*",
-      "!node_modules/node-pty/prebuilds/{darwin-*,linux-*,win32-arm64}/**/*",
       "!node_modules/node-pty/lib/*.test.js",
       "!node_modules/node-pty/binding.gyp",
       "!node_modules/node-addon-api/**/*"
@@ -96,7 +97,8 @@
     "asarUnpack": [
       "node_modules/node-pty/**/*",
       "node_modules/sherpa-onnx-node/**/*",
-      "node_modules/sherpa-onnx-win-x64/**/*"
+      "node_modules/sherpa-onnx-win-x64/**/*",
+      "node_modules/sherpa-onnx-darwin-arm64/**/*"
     ],
     "npmRebuild": false,
     "publish": [
@@ -118,6 +120,9 @@
     },
     "win": {
       "icon": "assets/icon.ico",
+      "files": [
+        "!node_modules/node-pty/prebuilds/{darwin-*,linux-*,win32-arm64}/**/*"
+      ],
       "target": [
         {
           "target": "nsis",
@@ -133,12 +138,49 @@
         }
       ],
       "signExecutable": false,
-      "artifactName": "Project-Grid-${version}-win-x64.${ext}"
+      "artifactName": "Project-Grid-${version}-win-x64.${ext}",
+      "electronLanguages": [
+        "zh-CN",
+        "en-US"
+      ]
     },
-    "electronLanguages": [
-      "zh-CN",
-      "en-US"
-    ],
+    "mac": {
+      "icon": "assets/icon-mac.png",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "files": [
+        "!node_modules/node-pty/prebuilds/{win32-*,linux-*,darwin-x64}/**/*"
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "minimumSystemVersion": "12.0",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Project Grid 用麦克风做本地语音输入，声音只在这台 Mac 上识别。Project Grid uses the microphone for offline voice input; audio never leaves this Mac."
+      },
+      "electronLanguages": [
+        "zh_CN",
+        "en"
+      ],
+      "artifactName": "Project-Grid-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "Project Grid ${version}",
+      "artifactName": "Project-Grid-${version}-mac-${arch}.${ext}"
+    },
     "compression": "maximum",
     "afterPack": "scripts/after-pack.cjs"
   },

@@ -7,6 +7,7 @@ import './polish.css';
 import './typography.css';
 import './interaction.css';
 import { restoreTheme } from './themes';
+import './platform';
 
 restoreTheme();
 createRoot(document.getElementById('root')!).render(<App />);

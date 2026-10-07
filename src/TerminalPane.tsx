@@ -8,6 +8,7 @@ import { styleTerminal } from './terminal-styling';
 import { gpuRenderer, terminalRenderer, useTerminalRenderer } from './terminal-renderer';
 import '@xterm/xterm/css/xterm.css';
 import { t } from './i18n';
+import { isMac } from './platform';
 
 export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpenLink, remote = false }: {
   id: string; sessionId: string | null; fontSize: number; focused: boolean; onError: (message: string) => void;
@@ -58,16 +59,16 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
   useEffect(() => {
     if (!host.current || !sessionId) return;
     const activateLink = (event: MouseEvent, target: string) => {
-      if (!event.ctrlKey || event.button !== 0) return;
+      if (!(isMac ? event.metaKey : event.ctrlKey) || event.button !== 0) return;
       // xterm activates links on mouseup. Let that event reach its document
       // selection listener so opening a preview cannot leave a drag running.
       event.preventDefault();
       openLink.current(id, target);
     };
-    const hoverLink = (_event: MouseEvent, target: string) => { if (host.current) host.current.title = `${t('Ctrl + 鼠标左键打开链接')}\n${target}`; };
+    const hoverLink = (_event: MouseEvent, target: string) => { if (host.current) host.current.title = `${isMac ? t('⌘ + 点按打开链接') : t('Ctrl + 鼠标左键打开链接')}\n${target}`; };
     const leaveLink = () => { if (host.current) host.current.removeAttribute('title'); };
     const terminal = new Terminal({
-      fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace",
+      fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', Menlo, 'Microsoft YaHei UI', 'PingFang SC', monospace",
       fontSize, lineHeight: 1.3, fontWeight: '400', fontWeightBold: '700', scrollback: 3000, minimumContrastRatio: 7,
       cursorBlink: true, cursorStyle: 'bar',
       // Decorations (the heading and bullet styling) are still an experimental part of xterm's API.
@@ -92,7 +93,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     gpu.current = gpuRenderer(terminal); gpu.current.set(terminalRenderer() === 'gpu');
     // node-pty uses its bundled modern ConPTY, including on Windows 10.
     // 21376 is xterm's capability threshold for VT wrapping and reflow.
-    if (!remote) terminal.options.windowsPty = { backend: 'conpty', buildNumber: 21376 };
+    if (!remote && !isMac) terminal.options.windowsPty = { backend: 'conpty', buildNumber: 21376 };
     const links = terminal.registerLinkProvider(createTerminalLinkProvider(terminal, activateLink, hoverLink, leaveLink));
     const styling = styleTerminal(terminal);
     term.current = terminal; fit.current = fitAddon;
@@ -131,9 +132,17 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
       if (!event.isComposing && event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
         // xterm's legacy Enter mapping drops Shift. ConPTY needs native key
-        // records; Linux TUIs understand the modified Enter CSI-u sequence.
-        window.projectGrid.writeTerminal(id, remote ? '\x1b[13;2u' : '\x1b[13;28;13;1;16;1_\x1b[13;28;13;0;16;1_');
+        // records; Linux and macOS TUIs understand the modified Enter CSI-u sequence.
+        window.projectGrid.writeTerminal(id, remote || isMac ? '\x1b[13;2u' : '\x1b[13;28;13;1;16;1_\x1b[13;28;13;0;16;1_');
         return false;
+      }
+      // macOS: ⌘C copies, ⌘V pastes and ⌘A selects all; Control keys all go to the program (Control+C interrupts).
+      if (isMac) {
+        if (!event.metaKey || event.ctrlKey || event.altKey) return true;
+        if (event.code === 'KeyC') { event.preventDefault(); const selection = terminal.getSelection(); if (selection) void copy(selection); return false; }
+        if (event.code === 'KeyV') { event.preventDefault(); void paste(); return false; }
+        if (event.code === 'KeyA') { event.preventDefault(); terminal.selectAll(); return false; }
+        return true;
       }
       if (event.ctrlKey && !event.altKey && event.code === 'KeyC' && (event.shiftKey || terminal.hasSelection())) {
         event.preventDefault();

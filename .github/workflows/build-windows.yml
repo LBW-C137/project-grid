@@ -1,4 +1,4 @@
-name: Build Windows executable
+name: Build Windows and macOS executables
 
 on:
   push:
@@ -218,10 +218,116 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  macos:
+    name: macOS Apple silicon build and desktop test
+    runs-on: macos-15
+    timeout-minutes: 30
+    outputs:
+      archive: ${{ steps.version.outputs.archive }}
+      image: ${{ steps.version.outputs.image }}
+    env:
+      CI: 'true'
+      # Signed ad hoc (package.json build.mac.identity "-"); no Developer ID is looked up.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo 'Invalid package version.'; exit 1; }
+          if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" ]]; then echo 'The version tag must match package.json.'; exit 1; fi
+          echo "archive=Project-Grid-$version-mac-arm64.zip" >> "$GITHUB_OUTPUT"
+          echo "image=Project-Grid-$version-mac-arm64.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run unit and integration tests, including a real zsh terminal
+        run: npm test
+
+      - name: Build the macOS app, DMG and zip
+        run: npm run dist:mac
+
+      - name: Verify the app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="release/mac-arm64/Project Grid.app"
+          codesign --verify --deep --strict "$app"
+          codesign -dv "$app" 2>&1 | grep -q 'Signature=adhoc'
+          test -x "$app/Contents/Resources/app.asar.unpacked/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper"
+          test -f "$app/Contents/Resources/app.asar.unpacked/node_modules/sherpa-onnx-darwin-arm64/sherpa-onnx.node"
+          test -f "$app/Contents/Resources/integration/zsh-integration.zsh"
+          test -f "$app/Contents/Resources/integration/agent-event.cjs"
+          test -x "$app/Contents/Resources/integration/ssh-askpass.sh"
+          if ls "$app/Contents/Resources/integration" | grep -Ei '\.(ps1|cmd|exe|cs)$'; then echo 'Windows integration files are in the macOS app.'; exit 1; fi
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist"
+          hdiutil verify "release/${{ steps.version.outputs.image }}"
+
+      - name: Verify the packaged app runs a zsh terminal and follows Codex
+        run: node scripts/retry.mjs node scripts/mac-smoke.mjs --packaged
+
+      - name: Install the built archive with the one-line installer
+        shell: bash
+        run: |
+          PROJECT_GRID_INSTALL_DIR="$RUNNER_TEMP/Applications" PROJECT_GRID_OPEN=0 bash scripts/install-macos.sh "release/${{ steps.version.outputs.archive }}"
+          codesign --verify --deep --strict "$RUNNER_TEMP/Applications/Project Grid.app"
+
+      - name: Create checksums and build notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          shasum -a 256 "${{ steps.version.outputs.archive }}" "${{ steps.version.outputs.image }}" > SHA256SUMS-mac.txt
+          cat SHA256SUMS-mac.txt
+          {
+            echo '## macOS build is ready'
+            echo "- DMG: **${{ steps.version.outputs.image }}**"
+            echo "- Zip for the install command: **${{ steps.version.outputs.archive }}**"
+            echo "- Commit: $GITHUB_SHA"
+            echo '- Unit tests, a real zsh terminal test and the packaged desktop test passed.'
+            echo '- Download **Project-Grid-macos-arm64** from the Artifacts section of this run.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verified app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Project-Grid-macos-arm64
+          path: |
+            release/Project-Grid-*-mac-arm64.dmg
+            release/Project-Grid-*-mac-arm64.zip
+            release/SHA256SUMS-mac.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload desktop test screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-desktop-test-screenshots
+          path: .test-output/mac-*/*.png
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
   release:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, remote-linux]
+    needs: [windows, macos, remote-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -233,6 +339,12 @@ jobs:
           name: Project-Grid-windows-x64
           path: release-assets
 
+      - name: Download the tested macOS build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Project-Grid-macos-arm64
+          path: release-assets
+
       - name: Verify and publish release assets
         shell: bash
         env:
@@ -242,6 +354,8 @@ jobs:
           RELEASE_VERSION: ${{ needs.windows.outputs.version }}
           RELEASE_BINARY: ${{ needs.windows.outputs.binary }}
           RELEASE_INSTALLER: ${{ needs.windows.outputs.installer }}
+          MAC_ARCHIVE: ${{ needs.macos.outputs.archive }}
+          MAC_IMAGE: ${{ needs.macos.outputs.image }}
         run: |
           set -euo pipefail
           test "$RELEASE_TAG" = "v$RELEASE_VERSION"
@@ -249,16 +363,29 @@ jobs:
           test -f "$RELEASE_BINARY"
           test -f "$RELEASE_INSTALLER"
           test -f latest.yml
+          test -f "$MAC_ARCHIVE"
+          test -f "$MAC_IMAGE"
           sha256sum --check SHA256SUMS.txt
-          assets=("$RELEASE_BINARY" "$RELEASE_INSTALLER" "$RELEASE_INSTALLER.blockmap" latest.yml SHA256SUMS.txt BUILD-INFO.txt)
+          sha256sum --check SHA256SUMS-mac.txt
+          assets=("$RELEASE_BINARY" "$RELEASE_INSTALLER" "$RELEASE_INSTALLER.blockmap" latest.yml SHA256SUMS.txt BUILD-INFO.txt "$MAC_IMAGE" "$MAC_ARCHIVE" SHA256SUMS-mac.txt)
 
           cat > release-notes.md <<EOF
-          Windows x64 installer and portable editions of Project Grid.
+          Windows x64 installer and portable editions of Project Grid, and a macOS edition for Apple silicon.
 
-          **Recommended:** install **$RELEASE_INSTALLER** to enable automatic update checks and background downloads.
+          **Windows — recommended:** install **$RELEASE_INSTALLER** to enable automatic update checks and background downloads.
           For a portable copy, download **$RELEASE_BINARY**.
+
+          **macOS (Apple silicon, macOS 12 or later):** install or update with one command; the app opens directly, without the "cannot verify the developer" prompt:
+
+          \`\`\`
+          curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | bash
+          \`\`\`
+
+          Or download **$MAC_IMAGE** and drag Project Grid to Applications. The app is signed ad hoc, not notarized by Apple: on first open, allow it once in System Settings › Privacy & Security (Open Anyway), or run \`xattr -dr com.apple.quarantine "/Applications/Project Grid.app"\`. The macOS edition does not update itself; run the command again to update.
+
           Install Codex CLI on the computer or Linux SSH host where your project runs.
 
+          - New: Project Grid for macOS. Local terminals run zsh with your own start-up files (~/.zprofile, ~/.zshrc and the rest, untouched); codex and claude report each turn, light the card when it finishes and resume after a restart, as on Windows. SSH projects work the same. ⌘C, ⌘V and ⌘A copy, paste and select in terminals, Control+C interrupts, ⌘-click opens links, ⌘Q asks before closing running terminals. Microphone dictation asks for permission once.
           - Multiple project terminals with completion alerts.
           - Choose PowerShell or Command Prompt (cmd) for local terminals in Settings. Command Prompt keeps the same integration: prompt and directory tracking, codex and claude status, Claude hooks, spoken notices and session restore with continue.
           - A short usage guide opens on first use and after every update (on what is new): the three steps of a round, the main features and the shortcuts in use. Reopen it any time from Settings.
@@ -266,7 +393,7 @@ jobs:
           - Finished rounds breathe slowly from the card edge into the terminal three times, then keep a soft glow until you look; working cards stay steady instead of flashing. Sending a new prompt counts as looking, and the rounds-unviewed counter is gone.
           - The file editor opens ready to edit with line numbers and the caret line highlighted; Ctrl+S saves. Recently opened local projects can be added back in one click from the add dialog.
           - Dropping a dragged card no longer jumps back to its old place for a frame, and split terminals no longer draw a second frame along the rounded card edge.
-          - Claude Code is recognised like Codex: type `claude` in a project terminal and each turn shows as working, then lights the card when it finishes. Status comes from Claude Code hooks passed at launch, without editing your Claude settings; your own hooks still run. Local projects only for now.
+          - Claude Code is recognised like Codex: type \`claude\` in a project terminal and each turn shows as working, then lights the card when it finishes. Status comes from Claude Code hooks passed at launch, without editing your Claude settings; your own hooks still run. Local projects only for now.
           - Breathing lights work when Windows "Animation effects" is off. All motion follows the new "界面动画" setting (on by default, follow system, or off).
           - Collapsing the sidebar or resizing the window while Codex, Claude Code or another full-screen program runs no longer leaves stray characters after it exits: the terminal and ConPTY reflow once, at the settled size.
           - Smaller download: only Chinese and English Electron language packs are bundled, wallpapers are 2560 px, and the installer uses maximum compression.

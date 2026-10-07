@@ -60,3 +60,7 @@ dialog[open]::backdrop { animation: backdrop-in .2s ease; }
 .app-shell.titlebar-auto .titlebar { position: fixed; top: 0; left: 0; right: 0; z-index: 300; transform: translateY(-100%); transition: transform .2s cubic-bezier(.2, .8, .2, 1); background: var(--glass-strong); }
 .app-shell.titlebar-auto .titlebar-reveal { position: fixed; top: 0; left: 0; right: 0; height: 4px; z-index: 299; }
 .app-shell.titlebar-auto:has(.titlebar-reveal:hover, .titlebar:hover, .titlebar:focus-within) .titlebar { transform: none; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .6); }
+/* macOS draws its own window buttons at the left of the title bar (hidden in full screen), so the page's buttons go. */
+:root[data-platform="darwin"] .window-actions { display: none; }
+:root[data-platform="darwin"] .app-shell:not(.is-fullscreen) .titlebar-brand { padding-left: 86px; }
+:root[data-platform="darwin"] .titlebar-tools { margin-right: 14px; }

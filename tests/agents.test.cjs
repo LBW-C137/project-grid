@@ -6,10 +6,13 @@ const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { AGENT_PACKAGES, AgentsManager, onPath } = require('../electron/agents.cjs');
 
+// A PATH in the platform's own form: "folder";... with .cmd shims on Windows, folder:... with executables elsewhere.
+const windows = process.platform === 'win32';
 function fixture(t, extra = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'project-grid-agents-'));
   t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
-  return { folder, env: { Path: `;"${folder}";`, ...extra }, add: name => fs.writeFileSync(path.join(folder, `${name}.cmd`), '') };
+  const env = windows ? { Path: `;"${folder}";`, ...extra } : { PATH: `:${folder}:`, ...extra };
+  return { folder, env, add: name => fs.writeFileSync(path.join(folder, windows ? `${name}.cmd` : name), '', { mode: 0o755 }) };
 }
 function fakeLaunch() {
   const calls = [], children = [];
@@ -27,11 +30,24 @@ test('status checks a fake PATH without spawning tools and ignores directories',
   const fake = fakeLaunch();
   const manager = new AgentsManager({ env, launch: fake.launch });
   assert.deepEqual(manager.getState(), { codex: { installed: false }, claude: { installed: false }, npm: false, installing: null, message: '', error: '' });
-  add('codex'); add('npm'); fs.mkdirSync(path.join(folder, 'claude.exe'));
+  add('codex'); add('npm'); fs.mkdirSync(path.join(folder, windows ? 'claude.exe' : 'claude'));
   assert.equal(onPath('codex', env), true);
+  if (!windows) fs.rmdirSync(path.join(folder, 'claude'));
   assert.deepEqual(manager.getState(), { codex: { installed: true }, claude: { installed: false }, npm: true, installing: null, message: '', error: '' });
   add('claude'); assert.equal(manager.getState().claude.installed, true);
   assert.equal(fake.calls.length, 0);
+});
+
+test('outside Windows a command is an executable file on a colon-separated PATH', { skip: windows }, t => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'project-grid-agents-'));
+  t.after(() => fs.rmSync(folder, { recursive: true, force: true }));
+  const env = { PATH: `/nonexistent:${folder}` };
+  fs.writeFileSync(path.join(folder, 'codex'), '', { mode: 0o644 });
+  fs.writeFileSync(path.join(folder, 'claude.cmd'), '', { mode: 0o755 });
+  assert.equal(onPath('codex', env, 'darwin'), false, 'not executable');
+  assert.equal(onPath('claude', env, 'darwin'), false, 'a Windows shim is not a macOS command');
+  fs.chmodSync(path.join(folder, 'codex'), 0o755);
+  assert.equal(onPath('codex', env, 'darwin'), true);
 });
 
 test('isolated profiles report installed agents unless the agent test opt-in is set', t => {

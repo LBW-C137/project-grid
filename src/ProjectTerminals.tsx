@@ -46,7 +46,7 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
           {terminal.sessionId ? <TerminalPane id={terminal.id} sessionId={terminal.sessionId} fontSize={fontSize} focused={focused && selected === terminal.id && !readingShown(terminal, raw)} onError={onError} onOpenLink={(_id, target) => onOpenLink(project.id, target)} remote={project.kind === 'ssh'} />
             : <div className="terminal-empty"><TerminalIcon size={28} weight="light" /><p>{t('项目已就位')}</p><span>{t('启动终端，在这里开始开发')}</span><button className="button secondary small" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}><Play size={13} weight="fill" />{t('启动终端')}</button></div>}
         </div>
-        {multiple && <footer className="terminal-split-footer"><span>{terminal.error ? t(terminal.error) : project.kind === 'ssh' ? 'SSH' : terminal.shell === 'cmd' ? t('命令提示符') : 'PowerShell'}</span><div>
+        {multiple && <footer className="terminal-split-footer"><span>{terminal.error ? t(terminal.error) : project.kind === 'ssh' ? 'SSH' : terminal.shell === 'cmd' ? t('命令提示符') : terminal.shell === 'zsh' ? 'zsh' : 'PowerShell'}</span><div>
           <VoiceButton terminalId={terminal.id} sessionId={terminal.sessionId} name={name} size={13} onError={onError} />
           {stopped && terminal.sessionId && <button className="text-button" onClick={() => void onAction(window.projectGrid.startTerminal(terminal.id))}>{t('重新启动')}</button>}
           {terminal.codexActive && <span className="session-label">{terminal.agent === 'claude' ? 'CLAUDE' : 'CODEX'}</span>}

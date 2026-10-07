@@ -5,7 +5,13 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+// macOS: the PowerShell and Command Prompt integration and the Windows helpers (Windows only) are left out.
 exports.default = async context => {
+  if (context.electronPlatformName === 'darwin') {
+    const integration = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents/Resources/integration');
+    for (const name of await fs.readdir(integration)) if (/\.(ps1|cmd|exe|cs)$/i.test(name)) await fs.rm(path.join(integration, name), { force: true });
+    return;
+  }
   if (context.electronPlatformName !== 'win32') return;
   for (const name of ['dxcompiler.dll', 'dxil.dll']) await fs.rm(path.join(context.appOutDir, name), { force: true });
 };

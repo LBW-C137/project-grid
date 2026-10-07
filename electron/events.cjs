@@ -1,10 +1,16 @@
 const net = require('node:net');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, randomBytes } = require('node:crypto');
+
+// A Unix socket path holds at most 104 bytes on macOS, and the per-user temporary folder there is already about 50.
+function socketAddress(name, folder = require('node:os').tmpdir()) {
+  const address = require('node:path').join(folder, `${name}.sock`);
+  return Buffer.byteLength(address) <= 100 ? address : require('node:path').join('/tmp', `${name}.sock`);
+}
 
 // A per-launch local pipe; the renderer never receives session credentials.
 async function createEventServer(onEvent) {
-  const name = `project-grid-${randomUUID()}`;
-  const address = process.platform === 'win32' ? `\\\\.\\pipe\\${name}` : require('node:path').join(require('node:os').tmpdir(), `${name}.sock`);
+  const name = process.platform === 'win32' ? `project-grid-${randomUUID()}` : `pg-${randomBytes(12).toString('hex')}`;
+  const address = process.platform === 'win32' ? `\\\\.\\pipe\\${name}` : socketAddress(name);
   const connections = new Set();
   const server = net.createServer(socket => {
     connections.add(socket);
@@ -31,4 +37,4 @@ async function createEventServer(onEvent) {
   return { name, address, close() { for (const socket of connections) socket.destroy(); server.close(); } };
 }
 
-module.exports = { createEventServer };
+module.exports = { createEventServer, socketAddress };

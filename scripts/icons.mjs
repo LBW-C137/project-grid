@@ -31,6 +31,38 @@ function makeIcon(alert, size = 256) {
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
+// macOS draws application icons as a rounded square inside a transparent margin (824 of 1024 pixels, corner
+// radius 185). The same four squares sit on it; edges are sampled 4 x 4 per pixel so they stay smooth.
+function makeMacIcon(size = 1024) {
+  const raw = Buffer.alloc((size * 4 + 1) * size);
+  const scale = size / 1024, inset = 100 * scale, body = 824 * scale, radius = 185 * scale;
+  const squares = [[43, 43], [136, 43], [43, 136], [136, 136]];
+  const inBody = (x, y) => {
+    const dx = Math.max(inset + radius - x, 0, x - (inset + body - radius)), dy = Math.max(inset + radius - y, 0, y - (inset + body - radius));
+    return x >= inset && x < inset + body && y >= inset && y < inset + body && dx * dx + dy * dy <= radius * radius;
+  };
+  const colorAt = (x, y) => {
+    const u = (x - inset) * 256 / body, v = (y - inset) * 256 / body;
+    for (let i = 0; i < squares.length; i++) {
+      const [sx, sy] = squares[i];
+      if (u >= sx && u < sx + 77 && v >= sy && v < sy + 77) return i === 3 ? [239, 118, 129] : [190, 207, 224];
+    }
+    return [22, 27, 35];
+  };
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let r = 0, g = 0, b = 0, covered = 0;
+    for (let sy = 0; sy < 4; sy++) for (let sx = 0; sx < 4; sx++) {
+      const px = x + (sx + .5) / 4, py = y + (sy + .5) / 4;
+      if (!inBody(px, py)) continue;
+      const [cr, cg, cb] = colorAt(px, py); r += cr; g += cg; b += cb; covered++;
+    }
+    const offset = y * (size * 4 + 1) + 1 + x * 4;
+    if (covered) { raw[offset] = Math.round(r / covered); raw[offset + 1] = Math.round(g / covered); raw[offset + 2] = Math.round(b / covered); raw[offset + 3] = Math.round(covered * 255 / 16); }
+  }
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+fs.writeFileSync(path.join(target, 'icon-mac.png'), makeMacIcon());
 const png = makeIcon(false);
 fs.writeFileSync(path.join(target, 'icon.png'), png);
 fs.writeFileSync(path.join(target, 'icon-alert.png'), makeIcon(true));

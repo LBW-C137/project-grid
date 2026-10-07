@@ -4,9 +4,13 @@ const { spawn, execFile } = require('node:child_process');
 
 const AGENT_PACKAGES = Object.freeze({ codex: '@openai/codex', claude: '@anthropic-ai/claude-code' });
 // Command Prompt and agent detection must agree without running a CLI that could open a session.
-function onPath(name, env) {
-  const folders = String(Object.entries(env).find(([key]) => key.toLowerCase() === 'path')?.[1] || '').split(';').filter(Boolean);
-  return folders.some(folder => ['.exe', '.cmd', '.bat', '.ps1'].some(extension => { try { return fs.statSync(path.join(folder.replace(/"/g, ''), name + extension)).isFile(); } catch { return false; } }));
+// Windows finds a command by its extension; macOS and Linux by a file without one that may be executed.
+function onPath(name, env, platform = process.platform) {
+  const windows = platform === 'win32';
+  const folders = String(Object.entries(env).find(([key]) => key.toLowerCase() === 'path')?.[1] || '').split(windows ? ';' : ':').filter(Boolean);
+  return folders.some(folder => (windows ? ['.exe', '.cmd', '.bat', '.ps1'] : ['']).some(extension => {
+    try { const stat = fs.statSync(path.join(folder.replace(/"/g, ''), name + extension)); return stat.isFile() && (windows || (stat.mode & 0o111) !== 0); } catch { return false; }
+  }));
 }
 
 class AgentsManager {
