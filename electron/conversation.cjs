@@ -11,7 +11,7 @@ const TEXT_LIMIT = 20000;
 const WRAPPERS = /<(system-reminder|environment_context|user_instructions|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|task-notification|user-prompt-submit-hook)\b[^>]*>[\s\S]*?<\/\1>/g;
 const clean = text => String(text || '').replace(WRAPPERS, '').trim();
 const bounded = text => text.length > TEXT_LIMIT ? `${text.slice(0, TEXT_LIMIT)}\n\n…` : text;
-const brief = action => ({ kind: action.kind, tool: action.tool, target: action.target, detail: action.detail, done: action.done, failed: action.failed });
+const brief = action => ({ kind: action.kind, tool: action.tool, target: action.target, detail: action.detail, done: action.done, failed: action.failed, phrase: action.phrase, object: action.object });
 
 // Entries keep their order; a later record about the same entry (a tool that finished) replaces it.
 class ConversationLog {
@@ -35,6 +35,12 @@ class ConversationLog {
 }
 
 function claudeConversation(log, record, cwd) {
+  const queued = record?.type === 'attachment' && record.attachment?.type === 'queued_command' && record.attachment.commandMode !== 'bash' ? record.attachment : null;
+  if (queued && !record.isSidechain) {
+    const text = clean(typeof queued.prompt === 'string' ? queued.prompt : Array.isArray(queued.prompt) ? queued.prompt.filter(block => block?.type === 'text').map(block => block.text).join('\n') : '');
+    if (text) log.put({ id: `u:${record.uuid || record.timestamp}`, at: Date.parse(record.timestamp) || Date.now(), role: 'user', text: bounded(text) });
+    return;
+  }
   if (!record || record.isSidechain || !record.message || record.isMeta) return;
   const content = record.message.content, at = Date.parse(record.timestamp) || Date.now(), base = String(record.uuid || at);
   if (record.type === 'user') {

@@ -3,7 +3,7 @@ import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
 import { CaretDown, CaretRight, CircleNotch, PaperPlaneRight, Stop, Terminal } from '@phosphor-icons/react';
 import type { ConversationEntry, ProjectTerminal } from './types';
-import { actionText } from './ActivityPane';
+import { actionText, stepVerb } from './ActivityPane';
 import './reading.css';
 import { t } from './i18n';
 
@@ -59,7 +59,7 @@ function ToolGroup({ entries, live }: { entries: ConversationEntry[]; live: bool
       {failed > 0 && <em>{t('{count} 个失败', { count: failed })}</em>}
     </button>
     {shown && <ul>{entries.map(entry => <li key={entry.id} className={`${entry.tool!.done ? '' : 'is-running'} ${entry.tool!.failed ? 'is-failed' : ''} reading-tool-${entry.tool!.kind}`}>
-      <b>{actionText({ ...entry.tool!, target: '' })}</b><code title={entry.tool!.target}>{entry.tool!.target}</code>{entry.tool!.detail && <small>{entry.tool!.detail}</small>}
+      <b>{stepVerb(entry.tool!)}</b><code title={entry.tool!.target}>{entry.tool!.target}</code>{entry.tool!.detail && <small>{entry.tool!.detail}</small>}
     </li>)}</ul>}
   </div>;
 }
@@ -118,7 +118,7 @@ export function ReadingView({ terminal, onShowTerminal, onError, onOpenLink }: {
   }}>
     <div className="reading-scroll" ref={scroller} onScroll={event => { const node = event.currentTarget; stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 40; }}>{body}</div>
     <div className={`reading-status ${working ? 'is-working' : ''}`} role="status">
-      {working ? <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? actionText(terminal.action) : t('{agent} 正在思考', { agent })}</span></> : <span>{terminal.codexActive ? terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令') : t('终端就绪')}</span>}
+      {working ? <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })}</span></> : <span>{terminal.codexActive ? terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令') : t('终端就绪')}</span>}
     </div>
     <div className="reading-composer">
       <textarea ref={input} rows={1} aria-label={t('给 {agent} 的消息', { agent })} placeholder={terminal.codexActive ? t('给 {agent} 发消息，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={keys}

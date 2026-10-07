@@ -7,11 +7,26 @@ import { t } from './i18n';
 const KIND_LABELS: Record<AgentActionBrief['kind'], string> = { edit: '修改', command: '运行', read: '读取', search: '搜索', web: '访问', skill: '技能', mcp: 'MCP', agent: '子代理', other: '调用' };
 const ICONS = { edit: PencilSimple, command: Terminal, read: FileText, search: MagnifyingGlass, web: Globe, skill: Sparkle, mcp: Plugs, agent: Robot, other: Wrench };
 
-// "修改 src/App.tsx": the step in a few words. An edit made through a shell script names no file.
-export function actionText(action: AgentActionBrief) {
-  if (action.kind === 'edit' && !action.target) return t('通过命令修改文件');
-  return `${t(KIND_LABELS[action.kind])} ${action.target}`.trim();
+const base = (file: string) => file.split(/[\\/]/).pop() || file;
+// What kind of step it is, in a word or two: a command says what it does ("运行测试"), others their kind.
+export function stepVerb(action: AgentActionBrief) {
+  return action.kind === 'command' && action.phrase ? t(action.phrase) : t(KIND_LABELS[action.kind]);
 }
+// "运行测试", "修改 App.tsx": what a step does, in a few words a person reads at a glance. The full command
+// or path is left for the tooltip. An edit made through a shell script names no file.
+export function actionText(action: AgentActionBrief) {
+  const target = action.target;
+  if (action.kind === 'edit') return target ? `${t('修改')} ${target.split('、').map(base).join('、')}` : t('通过命令修改文件');
+  if (action.kind === 'read') return `${t('读取')} ${base(target)}`.trim();
+  if (action.kind === 'search') return target ? t('搜索“{text}”', { text: target }) : t('搜索');
+  if (action.kind === 'web') { let host = ''; try { host = new URL(target).host; } catch { } return host ? `${t('访问')} ${host}` : t('搜索网页“{text}”', { text: target }); }
+  if (action.kind === 'skill') return `${t('使用技能')} ${target}`.trim();
+  if (action.kind === 'mcp') { const [server, tool] = target.split(' · '); return t('调用 {server} 的 {tool}', { server, tool: tool || t('工具') }); }
+  if (action.kind === 'agent') return `${t('派出子代理')} ${target}`.trim();
+  if (action.kind === 'command') return action.phrase ? `${t(action.phrase)} ${action.object || ''}`.trim() : `${t('运行')} ${target}`.trim();
+  return `${t('调用工具')} ${target}`.trim();
+}
+const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour12: false });
 
 function explanation(action: AgentAction) {
   if (action.kind === 'skill') return action.description || t('没有找到这个技能的说明（SKILL.md）');
@@ -43,7 +58,7 @@ export function ActivityPane({ project, terminal }: { project: Project; terminal
   const running = working ? [...actions].reverse().find(action => !action.done) : undefined;
   const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
   const status = !terminal.codexActive ? t('没有运行中的 Codex 或 Claude Code')
-    : running ? actionText(running)
+    : running ? t('正在{step}', { step: actionText(running) })
     : working ? t('{agent} 正在思考', { agent })
     : terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令');
   return <aside className="activity-pane" aria-label={t('活动')}>
@@ -58,15 +73,11 @@ export function ActivityPane({ project, terminal }: { project: Project; terminal
       {!actions.length && <p className="activity-empty">{!terminal.codexActive
         ? project.kind === 'ssh' ? t('远程项目暂不显示活动。') : t('在终端里启动 Codex 或 Claude Code 后，这里显示它每一步在做什么：改了哪些文件、运行了什么命令、调用了哪些技能和 MCP 工具。')
         : t('这一轮还没有调用工具。')}</p>}
+      {/* One line a step: "14:03:22：正在运行测试". The command, path or what a skill is for shows on hover. */}
       {[...actions].reverse().map(action => {
-        const Icon = ICONS[action.kind], note = explanation(action);
-        return <div key={action.id} role="listitem" className={`activity-item activity-${action.kind} ${action.done ? '' : 'is-running'} ${action.failed ? 'is-failed' : ''}`}>
-          <span className="activity-icon" aria-hidden="true">{action.done ? <Icon size={14} /> : <CircleNotch size={14} className="loading-spinner" />}</span>
-          <div>
-            <div className="activity-title"><b>{t(KIND_LABELS[action.kind])}</b><time>{new Date(action.at).toLocaleTimeString([], { hour12: false })}</time>{action.failed && <em>{t('失败')}</em>}</div>
-            {(action.target || action.kind === 'edit') && <code title={action.target}>{action.target || t('通过命令修改文件')}</code>}
-            {note && <p title={note}>{note}</p>}
-          </div>
+        const step = actionText(action), hover = [action.target, action.detail, explanation(action)].filter((text, index, all) => text && all.indexOf(text) === index).join('\n');
+        return <div key={action.id} role="listitem" title={hover} className={`activity-item activity-${action.kind} ${action.done ? '' : 'is-running'} ${action.failed ? 'is-failed' : ''}`}>
+          <time>{clock(action.at)}</time><span className="activity-step">{t('：')}{action.done ? step : t('正在{step}', { step })}{action.failed && <em>{t('（失败）')}</em>}</span>
         </div>;
       })}
     </div>
@@ -99,7 +110,7 @@ function RoundOverview({ terminal, actions, working }: { terminal: ProjectTermin
   return <section className="activity-overview" aria-label={t('本轮概览')}>
     <h4 className="activity-section-title">{t('本轮概览')}</h4>
     <div className="overview-body">
-      {(terminal.task || !terminal.codexActive) && <p className="overview-task" title={terminal.task}>{terminal.task || t('还没有开始任务')}</p>}
+      <PromptList terminal={terminal} />
       <div className="overview-stats">
         <div><b>{actions.length}</b><span>{t('工具调用')}</span></div>
         <div><b>{summary.done}</b><span>{t('已完成')}</span></div>
@@ -113,4 +124,19 @@ function RoundOverview({ terminal, actions, working }: { terminal: ProjectTermin
       {summary.servers.length > 0 && <div className="overview-group"><h5>MCP<span>{summary.servers.length}</span></h5>{summary.servers.map(([server, tools]) => <div key={server} className="overview-named"><b>{server}</b><p>{[...tools].join('、') || t('工具')}</p></div>)}</div>}
     </div>
   </section>;
+}
+
+// The prompts sent and not finished: the one being worked on first, then those waiting their turn. A prompt
+// leaves the list when the round that worked on it ends.
+function PromptList({ terminal }: { terminal: ProjectTerminal }) {
+  const prompts = terminal.prompts || [];
+  if (!prompts.length) {
+    const text = !terminal.codexActive ? t('还没有开始任务') : terminal.codexActivity === 'complete' && terminal.task ? t('已完成：{task}', { task: terminal.task }) : t('没有待处理的提示');
+    return <p className="overview-task is-quiet" title={text}>{text}</p>;
+  }
+  return <ol className="overview-prompts" aria-label={t('提示')}>
+    {prompts.map(prompt => <li key={prompt.id} className={prompt.state === 'working' ? 'is-working' : ''} title={prompt.text}>
+      <span>{prompt.state === 'working' ? t('正在处理') : t('排队中')}</span><p>{prompt.text}</p>
+    </li>)}
+  </ol>;
 }

@@ -52,7 +52,8 @@ try {
   await launch();
   await notify(child, 'before-input'); assert.equal(await notices(), 0);
   await input('first instruction\r');
-  await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: { id: thread, cwd: project.path, source: 'cli' } }) + '\n' + record('task_started', 'first'));
+  const said = message => JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message } }) + '\n';
+  await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: { id: thread, cwd: project.path, source: 'cli' } }) + '\n' + record('task_started', 'first') + said('first instruction'));
   await fs.writeFile(path.join(home, 'sessions', `rollout-${child}.jsonl`), JSON.stringify({ type: 'session_meta', payload: { id: child, cwd: project.path, source: { subagent: thread } } }) + '\n' + record('task_started', 'child-turn') + record('task_complete', 'child-turn'));
   await notify(child, 'child-turn');
   await waitFor(async () => (await state()).codexActivity === 'working', 'parent stays running');
@@ -73,7 +74,15 @@ try {
   await waitFor(async () => (await overview.locator('.overview-stats > div').first().locator('b').innerText()) === '2', 'overview counts the calls');
   assert.equal(await overview.locator('.overview-group code').first().innerText(), 'src/login.ts');
   await waitFor(async () => await pane.locator('.activity-item').count() === 2, 'activity pane lists the steps');
-  assert.equal(await pane.locator('.activity-item').first().locator('code').innerText(), 'src/login.ts');
+  // One line a step, "time：what it does", newest first; the running edit says it is in progress.
+  const lines = await pane.locator('.activity-item').allTextContents();
+  assert.match(lines[0], /^\d{2}:\d{2}:\d{2}：正在修改 login\.ts$/, JSON.stringify(lines));
+  assert.match(lines[1], /^\d{2}:\d{2}:\d{2}：运行测试$/, JSON.stringify(lines));
+  assert.equal(await pane.locator('.activity-item').first().getAttribute('title'), 'src/login.ts', 'the full path shows on hover');
+  // The overview lists the prompts: the one being worked on, then one sent while it works.
+  await input('给登录页加上验证码。然后跑一下测试\r');
+  const prompts = () => overview.locator('.overview-prompts li').evaluateAll(items => items.map(item => `${item.classList.contains('is-working') ? 'working' : 'queued'}:${item.querySelector('p').textContent}`));
+  await waitFor(async () => JSON.stringify(await prompts()) === JSON.stringify(['working:first instruction', 'queued:给登录页加上验证码。然后跑一下测试']), 'prompt list shows the working and the waiting prompt');
   assert.ok((await pane.locator('.activity-now').getAttribute('class')).includes('is-editing'));
   await page.waitForFunction(() => !document.querySelector('[data-focus-motion]')); await page.screenshot({ path: path.join(output, 'activity-pane.png') });
   await page.getByRole('button', { name: '隐藏活动栏', exact: true }).click(); await waitFor(async () => !await pane.count(), 'activity pane can be hidden');
@@ -82,8 +91,12 @@ try {
   await page.screenshot({ path: path.join(output, 'parent-running.png') });
   // The round's prompt, as Codex records it; the spoken notice names this work.
   await fs.appendFile(transcript, JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message: '给登录页加上验证码。然后跑一下测试' } }) + '\n');
+  await waitFor(async () => (await state()).terminals[0].prompts.map(item => item.state).join() === 'working,working', 'the waiting prompt is taken up when Codex records it');
+  await input('稍后补上文档\r');
+  await waitFor(async () => (await state()).terminals[0].prompts.map(item => item.state).join() === 'working,working,queued', 'a prompt sent now waits for the next round');
   await fs.appendFile(transcript, record('task_complete', 'first')); await notify(thread, 'first');
   await waitFor(async () => (await state()).unread === 1, 'parent completes');
+  await waitFor(async () => JSON.stringify((await state()).terminals[0].prompts.map(item => item.text)) === JSON.stringify(['稍后补上文档']), 'finished prompts leave the list; the waiting one stays');
   assert.equal(await notices(), 1);
   // The finished round is also announced once, in Mandarin, naming the project.
   await waitFor(async () => (await page.evaluate(() => window.spokenNotices.length)) === 1, 'completion is announced');

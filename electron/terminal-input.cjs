@@ -7,16 +7,20 @@ function isTerminalResponse(data) {
   return data === '' || reply.test(data);
 }
 
-// Observe actual submissions, without storing the user's text. xterm sends
-// focus, mouse and protocol reports on this same channel; none are new work.
+// Observe actual submissions. xterm sends focus, mouse and protocol reports on this same channel; none are
+// new work. The text of each submission is kept in sent (until the next write) for the list of prompts;
+// it is empty when the line was recalled from history, whose text the terminal never sees.
+const TEXT_LIMIT = 4000;
 class SubmissionTracker {
-  constructor() { this.reset(); }
-  reset() { this.characters = 0; this.hasText = false; this.history = false; this.pasting = false; this.escape = ''; this.mouseBytes = 0; }
+  constructor() { this.reset(); this.sent = []; }
+  reset() { this.characters = 0; this.hasText = false; this.history = false; this.pasting = false; this.escape = ''; this.mouseBytes = 0; this.text = ''; }
+  type(character) { if (this.text.length < TEXT_LIMIT) this.text += character; }
   write(data) {
     let submitted = false;
+    this.sent = [];
     const enter = () => {
-      if (this.hasText || this.history) submitted = true;
-      this.characters = 0; this.hasText = false; this.history = false;
+      if (this.hasText || this.history) { submitted = true; this.sent.push(this.history ? '' : this.text.trim()); }
+      this.characters = 0; this.hasText = false; this.history = false; this.text = '';
     };
     for (const character of data) {
       if (this.mouseBytes) { this.mouseBytes--; continue; }
@@ -40,14 +44,16 @@ class SubmissionTracker {
         if (!this.pasting && ['\x1bOA', '\x1bOB'].includes(this.escape)) this.history = true;
         if (!this.pasting && this.escape === '\x1bOM') enter();
         // Alt+Enter is a newline in Codex, not a submitted prompt.
+        if (this.escape === '\x1b\r') this.type('\n');
         this.escape = ''; continue;
       }
       if (character === '\x1b') { this.escape = character; continue; }
-      if (this.pasting) { if (character >= ' ') { this.characters++; this.hasText ||= /\S/.test(character); } continue; }
+      if (this.pasting) { if (character >= ' ') { this.characters++; this.hasText ||= /\S/.test(character); this.type(character); } else if (character === '\r' || character === '\n') this.type('\n'); continue; }
       if (character === '\r') enter();
-      else if (character === '\x03' || character === '\x15') { this.characters = 0; this.hasText = false; this.history = false; }
-      else if (character === '\x7f' || character === '\b') { this.characters = Math.max(0, this.characters - 1); if (!this.characters) this.hasText = false; }
-      else if (character >= ' ') { this.characters++; this.hasText ||= /\S/.test(character); }
+      else if (character === '\n') this.type('\n');
+      else if (character === '\x03' || character === '\x15') { this.characters = 0; this.hasText = false; this.history = false; this.text = ''; }
+      else if (character === '\x7f' || character === '\b') { this.characters = Math.max(0, this.characters - 1); if (!this.characters) this.hasText = false; this.text = Array.from(this.text).slice(0, -1).join(''); }
+      else if (character >= ' ') { this.characters++; this.hasText ||= /\S/.test(character); this.type(character); }
     }
     return submitted;
   }

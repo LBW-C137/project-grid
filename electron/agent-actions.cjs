@@ -35,7 +35,7 @@ function claudeAction(block, at, cwd) {
   const mcp = mcpTool(name);
   if (mcp) { action.kind = 'mcp'; action.target = `${mcp.server} · ${mcp.tool}`; action.server = mcp.server; }
   else if (action.kind === 'edit' || action.kind === 'read') action.target = projectPath(input.file_path || input.notebook_path, cwd);
-  else if (action.kind === 'command') { action.target = clip(input.command || input.bash_id, 240); action.detail = clip(input.description, 160); }
+  else if (action.kind === 'command') { action.target = clip(input.command || input.bash_id, 240); action.detail = clip(input.description, 160); Object.assign(action, commandPhrase(input.command || '')); }
   else if (action.kind === 'search') { action.target = clip(input.pattern, 160); action.detail = projectPath(input.path, cwd); }
   else if (action.kind === 'web') action.target = clip(input.url || input.query, 240);
   else if (action.kind === 'skill') { action.target = clip(input.skill, 120); action.detail = clip(input.args, 160); }
@@ -43,6 +43,47 @@ function claudeAction(block, at, cwd) {
   else action.target = name;
   return action;
 }
+
+// What a shell command does, in a few words: "运行测试", "查看改动". The first rule that matches wins, so
+// specific ones come first; the window translates the phrase and shows the full command on hover.
+const COMMAND_PHRASES = [
+  [/\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|\b(?:vitest|jest|pytest|mocha)\b|\b(?:cargo|go|dotnet)\s+test\b|\bnode\s+--test\b|\bnpm\s+run\s+test:/i, '运行测试'],
+  [/\b(?:npm|pnpm|yarn|bun)\s+run\s+(?:build|dist|pack)\b|\b(?:vite|webpack|cargo|dotnet|go)\s+build\b|\bmsbuild\b|\belectron-builder\b/i, '构建项目'],
+  [/\b(?:eslint|prettier|ruff|flake8|stylelint)\b|\bcargo\s+clippy\b|\b(?:npm|pnpm|yarn)\s+run\s+(?:lint|format)\b/i, '检查代码格式'],
+  [/\btsc\b|\b(?:npm|pnpm|yarn)\s+run\s+(?:typecheck|check)\b|\bmypy\b/i, '检查类型'],
+  [/\b(?:npm|pnpm|yarn|bun)\s+(?:install|ci|add|i)\b|\bpip3?\s+install\b|\bcargo\s+add\b/i, '安装依赖'],
+  [/\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:start|dev|serve|preview)\b/i, '启动项目'],
+  [/\bgit\s+status\b/i, '查看 Git 状态'],
+  [/\bgit\s+(?:diff|show)\b/i, '查看改动'],
+  [/\bgit\s+log\b/i, '查看提交历史'],
+  [/\bgit\s+commit\b/i, '提交改动'],
+  [/\bgit\s+(?:add|restore|reset|rm)\b/i, '整理暂存区'],
+  [/\bgit\s+push\b/i, '推送到远程仓库'],
+  [/\bgit\s+(?:pull|fetch|clone)\b/i, '拉取代码'],
+  [/\bgit\s+(?:checkout|switch|branch|merge|rebase|stash|tag|cherry-pick)\b/i, '处理分支'],
+  [/\bgit\s+grep\b/i, '搜索代码'],
+  [/\bgit\b/i, '执行 Git 命令'],
+  [/\bgh\s+\w/i, '操作 GitHub'],
+  [/\b(?:rg|grep|findstr|Select-String|ag)\b/i, '搜索代码'],
+  [/\b(?:cat|Get-Content|head|tail|nl)\b|\bsed\s+-n\b/i, '读取文件'],
+  [/\b(?:ls|dir|Get-ChildItem|gci|tree|fd)\b|\bfind\s+[.\/~]/i, '查看目录'],
+  [/\b(?:rm|del|Remove-Item|rmdir)\b/i, '删除文件'],
+  [/\b(?:mkdir|New-Item)\b/i, '新建文件或目录'],
+  [/\b(?:cp|mv|Copy-Item|Move-Item|Rename-Item)\b/i, '移动或复制文件'],
+  [/\b(?:curl|wget|Invoke-WebRequest|iwr|Invoke-RestMethod)\b/i, '访问网络'],
+  [/\b(?:Start-Sleep|sleep)\b/i, '等待'],
+];
+const SCRIPT = /\b(?:node|python3?|py|deno|bun|tsx|ts-node)\s+(?:-\S+\s+)*["']?([^\s"';&|]+)/i;
+// { phrase, object }: the phrase is one of COMMAND_PHRASES (or 运行脚本 / 运行命令), the object a script or program name.
+function commandPhrase(command) {
+  const text = String(command || '');
+  for (const [pattern, phrase] of COMMAND_PHRASES) if (pattern.test(text)) return { phrase, object: '' };
+  const script = SCRIPT.exec(text);
+  if (script) return { phrase: '运行脚本', object: script[1].split(/[\\/]/).pop() };
+  const program = /^\s*(?:&\s*)?["']?([^\s"']+)/.exec(text);
+  return { phrase: '运行命令', object: program ? program[1].split(/[\\/]/).pop() : '' };
+}
+const PHRASES = [...COMMAND_PHRASES.map(([, phrase]) => phrase), '运行脚本', '运行命令'];
 
 const EDITING_COMMAND = /\b(apply_patch|writeFileSync|appendFileSync|Set-Content|Add-Content|Out-File|sed\s+-i|tee\s)/;
 // A shell command Codex ran. Codex edits files through the shell too (apply_patch or a script that writes).
@@ -53,6 +94,7 @@ function codexCommand(id, at, command, cwd) {
   if (files.length) { action.kind = 'edit'; action.target = files.slice(0, 3).join('、') + (files.length > 3 ? ` +${files.length - 3}` : ''); }
   else if (skill) { action.kind = 'skill'; action.target = skill[2]; action.skillFile = skill[1]; }
   else if (EDITING_COMMAND.test(String(command))) { action.kind = 'edit'; action.detail = action.target; action.target = ''; }
+  else Object.assign(action, commandPhrase(command));
   return action;
 }
 // One response_item of a Codex rollout that calls a tool. Newer Codex wraps every call in a script
@@ -210,4 +252,4 @@ async function skillDescription(name, cwd, file) {
   return '';
 }
 
-module.exports = { ActionLog, TranscriptTail, claudeAction, claudeRecord, codexActions, codexRecord, skillDescription, projectPath };
+module.exports = { ActionLog, TranscriptTail, claudeAction, claudeRecord, codexActions, codexRecord, commandPhrase, PHRASES, skillDescription, projectPath };

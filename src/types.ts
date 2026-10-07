@@ -9,7 +9,7 @@ export type Project = {
   codexActive: boolean; agent: 'codex' | 'claude' | null; codexActivity: 'unknown' | 'working' | 'complete' | 'interrupted'; shellReady: boolean; codexAvailable: boolean | null; error: string | null;
   terminals: ProjectTerminal[];
 };
-export type ProjectTerminal = { action: AgentActionBrief | null; task: string; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
+export type ProjectTerminal = { action: AgentActionBrief | null; task: string; prompts: PendingPrompt[]; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
 // A model reached over HTTP for the spoken summary. The API key is not part of the settings.
 export type SummaryEndpoint = { provider: string; protocol: 'openai' | 'anthropic'; baseUrl: string; model: string };
 export type SummaryKeys = { keys: { cloud: boolean; local: boolean } };
@@ -31,7 +31,8 @@ export type GitCommit = { hash: string; parents: string[]; author: string; date:
 export type GitHistory = { commits: GitCommit[]; nextOffset: number | null };
 // One step an agent took (a tool call). The card shows the brief form, the activity pane the whole list.
 export type AgentActionKind = 'edit' | 'command' | 'read' | 'search' | 'web' | 'skill' | 'mcp' | 'agent' | 'other';
-export type AgentActionBrief = { kind: AgentActionKind; tool: string; target: string; detail: string; done: boolean };
+export type AgentActionBrief = { kind: AgentActionKind; tool: string; target: string; detail: string; done: boolean; phrase?: string; object?: string };
+export type PendingPrompt = { id: string; text: string; state: 'queued' | 'working'; at: number };
 export type AgentAction = AgentActionBrief & { id: string; at: number; description: string; failed: boolean; server?: string };
 export type AgentActionPacket = { id: string; list?: AgentAction[]; changes?: AgentAction[] };
 // One message or tool call of an agent's conversation, for the reading view.

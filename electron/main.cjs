@@ -13,6 +13,7 @@ const { listDirectory, readProjectFile, saveProjectFile, resolveProjectPath, VID
 const { projectPaths } = require('./project-paths.cjs');
 const { ProjectGit } = require('./project-git.cjs');
 const { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers } = require('./terminal-input.cjs');
+const { PromptQueue } = require('./prompt-queue.cjs');
 const { createTerminalEnvironment } = require('./terminal-env.cjs');
 const { PreviewResources, resourceResponse } = require('./preview-resources.cjs');
 const { resolveTerminalLink } = require('./terminal-links.cjs');
@@ -93,7 +94,9 @@ function publicState() {
           // The step a working agent is on, for the card's one-line status; the full list is sent separately.
           action: s?.codexActive && s.codexActivity === 'working' ? briefAction(s.actions.current()) : null,
           // What the round was asked to do, in a few words, for the activity overview.
-          task: s?.codexActive ? s.lastTask || '' : '' };
+          task: s?.codexActive ? s.lastTask || '' : '',
+          // The prompts sent and not finished yet: the ones being worked on, then the ones waiting.
+          prompts: s?.codexActive ? s.promptQueue.list() : [] };
       });
       const first = terminals[0];
       const activeCodex = terminals.filter(item => item.codexActive);
@@ -220,7 +223,7 @@ function notifyCompletion(project, task = '', s = null) {
   }
 }
 
-function briefAction(action) { return action ? { kind: action.kind, tool: action.tool, target: action.target, detail: action.detail, done: action.done } : null; }
+function briefAction(action) { return action ? { kind: action.kind, tool: action.tool, target: action.target, detail: action.detail, done: action.done, phrase: action.phrase, object: action.object } : null; }
 // The agent's steps reach the window in small batches; after a long history is read at once (a resumed
 // conversation) the whole list replaces what the window has.
 function publishAction(s, change) {
@@ -279,7 +282,8 @@ function applyActivity(project, s, snapshot) {
   if (s.agent === 'codex') store.setRestore(s.terminalId, { threadId: snapshot.threadId });
   s.codexActivity = snapshot.state;
   if (snapshot.state === 'working') { store.expectCompletion(project.id); warmSpeech(); }
-  else if (snapshot.state === 'complete' && snapshot.turnId) {
+  if (['complete', 'interrupted'].includes(snapshot.state) && (s.agent === 'claude' || project.kind === 'ssh')) s.promptQueue.finish(snapshot.updatedAt);
+  if (snapshot.state === 'complete' && snapshot.turnId) {
     s.lastCompletedAt = snapshot.updatedAt;
     if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
     if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project, s.lastTask || '', s);
@@ -308,7 +312,7 @@ function onEvent(event) {
   if (event.type !== 'turn-complete' && !acceptShellEvent(s, event)) return;
   if (event.type === 'shell-ready' || event.type === 'shell-prompt') {
     s.activityMonitor?.stop(); s.activityMonitor = null;
-    s.codexActive = false; s.codexActivity = 'unknown'; s.reportedThreadId = null;
+    s.codexActive = false; s.codexActivity = 'unknown'; s.reportedThreadId = null; s.promptQueue.reset();
     s.ready = event.type === 'shell-prompt';
     s.inputDirty = false;
     s.status = 'shell';
@@ -323,7 +327,7 @@ function onEvent(event) {
     s.error = null;
     s.submissions.reset();
     s.codexActivity = 'unknown'; s.activitySince = Date.now(); s.activityInputAt = 0;
-    s.actions.reset(); s.conversation.reset(); s.claudeTranscript = null;
+    s.actions.reset(); s.conversation.reset(); s.claudeTranscript = null; s.promptQueue.reset();
     s.agent = event.agent === 'claude' ? 'claude' : 'codex';
     s.activityMonitor?.stop(); s.activityMonitor = null;
     // A terminal restores the agent it last ran. Switching agents drops the other one's conversation id.
@@ -338,7 +342,10 @@ function onEvent(event) {
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
     const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0,
-      onRecord: record => { noteReply(s, codexReply(record)); codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path)); } });
+      onRecord: record => {
+        noteReply(s, codexReply(record)); codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
+        if (record?.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload?.type)) s.promptQueue.finish(Date.parse(record.timestamp) || Date.now());
+      } });
     s.activityMonitor = monitorActivity(
       () => reader ? reader.read() : project.terminals?.length && !s.reportedThreadId ? Promise.resolve(null) : s.terminal.request('codex-status', { since: remoteSince, threadId: s.reportedThreadId }),
       snapshot => {
@@ -480,7 +487,14 @@ function startTerminal(id) {
     flushTimer: null, lastActivityAt: Date.now(), error: null, submissions: new SubmissionTracker(),
   };
   s.actions = new ActionLog(change => publishAction(s, change));
-  s.conversation = new ConversationLog(change => publishConversation(s, change));
+  s.promptQueue = new PromptQueue(() => { if (sessions.get(id) === s) scheduleState(); });
+  // A prompt the agent's own record shows it received is being worked on. History read when a session is
+  // resumed is older than the agent's start and is left out.
+  s.conversation = new ConversationLog(change => {
+    publishConversation(s, change);
+    const entry = change.entry;
+    if (entry?.role === 'user' && s.codexActive && entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
+  });
   sessions.set(id, s);
   store.setRestore(id, { terminal: true, ...(restorePlans.has(id) ? {} : { codex: false }) });
   startupErrors.delete(id);
@@ -833,6 +847,7 @@ function registerIpc() {
     const s = sessions.get(id);
     if (s && s.status !== 'exited') {
       const submitted = s.submissions.write(data);
+      if (submitted && s.codexActive) for (const text of s.submissions.sent) s.promptQueue.submit(text, s.codexActivity === 'working');
       // Sending a new prompt means the last result has been read: clear the unviewed state before the next round.
       if (submitted && store.projects.find(p => p.id === s.projectId)?.unread) { store.acknowledge(s.projectId); scheduleState(); }
       if (submitted && s.codexActive) {
