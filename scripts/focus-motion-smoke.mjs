@@ -147,7 +147,20 @@ try {
   const samples = await page.evaluate(() => globalThis.focusMotionSamples);
   const growing = samples.filter(sample => sample.moving && sample.width > naturalStart + (naturalEnd - naturalStart) * .05 && sample.width < naturalStart + (naturalEnd - naturalStart) * .92);
   assert.ok(growing.length >= 4, 'natural playback must render several visibly different intermediate sizes');
-  const span = growing.every(sample => sample.clock !== null) ? growing.at(-1).clock - growing[0].clock : growing.at(-1).time - growing[0].time;
+  // When the card passes 5% and 92% of its growth, on the animation's own clock, between the frames either side.
+  // A slow build machine drops frames during the zoom; the last frame that happens to fall inside the range then
+  // says nothing about when the growth ended, but the frames either side of each crossing still do.
+  const timed = samples.filter(sample => sample.moving && sample.clock !== null);
+  const crossing = level => {
+    const target = naturalStart + (naturalEnd - naturalStart) * level;
+    for (let index = 1; index < timed.length; index++) {
+      const before = timed[index - 1], after = timed[index];
+      if (before.width < target && after.width >= target) return before.clock + (after.clock - before.clock) * (target - before.width) / (after.width - before.width);
+    }
+    return null;
+  };
+  const first = crossing(.05), last = crossing(.92);
+  const span = first !== null && last !== null ? last - first : growing.at(-1).time - growing[0].time;
   assert.ok(span >= 200, `visible enlargement must be gradual, not concentrated into the first few frames (${Math.round(span)} ms)`);
   await fs.writeFile(path.join(output, 'natural-motion.json'), JSON.stringify(samples));
   await page.keyboard.press('Control+Shift+g'); await settled(false);
