@@ -1,266 +1,169 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Project Grid" width="80" />
+  <img src="assets/icon.png" alt="Project Grid" width="88" />
 </p>
 
 <h1 align="center">Project Grid · 项目矩阵</h1>
 
-<p align="center"><strong>多个项目，一屏掌握。红框亮起，继续下一轮对话。</strong></p>
-<p align="center">A local workspace for parallel Codex and Claude Code projects, live terminals, and completion alerts.</p>
+<p align="center"><strong>同时让 Codex 和 Claude Code 跑六个项目，你只在它们需要你的时候回来。</strong></p>
+<p align="center">为并行使用 AI 编码助手而生的 Windows 工作台：一屏看全所有项目，谁在干活、谁做完了、谁在等你，一眼就知道。</p>
 
 <p align="center">
   <a href="https://github.com/noeigenstate/project-grid/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/project-grid?style=flat-square&color=78bfa1&label=release" alt="Latest release" /></a>
-  <a href="https://github.com/noeigenstate/project-grid/actions/workflows/build-windows.yml"><img src="https://github.com/noeigenstate/project-grid/actions/workflows/build-windows.yml/badge.svg?branch=main" alt="Windows build and desktop tests" /></a>
-  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20%C2%B7%20x64-8ebce5?style=flat-square" alt="Windows 10 / 11 x64" />
-  <img src="https://img.shields.io/badge/Desktop-Installer%20%2B%20Portable-d8dfe8?style=flat-square" alt="Installer and portable editions" />
+  <a href="https://github.com/noeigenstate/project-grid/releases"><img src="https://img.shields.io/github/downloads/noeigenstate/project-grid/total?style=flat-square&color=8ebce5&label=downloads" alt="Downloads" /></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-8ebce5?style=flat-square" alt="Windows 10 / 11 x64" />
+  <img src="https://img.shields.io/badge/Codex%20%2B%20Claude%20Code-supported-d8a6e8?style=flat-square" alt="Codex and Claude Code" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>下载 Windows 版</strong></a> ·
-  <a href="#亮点功能">亮点功能</a> ·
-  <a href="#开始使用">开始使用</a> ·
-  <a href="#未来展望">未来展望</a> ·
-  <a href="docs/usage.md">使用文档</a>
+  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ 下载 Windows 版</strong></a> ·
+  <a href="#它解决什么问题">为什么</a> ·
+  <a href="#亮点">亮点</a> ·
+  <a href="#三步开始">开始使用</a> ·
+  <a href="README.en.md">English</a>
 </p>
 
 <p align="center">
-  <img src="docs/images/overview.png" alt="Project Grid 总览：多个真实终端同屏显示任务状态" width="1100" />
+  <img src="docs/images/demo.gif" alt="Project Grid 演示：一个项目完成后亮起，点开以文档排版阅读 Codex 的对话，答案实时出现，再缩回总览" width="960" />
 </p>
-<p align="center"><sub>真实桌面界面，使用演示项目展示。自然风景透过液态玻璃表面，每个项目的文字与状态保持清楚。</sub></p>
+<p align="center"><sub>真实界面，演示项目。卡片蓝色表示正在处理，做完后粉色呼吸提醒；点开就能读到它这一轮做了什么。</sub></p>
 
-## 为什么做 Project Grid
+## 它解决什么问题
 
-同时开发几个项目时，最容易错过的，是另一个窗口里早已结束的任务。
+AI 编码助手一跑就是几分钟。只盯一个项目太浪费，开五个窗口又总会错过——另一个窗口里的任务早就结束了，或者它卡在一个问题上等你回答，而你毫不知情。
 
-Project Grid 把项目放进同一个窗口：每个方框都有独立终端，Codex 或 Claude Code 每轮结束时用短暂呼吸光晕提醒，随后保持静态红框。点开处理、继续下达指令，再回到总览；其他项目始终可以继续运行。
+**Project Grid 把每个项目放进一张卡片**：每张卡片是一个真实终端，运行 Codex CLI 或 Claude Code。你下完指令就去忙别的，它们会自己告诉你进展：
 
-## 亮点功能
+- 🔵 **整块玻璃泛蓝**：正在处理，可以不用管它
+- 🩷 **粉色呼吸、语音播报**：这一轮做完了，等你查看
+- 🟢 **绿色常亮**：已经看过，随时下达下一条指令
 
-### 🧩 所有项目，一屏可见
+不用换工具：终端里跑的就是你装好的 `codex` 和 `claude`，按键、颜色、交互和平时一模一样。
 
-添加本地目录或 Linux SSH 项目，网格随项目数量自动排列。本地默认使用 PowerShell，也可在设置里改用命令提示符 (cmd)，远程使用 Bash，保留 Codex 的终端交互和 ANSI 色彩。顶部栏只留设置按钮，搜索和添加项目用快捷键，把更多空间留给代码与输出。
+## 亮点
 
-按住项目顶部，整个真实方框会随鼠标移动，周围项目平滑让位并依次排列。松开即可保存顺序，拖动期间仍能看到终端的实时输出。
+### 🧩 一屏看全所有项目
 
-点击项目顶部标题栏或展开按钮，卡片会从当前位置逐渐放大，返回时缩回网格。终端正文和输入区保持小窗口，可直接输入、选字和复制。切换过程保留终端会话与未发送的输入。默认使用平滑缩放，可在设置中选择跟随系统或关闭动画。
+<img src="docs/images/overview.jpg" alt="总览：六个项目，正在处理的卡片泛蓝，待查看的粉色，已完成的绿色，Codex 与 Claude Code 并排" width="100%" />
 
-同一个项目也可以同时开多个终端：点击标题栏的 **＋**，自动分屏排列。每个终端有独立输入、Codex 状态与关闭按钮；重开应用时分别恢复各自的会话，关闭其中一个不会重启其他终端。
+网格随项目数量自动排列，鼠标移到哪张卡片，哪张就轻轻浮起。按住标题栏拖动排序，点开放大、按快捷键缩回，终端会话和没发出去的草稿都不会丢。同一个项目还能开多个终端分屏。本地项目和 Linux SSH 项目放在同一张网格里。
 
-### 🌐 本地与服务器，放在同一张网格里
+**完成提醒是准确的。** 状态读自 Codex 和 Claude Code 自己记录的会话轮次，而不是猜测终端安静了多久：子任务先结束不算，命令跑完不算，只有主任务这一轮真正结束才提醒，而且每条指令只提醒一次。
 
-沿用 VS Code Remote-SSH 的主机配置，选择主机、填写远程目录即可连接。终端、文件目录、图片、HTML 和视频预览都通过 SSH 访问，无需把整个项目下载到本机。密钥、端口和跳板机沿用已有配置，密码仅用于当次认证。
+### 📖 读得懂的对话，而不是字符格
 
-### ⏯️ 重新打开，接着上次写
+<img src="docs/images/reading-view.jpg" alt="阅读视图：Codex 的回答按文档排版，标题、列表、代码块和折叠的工具调用；右侧活动栏实时显示每一步和本轮概览" width="100%" />
 
-启动时自动恢复上次打开的终端，并进入对应目录最近的 Codex 会话。检测到上一轮被中断时，自动发送「继续」；已经结束的一轮只恢复对话，等待你的下一条指令。标绿完成的项目保持安静，也可以在设置中关闭自动恢复。
+一键把 Claude Code 或 Codex 的对话切换成**文档排版**：标题、彩色圆点列表、行内代码、带「复制」按钮的代码块，工具调用折叠成一行。底部输入框直接发给下面的真实终端，随时切回终端。
 
-### 📋 输出随手复制，指令直接粘贴
+右侧的**活动栏**实时列出它的每一步：改了哪些文件、跑了什么命令、调用了哪个技能和 MCP 工具（附用途说明），下半部分是本轮概览——任务、进度、各类工具调用次数、修改的文件。
 
-鼠标选中终端文字即可用 Ctrl+C 复制，右键可「复制全部终端文字」，包含当前缓冲区里的历史输出。Ctrl+V、Ctrl+Shift+V 和 Shift+Insert 均可粘贴指令；搜索框、SSH 主机和认证输入框也支持常规粘贴。
+### ✅ 逐块审查它改了什么
 
-### 🎙️ 说出指令，在本机转成文字
+<img src="docs/images/git-review.jpg" alt="Git 审查：按 Git 方式显示每一处修改，红色是去掉的行，绿色是新加的行，每一块都能单独保留或还原" width="100%" />
 
-按 **Ctrl+T**，当前项目方框正中出现话筒，对当前终端说话；说完按回车，文字自动输入并发送，Esc 取消。也可点击终端上的麦克风：再次点击只插入文字、由你确认后发送。
+一轮做完，在 Git 栏点开改动的文件，按 `git diff` 的方式逐块显示：去掉的行红色，新加的行绿色。**每一块单独决定**：保留就加入暂存区，不要就还原。已暂存的可以取消，删掉的文件能找回。不用离开窗口，也不用记 `git add -p`。
 
-首次下载语音识别模型后，无需 API 密钥，录音不会上传。
+### 🎙️ 说出指令，听它汇报
 
-一轮完成时，还会用自然的年轻女声播报「哪个项目完成了什么」。播报内容在设置的「提醒」里选择：
+<img src="docs/images/voice.jpg" alt="语音输入：卡片中央浮现玻璃质感的话筒窗口，声波随声音起伏" width="100%" />
 
-| 播报内容 | 说什么 | 代价 |
-| --- | --- | --- |
-| **快速播报**（默认） | 项目名加这一轮指令的第一句，一轮只说一次：「界面开发，给登录页加上验证码，完成」 | 立即播报，不调用模型 |
-| **编码助手总结** | 由完成这一轮的 Codex 或 Claude Code 自己用一句话说明结果：「界面开发，登录页已加上验证码，三个测试都过了，等你确认过期时间」 | 用现有登录、无需密钥；晚约 10 秒，每轮多一次调用 |
-| **云端模型** | 同上，由你选择的云端模型总结：OpenAI、Anthropic、DeepSeek、通义千问、智谱、Moonshot、硅基流动、OpenRouter，或任何 OpenAI 兼容接口 | 需要 API 密钥；这一轮的最终回复会发送给服务商 |
-| **本地模型** | 同上，由本机或局域网里的小模型总结：Ollama、vLLM、LM Studio、llama.cpp，或任何 OpenAI 兼容接口 | 内容不离开你的设备；需要自己部署，1–3B 的小模型就够 |
+按 **Ctrl+T** 对当前终端说话，回车发送。语音识别在本机离线完成，**录音不会上传**，无需 API 密钥。
 
-API 密钥用系统加密（Windows DPAPI）保存在本机，只在主进程里使用，不写入工作区配置。设置里可以获取模型列表并点「测试总结」试一次。总结失败或超时时，自动退回快速播报。女声来自本地 MeloTTS 模型（约 74 MB，开启语音播报后在后台下载，离线合成）；下载完成前先用 Windows 自带语音。在设置的「语音播报」里开关、填写自己的提示语（`{项目}` 代表项目名，`{任务}` 代表完成的内容）并试听。
+一轮做完时会用自然的女声播报，例如「支付服务，退款接口加幂等校验，完成」。想听更有用的内容？设置里可以让 Codex / Claude Code 自己总结一句结果，或接入云端模型、Ollama / vLLM 等本地模型来总结。
 
-觉得玻璃效果下文字不够锐利？在设置的「外观」里把「界面材质」改为 **实色**：面板不透明，Windows 用 ClearType 渲染文字，也更省显卡。
+### 还有这些
 
-设置里的「语言 / Language」可切换中文与英文界面，通知、对话框、托盘和语音播报随之切换。
+- **重开即续上**：启动时恢复上次的终端和 Codex / Claude Code 会话，被打断的任务自动发送「继续」。
+- **SSH 远程项目**：沿用 VS Code Remote-SSH 的主机配置，终端、文件、Git、预览全部走 SSH，不用把项目下载下来。
+- **文件就在手边**：目录树、自动保存的编辑器，图片、网页、视频、Markdown 直接预览；`Ctrl+点击`终端里的路径直接打开。
+- **好看，也清楚**：液态玻璃界面配三套自然壁纸主题；想要最锐利的文字，切换到「实色」材质即可。
+- **中英双语、快捷键可改、自动更新**；第一次打开时在界面上一步步带你上手。
 
-### 📂 常用文件操作，留在工作区内
+## 三步开始
 
-资源管理器支持新建文件与文件夹、重命名、删除、Ctrl/Shift 多选和复制粘贴。复制的文件可以直接粘贴到 Windows 资源管理器；SSH 文件会先下载到本机缓存，也能把本机剪贴板文件上传到远程项目。
+**需要：** Windows 10 / 11（x64），以及 [Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://docs.anthropic.com/claude-code) 至少一个——没装也没关系，「设置 › 编码助手」里可以一键安装。
 
-从电脑复制文件或文件夹后，可在目标目录按 Ctrl+V、右键选择“粘贴”，或点击目录栏的粘贴按钮。点击列表空白处可粘贴到项目根目录，重名文件会另存副本。
+1. **下载安装**：从 [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 下载 `Project-Grid-Setup-版本号-x64.exe`（也有免安装的便携版）。
+2. **添加项目**：按 `Ctrl+Shift+N` 选择项目文件夹，可以一次选多个，也可以添加 SSH 远程项目。
+3. **开始工作**：在卡片的终端里输入 `codex` 或 `claude`，下达指令，然后去忙别的。粉色亮起时回来看结果。
 
-右键文件或文件夹，可以复制 **绝对路径** 或 **相对路径**；支持多选，也可按 Ctrl+Shift+C 复制绝对路径。SSH 项目复制的是服务器上的 Linux 路径。
+<details>
+<summary><strong>常用快捷键</strong>（都可以在设置里改）</summary>
 
-文本和代码文件打开后即可编辑，左侧显示行号并高亮光标所在行。编辑会自动保存：停止输入约 1 秒后写入，切换文件或离开窗口前也会保存；想自己掌握时机，可在设置里关闭自动保存，按 **Ctrl+S** 保存。HTML 点击「源码」即可编辑；Markdown 支持编辑与渲染预览切换，未保存的修改也能预览。保存会保留原编码、BOM 和换行格式；外部程序改动过文件时会提示冲突，切换文件或退出前会提醒处理未保存内容。大文件按段编辑，保存当前段时保留其余内容。
-
-Markdown 预览支持标题、表格、引用、代码块、任务列表、图片和链接。本地及 SSH 项目的相对图片与文件链接均从文档所在目录解析。
-
-### 🔴 每次完成，都有明确提醒
-
-运行状态按当前主会话的轮次记录同步：子任务先结束时，主任务仍显示「正在处理」；主任务结束后才提醒。中断、等待指令与完成分别显示，已结束的历史记录不会让新任务提前变绿。
-
-| 状态 | 表示什么 | 接下来怎么做 |
-| --- | --- | --- |
-| 🔴 缓慢呼吸后留下柔光 | Codex / Claude Code 本轮结束，等你查看 | 点击进入全屏，或直接在终端发送下一条指令 |
-| 🟢 绿框常亮 | 本轮已完成，结果已查看 | 需要继续时直接输入下一条指令 |
-| ⚪ 无边框 | 终端就绪，或 Codex / Claude Code 会话已打开 | 继续工作；会话状态不等同于模型正在生成 |
-
-柔光会保留到你查看为止，搜索、切换窗口或关闭到托盘都不会清掉提醒；在这个终端里发送下一条指令也算已查看。还可以在设置中开启系统通知、提示音和语音播报。
-每次提交新指令后只提醒一次；完成时光从方框边缘向终端内部缓缓呼吸 3 次（每次 3 秒）后停止，留下一层静态柔光。工作中边框保持常亮、不闪烁。没有提交下一条指令时，即使后台再次发送不同 ID 的完成事件，也不会重复提醒或刷新完成时间。查看结果、切换窗口和重启软件不会重新启用旧提醒，已查看的本轮完成保持绿色常亮。
-
-状态点保留蓝色处理、粉色待查看、绿色完成的含义。光晕位于终端文字下方，只照亮半透明的终端底色，文字保持清晰、不闪烁。
-
-### 👀 它正在做什么，不用猜
-
-展开项目后，终端右侧的 **活动栏** 按时间列出 Codex 或 Claude Code 这一轮的每一步：修改和读取了哪些文件、运行了什么命令、调用了哪个技能（附它的用途说明，取自 SKILL.md）、调用了哪个 MCP 服务的哪个工具，正在进行的一步有转动标记，正在改代码时整行变为橙色。活动栏可用标题栏上的按钮收起。
-
-这些信息读自两个工具自己写下的会话记录，不注入额外的 hook，也不会拖慢它们。目前支持本地项目。
-
-### 📖 对话按文档排版，不再盯着字符格
-
-卡片标题栏的「阅读视图」按钮把 Claude Code 或 Codex 的对话换成文档排版：你的指令是一个个带色边的气泡，回答按 Markdown 渲染——标题带色条、列表是彩色圆点、行内代码是小色块、代码块带「复制」按钮，工具调用折叠成一行、运行中自动展开。底部状态行显示它正在做的那一步，输入框里写的话会直接发到下面的真实终端，需要时一键切回终端。内容读自两个工具自己写的会话记录，和终端里说的完全一致；每个终端记住自己上次的显示方式。
-
-留在终端里也会好看一些：空行之后单独成行的加粗标题显示为同样的粉色，未着色的 `•` / `●` 圆点变为彩色圆点；工具自己着色的标记（如表示成功或失败的绿色、红色圆点）保持原样。
-
-### 🖥️ 点开专注，返回继续总览
-
-点击项目顶部标题栏、等待状态或展开按钮，进入原生全屏。终端正文和输入区仍可直接在小窗口操作。左侧展开熟悉的文件目录，查看代码与产物；目录栏可以收起，给终端让出空间。返回总览时，原来的终端与任务仍然保留。
-
-### 🌿 Git 更改与提交，一栏看清
-
-展开项目后，在侧栏顶部的「文件 | Git」切换到 **Git**，同一侧栏显示 **未提交更改** 和 **已提交历史**。已暂存、工作区更改、合并冲突分别排列；提交关系图呈现分支与合并，点开记录查看这次提交涉及的文件。点开列表里的文件，右侧按 Git 的方式显示每一处更改：去掉的行是红色、新加的行是绿色，两侧标注行号。每一处都可以单独决定：**保留**把它加入暂存区，**还原**把这些行恢复成修改前的样子；已暂存的更改可以取消暂存，删除的文件也能找回。Codex 或 Claude Code 改完一轮，就在这里逐块过目，再决定留下什么。切回「文件」即回到目录树，文件旁的颜色与 M / A / U 标记帮助定位变化。本地和 Linux SSH 项目均支持，查看状态不会中断终端任务。
-
-### 🎬 生成的结果，直接在这里看
-
-| 文件与操作 | 应用内体验 | 带来的便利 |
-| --- | --- | --- |
-| PNG、JPEG、WebP、GIF、ICO 等 | 直接看图，适应窗口、原尺寸、缩放 | 不必另外寻找图片查看器 |
-| HTML / HTM | 渲染网页，可切换源码；支持项目内图片、CSS、脚本和 JSON | 不必为了查看静态报告反复切换窗口 |
-| MP4、WebM 等视频 | 播放、暂停、拖动进度、音量、全屏 | 不必先打开独立播放器 |
-| 大文本、日志与 HTML 源码 | 分段读取、按页跳转，只渲染可见行 | 不再因为超过 1 MiB 被要求换编辑器 |
-| Ctrl + 鼠标左键 | 网页链接打开浏览器，项目内文件直接预览 | 不必复制路径再去找文件 |
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/images/image-preview.png" alt="应用内图片预览，提供缩放和原尺寸查看" /></td>
-    <td width="50%"><img src="docs/images/video-preview.png" alt="应用内视频播放器，支持播放和进度跳转" /></td>
-  </tr>
-  <tr>
-    <td align="center">看图、检查细节</td>
-    <td align="center">播放视频、检查输出</td>
-  </tr>
-</table>
-
-文件预览期间，终端任务继续运行。产物更新后点击刷新，就能查看新的内容。
-
-### 🌿 让长时间工作更舒服
-
-macOS 的山湖、海岸与暮色山峰透过顶栏、侧栏和终端。液态玻璃风格用轻薄染色、弧面亮边和真实背景折射表现厚度，取代整面磨砂；文字与 ANSI 色彩保持清晰，输入和选择不受光效影响。三个主题均支持，系统减少透明度时切换到实色表面。详见 [材质设计说明](docs/glass-material.md)和[壁纸来源](docs/background-art.md)。
-
-在设置中选择 **林间光影、山青蓝、西野红**，分别搭配 High Sierra、Big Sur 和 Sierra 自然壁纸。2560 像素宽的 WebP 随应用离线打包（背景经过柔化，更高分辨率看不出差别），缩略图与实际背景一致。主题即时生效并记住选择，终端 ANSI 色彩及任务状态灯保持各自含义，切换主题不会重启终端或丢掉草稿。
-
-### 🔄 安装一次，后续更新更省心
-
-Windows 安装版会自动检查新版本，在后台下载更新。设置中可以查看当前版本、下载进度，并一键重启安装；仍有终端打开时，会先确认是否结束任务。更新不会擅自重启正在工作的窗口。
-
-## 开始使用
-
-Project Grid 基于 Codex CLI 和 Claude Code 这两个命令行工具，至少需要安装其中一个；可在「设置 > 编码助手」中一键安装。
-
-**Windows 10 / 11 · x64。Codex CLI 或 Claude Code 安装在实际运行项目的本机或远程主机上（Claude Code 目前支持本地项目）。**
-
-1. 从 [Releases 下载最新版](https://github.com/noeigenstate/project-grid/releases/latest)，运行 `Project-Grid-Setup-版本号-x64.exe` 完成安装，后续可自动检查和下载更新。临时使用也可选择免安装的 `Project-Grid-版本号-win-x64.exe`。
-2. 按 **Ctrl+Shift+N**（可在设置中改）打开「添加项目」，选择「本地项目」或「SSH 远程项目」。远程项目填写主机别名与 Linux 目录；服务器需要 Python 3.6+、Bash。移除过的本地项目会留在「最近的项目」里，点击即可重新添加，也可逐个删除或清空。在终端输入 `codex`，或点击 **启动 Codex**。
-3. 红框亮起后点开，查看结果并继续对话。完成后点击 **返回总览**。
-4. 查看本轮结果后，直接输入下一条指令；不需要人工标记项目完成。
-
-> **从旧版迁移：**先等任务结束，再从设置或托盘退出旧版，运行新的安装包。只关闭窗口可能仍在托盘运行。项目列表、未读记录和会话历史会保留；旧人工完成项目保持停止，需要时手动启动终端。安装版可在设置中更新，便携版需要手动下载新文件。
-
-| 快捷操作 | 功能 |
+| 快捷键 | 功能 |
 | --- | --- |
-| `Ctrl + Shift + F` | 总览中搜索项目 |
 | `Ctrl + Shift + N` | 添加项目 |
-| `Ctrl + Tab` / `Ctrl + Shift + Tab` | 切到下一个 / 上一个项目；总览中只移动输入焦点，不放大 |
 | `Ctrl + Shift + Enter` | 放大或还原当前项目 |
-| `F11` | 整个窗口全屏或还原 |
-| `Ctrl + Shift + T` | 在当前项目新建终端并分屏 |
-| `Ctrl + B` | 全屏项目中展开或收起目录 |
-| `Ctrl + Shift + G` | 返回项目总览 |
-| `Ctrl + ,` | 打开设置 |
-| `Ctrl + 鼠标左键` | 打开终端中的链接 |
-| `Ctrl + C` / `Ctrl + Shift + C` | 复制选中的终端文字；未选中时 Ctrl+C 中断命令 |
-| `Ctrl + Shift + A` | 全选终端文字 |
-| `Ctrl + V` / `Ctrl + Shift + V` / `Shift + Insert` | 粘贴到终端 |
-| `Shift + Enter` | 在当前输入中换行；普通 Enter 提交 |
-| `Ctrl + T` | 对当前终端语音输入；回车识别并发送，Esc 取消 |
+| `Ctrl + Shift + G` | 返回总览 |
+| `Ctrl + Tab` / `Ctrl + Shift + Tab` | 下一个 / 上一个项目 |
+| `Ctrl + Shift + T` | 当前项目新建终端并分屏 |
+| `Ctrl + T` | 语音输入，回车发送，Esc 取消 |
+| `Ctrl + Shift + F` | 搜索项目 |
+| `Ctrl + B` | 展开或收起目录栏 |
+| `F11` | 窗口全屏 |
+| `Ctrl + ,` | 设置 |
 
-第一次打开时，教程直接在界面上一步步指引：气泡指向要操作的位置（添加项目、在终端里启动 codex 或 claude、下达指令、放大查看、设置），其余部分暂时不可用，做完这一步自动进入下一步，也可以跳过；之后可在设置里点「使用指南」重看。每次更新后会显示本次更新内容和当前快捷键。
+</details>
 
-以上应用快捷键都可以在设置的「键盘快捷键」里点一下按键、按下新的组合改掉，也能一键恢复默认。
-| 终端右键 | 复制、复制全部终端文字、全选、粘贴 |
-
-## 几个实用说明
+## 常见问题
 
 <details>
-<summary><strong>粉框表示待查看，绿框表示本轮完成已查看</strong></summary>
+<summary><strong>我的代码和数据会被上传吗？</strong></summary>
 
-红框来自本应用终端中 Codex 的主会话轮次记录，或 Claude Code 每轮提交与结束时的 hook。Claude Code 的 hook 通过启动参数临时注入，不修改你的配置文件，你自己的 hook 照常运行。终端退出、普通命令结束、长时间没有输出，都不会被误判为本轮完成。查看后仍保持完成状态的会话以绿色显示；提交新任务时恢复运行状态，下一轮完成后再提醒。
+Project Grid 本身**不收集任何数据，没有统计上报**。它只会访问：GitHub（检查更新）、Hugging Face 或其国内镜像（首次下载离线语音模型）。只有当你在设置里主动选择用云端模型总结播报内容时，才会把那一轮的最终回复发给你选的服务商。Codex 和 Claude Code 本身与各自服务的通信，和你平时在终端里使用时一样。
 
 </details>
 
 <details>
-<summary><strong>与现有 VS Code 如何配合？</strong></summary>
+<summary><strong>和直接开几个终端 / VS Code 有什么区别？</strong></summary>
 
-Project Grid 为所选目录创建独立终端，不会搬入 VS Code 中已经运行的终端。需要继续已有 Codex 对话时，可在结束原窗口会话后使用 `codex resume`。文件直接在应用内编辑、预览和保存，应用不再提供跳转 VS Code 的入口。
-
-SSH 主机列表仍兼容 VS Code 的 SSH 配置，支持 `remote.SSH.configFile` 指定的配置文件。远程目录链接及项目菜单直接打开应用内资源管理器。
-
-窗口默认关闭到托盘，任务继续运行。真正退出后，项目目录、未读记录及终端恢复状态保存在本机；下次启动按设置恢复 Codex 会话。对话历史由各主机上的 Codex CLI 保存，普通 shell 命令不会自动重跑。详见 [会话恢复](docs/usage.md#自动恢复-codex-会话)。
+终端还是那个终端，区别在于 Project Grid **知道 AI 助手在什么状态**：它读取 Codex 和 Claude Code 的会话记录，准确判断这一轮是在处理、做完了还是被中断，并用颜色、通知和语音告诉你。再加上阅读视图、活动栏和逐块 Git 审查，是专门为「同时盯多个 AI 任务」设计的。
 
 </details>
 
 <details>
-<summary><strong>大文件、网页和视频有哪些注意事项？</strong></summary>
+<summary><strong>支持 macOS / Linux 吗？</strong></summary>
 
-没有固定的文本、图片或 HTML 文件大小门槛。大文本按约 256 KiB 分页，支持 UTF-8 和带 BOM 的 UTF-16；行号与复制针对当前页。图片解码和复杂网页渲染仍受可用内存影响。
-
-视频按需读取。MP4（H.264）与 WebM 已做实际播放验证；本地文件编码不被内置播放器支持时，可选择系统播放器，远程文件需先下载后在本机播放。
-
-HTML 在独立来源的隔离框架中运行，不能访问应用的 Node.js 或终端接口。支持项目内相对资源，HTTPS CDN 需要联网；依赖开发服务器的前端源码应先构建再预览。相对文件链接按项目根目录解析。
+目前只有 Windows 10 / 11 x64 桌面版。远程项目可以是任意装有 Python 3.6+ 和 Bash 的 Linux 服务器。macOS 与 Linux 桌面版在规划中，欢迎在 [Issues](https://github.com/noeigenstate/project-grid/issues) 里告诉我们你的需求。
 
 </details>
 
-## 未来展望
+<details>
+<summary><strong>会改动我的 Codex / Claude Code 配置吗？</strong></summary>
 
-接下来希望让多项目协作更顺手。以下是规划方向，尚未上线，欢迎通过 [Issues](https://github.com/noeigenstate/project-grid/issues) 讨论优先级。
+不会。完成提醒所需的设置在启动时临时传入，不写入你的配置文件，你自己的 hook 和设置照常生效。
 
-- [ ] **项目分组与快捷切换**：按客户、产品或开发阶段组织工作区。
-- [ ] **更丰富的 Agent 接入**：让更多命令行编码助手接入统一的完成提醒。
-- [ ] **任务与产物记录**：更容易回看每一轮的结果，快速找到生成的图片、网页和视频。
-- [ ] **更强的文件查看**：大文件搜索、行号定位与更丰富的格式支持。
-- [ ] **更多运行环境**：探索 macOS、Linux 桌面客户端，以及 WSL 工作区。
+</details>
 
-## 本地开发
+更多细节——会话恢复、SSH、文件预览、播报方式、开发与发布——见 [使用文档](docs/usage.md)。
 
-使用 Windows 与 Node.js 24：
+## 路线图
+
+- [ ] 项目分组与快捷切换
+- [ ] 更多命令行编码助手接入统一提醒
+- [ ] 每一轮的结果与产物记录，方便回看
+- [ ] macOS / Linux 桌面版，WSL 工作区
+
+有想法？欢迎提 [Issue](https://github.com/noeigenstate/project-grid/issues)。觉得有用的话，点个 ⭐ Star 让更多人看到。
+
+## 参与开发
 
 ```powershell
 git clone https://github.com/noeigenstate/project-grid.git
 cd project-grid
 npm ci
-npm start
+npm start              # 开发运行
+npm test               # 单元测试
+npm run test:desktop   # 真实桌面交互测试
+npm run dist           # 构建安装版与便携版
 ```
 
-```powershell
-npm run build          # 类型检查与前端构建
-npm test               # 状态、文件读取、链接与资源访问测试
-npm run test:desktop   # 真实桌面、终端、图片与视频交互验证
-npm run test:sessions  # 重启恢复、复制粘贴与 SSH 桌面交互验证
-npm run test:workspace # 文件操作、模拟麦克风与语音输入界面验证
-npm run dist           # 构建 Windows 安装版、便携版与更新文件
-```
-
-采用 **Electron · React · TypeScript · xterm.js · node-pty · OpenSSH**。GitHub Actions 自动构建 Windows 安装版和便携版；版本标签通过单元测试、打包版桌面测试和 Linux SSH 集成测试后发布到 Releases，并附自动更新文件与 SHA-256 校验信息。详细说明见 [开发与发布文档](docs/usage.md#github-自动构建)。
+Electron · React · TypeScript · xterm.js · node-pty。每个版本都要通过单元测试、打包版桌面测试和 Linux SSH 集成测试后才会发布。README 里的截图和演示由 `scripts/readme-shots.mjs` 从演示项目自动生成。
 
 ---
 
 <p align="center">
-  <strong>让任务继续运行，让注意力回到需要你的项目。</strong><br />
+  <strong>让 AI 去干活，让注意力回到需要你的项目。</strong><br />
   <a href="https://github.com/noeigenstate/project-grid/releases/latest">下载体验</a> ·
-  <a href="https://github.com/noeigenstate/project-grid/issues">反馈问题与建议</a>
+  <a href="https://github.com/noeigenstate/project-grid/issues">反馈与建议</a>
 </p>
