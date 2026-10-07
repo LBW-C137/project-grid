@@ -813,5 +813,10 @@
   "终端渲染": "Terminal rendering",
   "GPU 加速：用显卡绘制终端文字，助手工作时处理器占用低得多；如果终端显示异常，改用兼容模式": "GPU: the graphics card draws terminal text, so a working assistant uses far less processor time. If terminals look wrong, use Compatible.",
   "GPU 加速": "GPU",
-  "兼容模式": "Compatible"
+  "兼容模式": "Compatible",
+  "终端改用显卡绘制：助手工作时窗口的处理器占用降到原来的约四分之一，低配置电脑上也流畅；如果终端显示异常，可在「设置 › 外观 › 终端渲染」选择兼容模式。": "Terminals are now drawn by the graphics card: while assistants work, the window uses about a quarter of the processor time it did, so it stays smooth on modest computers. If a terminal looks wrong, choose Compatible in Settings › Appearance › Terminal rendering.",
+  "活动栏的实时动态一行一步：「时间：正在做什么」，命令用一句话说明，鼠标悬停可看完整命令。": "The live activity shows one line a step, \"time: what it is doing\", with commands described in a few words; hover to see the full command.",
+  "本轮概览列出你连续发出的提示：正在处理哪一条、哪些在排队，完成后自动从列表移除。": "The round overview lists the prompts you sent: which one is being worked on and which are waiting; each leaves the list when it is done.",
+  "启动时恢复会话，或终端刚打开就输入命令，第一个字符不再丢失。": "Restoring a session at startup, or typing as soon as a terminal opens, no longer loses the first character.",
+  "每张卡片只有一圈边缘；正在处理时整块玻璃泛蓝，不再有粗蓝线。": "Each card has a single edge; while working the whole pane turns blue instead of showing a thick blue line."
 }
