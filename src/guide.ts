@@ -1,9 +1,9 @@
 // What the usage guide's last page lists for this release. Update it with every version: the guide opens on
 // first use and after each update, on this page for people who are updating.
 export const WHATS_NEW: string[] = [
-  '终端改用显卡绘制：助手工作时窗口的处理器占用降到原来的约四分之一，低配置电脑上也流畅；如果终端显示异常，可在「设置 › 外观 › 终端渲染」选择兼容模式。',
-  '活动栏的实时动态一行一步：「时间：正在做什么」，命令用一句话说明，鼠标悬停可看完整命令。',
-  '本轮概览列出你连续发出的提示：正在处理哪一条、哪些在排队，完成后自动从列表移除。',
-  '启动时恢复会话，或终端刚打开就输入命令，第一个字符不再丢失。',
-  '每张卡片只有一圈边缘；正在处理时整块玻璃泛蓝，不再有粗蓝线。',
+  'macOS 版（Apple 芯片）：本地终端使用 zsh，照常加载你自己的启动文件；codex 和 claude 的每轮状态、完成提醒和会话恢复与 Windows 版一致。终端里用 ⌘C、⌘V 复制粘贴，⌘ 点按打开链接。',
+  '编辑器标出尚未暂存的 Git 改动；遇到合并冲突，可一键保留当前、传入或两者。',
+  'Codex 和 Claude Code 的对话默认在阅读视图里打开，像文档一样阅读；粘贴进消息框的图片会交给助手。',
+  '活动栏不再显示进度条：实时动态和本轮概览各占一半，过长的步骤在栏内截断。',
+  '显卡绘制的终端里，暗色和斜体文字不再带黑底。',
 ];

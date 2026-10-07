@@ -386,6 +386,8 @@ jobs:
           Install Codex CLI on the computer or Linux SSH host where your project runs.
 
           - New: Project Grid for macOS. Local terminals run zsh with your own start-up files (~/.zprofile, ~/.zshrc and the rest, untouched); codex and claude report each turn, light the card when it finishes and resume after a restart, as on Windows. SSH projects work the same. ⌘C, ⌘V and ⌘A copy, paste and select in terminals, Control+C interrupts, ⌘-click opens links, ⌘Q asks before closing running terminals. Microphone dictation asks for permission once.
+          - The editor marks Git changes that are not staged yet, and a merge conflict keeps the current side, the incoming side or both in one click.
+          - Codex and Claude Code conversations open in the reading view by default and read like a document; images pasted into the message box go to the agent.
           - Multiple project terminals with completion alerts.
           - Choose PowerShell or Command Prompt (cmd) for local terminals in Settings. Command Prompt keeps the same integration: prompt and directory tracking, codex and claude status, Claude hooks, spoken notices and session restore with continue.
           - A short usage guide opens on first use and after every update (on what is new): the three steps of a round, the main features and the shortcuts in use. Reopen it any time from Settings.
