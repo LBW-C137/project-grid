@@ -94,4 +94,34 @@ class PromptMarkers {
   }
 }
 
-module.exports = { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, PROMPT_MARKER };
+// PowerShell asks the terminal where the cursor is (ESC[6n) as it starts and as it draws a prompt, and drops
+// keys that arrive before the answer. The window gives the answer; on a busy machine it can come after the
+// first keys of a command typed or restored at once, and "codex" arrived as "odex". So input other than an
+// answer waits while a question is open, at most a moment, and then goes in order.
+const QUESTION = /\x1b\[\??6n/g, ANSWER = /\x1b\[\??\d+;\d+R/g;
+class InputGate {
+  constructor(write, { now = Date.now, wait = 1500 } = {}) { Object.assign(this, { write, now, wait }); this.open = 0; this.askedAt = 0; this.held = []; this.timer = null; }
+  // What the shell printed.
+  output(data) { const asked = String(data).match(QUESTION)?.length || 0; if (asked) { this.open += asked; this.askedAt = this.now(); } }
+  // What goes to the shell: keys, pasted text, a restored command, or the window's answers.
+  input(data) {
+    if (isTerminalResponse(data)) {
+      const answers = data.match(ANSWER)?.length || 0;
+      this.write(data);
+      if (answers) { this.open = Math.max(0, this.open - answers); if (!this.open) this.release(); }
+      return;
+    }
+    if (this.held.length || (this.open && this.now() - this.askedAt < this.wait)) { this.held.push(data); this.schedule(); return; }
+    this.open = 0; this.write(data);
+  }
+  release() { clearTimeout(this.timer); this.timer = null; const held = this.held; this.held = []; for (const data of held) this.write(data); }
+  // An answer that never comes (no window showing the terminal yet) does not hold input for longer than wait.
+  schedule() {
+    if (this.timer) return;
+    this.timer = setTimeout(() => { this.timer = null; this.open = 0; this.release(); }, Math.max(0, this.askedAt + this.wait - this.now()));
+    this.timer.unref?.();
+  }
+  dispose() { clearTimeout(this.timer); this.timer = null; this.held = []; }
+}
+
+module.exports = { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, PROMPT_MARKER, InputGate };

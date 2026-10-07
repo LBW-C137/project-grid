@@ -809,5 +809,9 @@
   "已完成：{task}": "Done: {task}",
   "没有待处理的提示": "No prompts waiting",
   "提示": "Prompts",
-  "排队中": "Waiting"
+  "排队中": "Waiting",
+  "终端渲染": "Terminal rendering",
+  "GPU 加速：用显卡绘制终端文字，助手工作时处理器占用低得多；如果终端显示异常，改用兼容模式": "GPU: the graphics card draws terminal text, so a working assistant uses far less processor time. If terminals look wrong, use Compatible.",
+  "GPU 加速": "GPU",
+  "兼容模式": "Compatible"
 }

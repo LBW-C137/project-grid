@@ -25,7 +25,8 @@ await fs.writeFile(path.join(codexHome, 'sessions', `rollout-${sessionId}.jsonl`
   { type: 'session_meta', payload: { id: sessionId, cwd: project.path, source: 'cli' } },
   { type: 'event_msg', payload: { type: 'task_started' } },
 ].map(value => JSON.stringify(value)).join('\n') + '\n');
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [{ ...project, restore: { terminal: true, codex: true, cwd: project.path, threadId: sessionId } }], settings: { shell: 'cmd', restoreSessions: true, notifications: false, sound: false, announce: false, closeToTray: false } }));
+// These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [{ ...project, restore: { terminal: true, codex: true, cwd: project.path, threadId: sessionId } }], settings: { terminalRenderer: 'dom', shell: 'cmd', restoreSessions: true, notifications: false, sound: false, announce: false, closeToTray: false } }));
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir, PROJECT_GRID_TEST_RESTORE: '1', CODEX_HOME: codexHome };
 const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path'); env[pathKey] = bin + path.delimiter + env[pathKey];
 delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;

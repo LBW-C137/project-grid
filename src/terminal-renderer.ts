@@ -1,0 +1,46 @@
+import { useSyncExternalStore } from 'react';
+import type { IDisposable, Terminal } from '@xterm/xterm';
+import { WebglAddon } from '@xterm/addon-webgl';
+
+// Which renderer draws the terminals. The GPU renderer (WebGL) draws text from a glyph atlas: a working agent
+// redraws its screen ten times a second, and with the DOM renderer every redraw is rows of HTML to lay out
+// again, which on a slow processor took most of the window's time. "dom" is the compatible renderer, for a
+// graphics driver that draws the GPU one wrongly.
+export type TerminalRenderer = 'gpu' | 'dom';
+let current: TerminalRenderer = 'gpu';
+const listeners = new Set<() => void>();
+export function setTerminalRenderer(value: TerminalRenderer) { if (value === current) return; current = value; listeners.forEach(listener => listener()); }
+const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+export function useTerminalRenderer() { return useSyncExternalStore(subscribe, () => current); }
+export const terminalRenderer = () => current;
+
+// Chromium keeps at most 16 WebGL contexts in a window and drops the oldest beyond that. Twelve terminals draw
+// on the GPU; any more draw with the DOM renderer, so no visible terminal loses its context to another.
+const GPU_LIMIT = 12;
+let active = 0;
+
+// Draws a terminal on the GPU until disposed. A lost context (a driver reset, the machine waking from sleep)
+// returns the terminal to the DOM renderer and calls lost, which may try again. Returns null when the GPU
+// renderer is not available (no WebGL, or the limit reached); the terminal then keeps the DOM renderer.
+function attachGpuRenderer(terminal: Terminal, lost: () => void): IDisposable | null {
+  if (active >= GPU_LIMIT) return null;
+  let addon: WebglAddon;
+  try { addon = new WebglAddon(); terminal.loadAddon(addon); } catch { return null; }
+  active++;
+  let released = false;
+  const release = () => { if (released) return; released = true; active--; try { addon.dispose(); } catch { /* Already gone with its terminal. */ } };
+  addon.onContextLoss(() => { release(); lost(); });
+  return { dispose: release };
+}
+
+// The GPU renderer of one terminal, switched on or off as the setting changes. A lost context is tried again a
+// few times, a moment later. Switch it on right after the terminal opens, before any output is parsed: starting
+// it takes the window a moment, and answers the terminal owes the shell must not wait behind that.
+export function gpuRenderer(terminal: Terminal) {
+  let gpu: IDisposable | null = null, wanted = false, retries = 0, timer = 0;
+  const attach = () => { timer = 0; if (wanted && !gpu) gpu = attachGpuRenderer(terminal, () => { gpu = null; if (wanted && retries++ < 3) timer = window.setTimeout(attach, 2000); }); };
+  return {
+    set(enabled: boolean) { wanted = enabled; clearTimeout(timer); timer = 0; if (enabled) attach(); else { gpu?.dispose(); gpu = null; } },
+    dispose() { wanted = false; clearTimeout(timer); gpu?.dispose(); gpu = null; },
+  };
+}

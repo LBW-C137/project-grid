@@ -16,7 +16,8 @@ const projects = names.map((name, index) => ({ id: randomUUID(), name, path: pat
 const doneFile = path.join(projects[0].path, 'task.done');
 for (const directory of [profile, path.join(home, 'sessions'), ...projects.map(project => project.path)]) await fs.mkdir(directory, { recursive: true });
 await fs.writeFile(path.join(projects[0].path, 'README.md'), '# 清晰的工作区\n\n保留文字、代码和状态的层次。\n');
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { columns: 3, notifications: false, sound: false, closeToTray: false, restoreSessions: false, fontSize: 14 } }));
+// These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { terminalRenderer: 'dom', columns: 3, notifications: false, sound: false, closeToTray: false, restoreSessions: false, fontSize: 14 } }));
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: profile, CODEX_HOME: home }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 const packaged = process.argv.includes('--packaged');
 let app, page;

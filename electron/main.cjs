@@ -12,7 +12,7 @@ const { createEventServer } = require('./events.cjs');
 const { listDirectory, readProjectFile, saveProjectFile, resolveProjectPath, VIDEO_TYPES } = require('./project-files.cjs');
 const { projectPaths } = require('./project-paths.cjs');
 const { ProjectGit } = require('./project-git.cjs');
-const { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers } = require('./terminal-input.cjs');
+const { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, InputGate } = require('./terminal-input.cjs');
 const { PromptQueue } = require('./prompt-queue.cjs');
 const { createTerminalEnvironment } = require('./terminal-env.cjs');
 const { PreviewResources, resourceResponse } = require('./preview-resources.cjs');
@@ -387,7 +387,7 @@ async function resumeAfterPrompt(project, session) {
       if (sessions.get(session.terminalId) !== session || !session.ready || session.inputDirty || session.codexActive) return;
       store.expectCompletion(project.id, restore.interrupted === true);
       session.ready = false;
-      session.terminal.write(command);
+      session.gate.input(command);
       broadcast();
     } catch (error) { session.error = `恢复会话失败：${error.message}`; broadcast(); }
     return;
@@ -404,7 +404,7 @@ async function resumeAfterPrompt(project, session) {
       // continuation of interrupted work may produce another completion alert.
       store.expectCompletion(project.id, info?.state === 'interrupted' && plan.codex);
       session.ready = false;
-      session.terminal.write(command);
+      session.gate.input(command);
       broadcast();
     }
   } catch (error) { session.error = `恢复会话失败：${error.message}`; broadcast(); }
@@ -487,6 +487,7 @@ function startTerminal(id) {
     flushTimer: null, lastActivityAt: Date.now(), error: null, submissions: new SubmissionTracker(),
   };
   s.actions = new ActionLog(change => publishAction(s, change));
+  s.gate = new InputGate(data => { if (sessions.get(id) === s && s.status !== 'exited') terminal.write(data); });
   s.promptQueue = new PromptQueue(() => { if (sessions.get(id) === s) scheduleState(); });
   // A prompt the agent's own record shows it received is being worked on. History read when a session is
   // resumed is older than the agent's start and is left out.
@@ -517,6 +518,7 @@ function startTerminal(id) {
         if (s.codexActive) { s.codexActivity = 'unknown'; s.activityInputAt = 0; store.setRestore(id, { threadId }); void s.activityMonitor?.poll(); }
       }
     }
+    s.gate.output(data);
     s.chunks.push(data); s.bytes += data.length; s.pending += data;
     while (s.bytes > 1024 * 1024 && s.chunks.length > 1) s.bytes -= s.chunks.shift().length;
     s.lastActivityAt = Date.now();
@@ -543,7 +545,7 @@ function disposeTerminal(id) {
   if (!s) return;
   sessions.delete(id);
   clearTimeout(s.flushTimer); clearTimeout(s.actionTimer); clearTimeout(s.conversationTimer);
-  s.activityMonitor?.stop();
+  s.activityMonitor?.stop(); s.gate.dispose(); s.promptQueue.reset();
   try { s.terminal.kill(); } catch { }
   if (s.bootstrapFile) fs.rmSync(s.bootstrapFile, { force: true });
 }
@@ -860,7 +862,7 @@ function registerIpc() {
         s.inputDirty = true; if (data.includes('\r') || data.includes('\n')) s.ready = false;
         if (wasReady) scheduleState();
       }
-      s.terminal.write(data);
+      s.gate.input(data);
     }
   });
   listen('terminal:resize', (id, cols, rows) => {

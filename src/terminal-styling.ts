@@ -5,15 +5,16 @@ import type { IDecoration, IDisposable, IMarker, Terminal } from '@xterm/xterm';
 // a short line that is bold from start to end, after a blank line, is how both print a heading, and is coloured as headings
 // are in the reading view; a plain "•" or "●" that the agent left uncoloured gets the bullet colour. Anything the agent
 // coloured itself (Claude's green or red "⏺" for a tool that worked or failed) keeps its colour.
-// The rows are read again a moment after output settles or the view scrolls, and every mark is redrawn
-// from what the rows say then, so a redrawn screen never keeps a stale mark.
+// The rows are read again a moment after output settles or the view scrolls, and the marks are redrawn
+// from what the rows say then, so a redrawn screen never keeps a stale mark. A working agent redraws its
+// screen ten times a second while the marks stay the same; then nothing is redrawn.
 const BULLETS = new Set(['•', '●']);
 const BULLET_COLOUR = '#ff6b9a', HEADING_COLOUR = '#ff9fd5';
 
 export function styleTerminal(terminal: Terminal): IDisposable {
   let marks: { marker: IMarker; decoration?: IDecoration }[] = [];
-  let timer = 0, disposed = false;
-  const clear = () => { for (const mark of marks) { mark.decoration?.dispose(); mark.marker.dispose(); } marks = []; };
+  let timer = 0, disposed = false, drawn = '';
+  const clear = () => { for (const mark of marks) { mark.decoration?.dispose(); mark.marker.dispose(); } marks = []; drawn = ''; };
   const mark = (row: number, options: { x: number; width: number; foregroundColor: string }) => {
     const buffer = terminal.buffer.active;
     const marker = terminal.registerMarker(row - (buffer.baseY + buffer.cursorY));
@@ -27,9 +28,9 @@ export function styleTerminal(terminal: Terminal): IDisposable {
     try { draw(); } catch { /* Decorations are an experimental xterm API; without them the terminal is simply unstyled. */ }
   };
   const draw = () => {
-    clear();
     const buffer = terminal.buffer.active;
-    if (buffer.type !== 'normal') return;
+    if (buffer.type !== 'normal') { clear(); return; }
+    const wanted: { row: number; x: number; width: number; foregroundColor: string }[] = [];
     let previousBlank = false;
     for (let row = buffer.viewportY; row < buffer.viewportY + terminal.rows; row++) {
       const line = buffer.getLine(row);
@@ -48,9 +49,15 @@ export function styleTerminal(terminal: Terminal): IDisposable {
       }
       if (first < 0) continue;
       const lead = line.getCell(first)!;
-      if (BULLETS.has(lead.getChars()) && lead.isFgDefault()) mark(row, { x: first, width: 1, foregroundColor: BULLET_COLOUR });
-      else if (allBold && afterBlank && !line.isWrapped && last - first >= 1 && last - first < 60 && !BULLETS.has(lead.getChars())) mark(row, { x: first, width: Math.min(terminal.cols - first, last - first + 2), foregroundColor: HEADING_COLOUR });
+      if (BULLETS.has(lead.getChars()) && lead.isFgDefault()) wanted.push({ row, x: first, width: 1, foregroundColor: BULLET_COLOUR });
+      else if (allBold && afterBlank && !line.isWrapped && last - first >= 1 && last - first < 60 && !BULLETS.has(lead.getChars())) wanted.push({ row, x: first, width: Math.min(terminal.cols - first, last - first + 2), foregroundColor: HEADING_COLOUR });
     }
+    // Rows are counted from the top of the buffer, so the same marks on the same lines compare equal.
+    const signature = wanted.map(item => `${item.row}:${item.x}:${item.width}:${item.foregroundColor}`).join('|');
+    if (signature === drawn && marks.every(item => !item.marker.isDisposed)) return;
+    clear();
+    for (const item of wanted) mark(item.row, item);
+    drawn = signature;
   };
   const later = () => { if (!timer && !disposed) timer = window.setTimeout(scan, 160); };
   const subscriptions = [terminal.onWriteParsed(later), terminal.onScroll(later), terminal.onResize(later)];

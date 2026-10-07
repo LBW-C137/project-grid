@@ -21,7 +21,8 @@ for (const folder of [dataDir, bin, codexHome, path.join(project.path, 'src')]) 
 await fs.writeFile(path.join(project.path, 'src', 'main.txt'), 'original\r\n中文\r\n');
 await fs.writeFile(path.join(project.path, 'other.txt'), 'other');
 await fs.writeFile(path.join(project.path, 'page.html'), '<h1>Original page</h1>');
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { autoSave: false, notifications: false, restoreSessions: true, closeToTray: false } }));
+// These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { terminalRenderer: 'dom', autoSave: false, notifications: false, restoreSessions: true, closeToTray: false } }));
 await exec(path.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/target:exe', '/reference:System.Web.Extensions.dll', `/out:${path.join(bin, 'codex.exe')}`, path.join(root, 'tests/fixtures/multi-codex.cs')], { windowsHide: true });
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir, PROJECT_GRID_TEST_RESTORE: '1', PROJECT_GRID_TEST_SSH_CONFIG: ssh.configFile, CODEX_HOME: codexHome };
 delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;

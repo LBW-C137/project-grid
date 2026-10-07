@@ -50,7 +50,8 @@ await fs.writeFile(path.join(previewProject, 'assets', 'message.mjs'), 'export c
 await fs.writeFile(path.join(previewProject, 'assets', 'data.json'), JSON.stringify({ label: 'LOCAL JSON READY' }));
 await fs.writeFile(path.join(previewProject, 'assets', 'preview.mjs'), 'import { message } from "./message.mjs"; document.querySelector("#script-status").textContent=message; const data=await fetch(new URL("./data.json", import.meta.url)).then(r=>r.json()); document.querySelector("#data-status").textContent=data.label; document.querySelector("#increment").onclick=()=>{document.querySelector("#count").textContent=String(Number(document.querySelector("#count").textContent)+1)};');
 await fs.writeFile(path.join(previewProject, 'reports', 'preview.html'), '<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>HTML preview fixture</title><link rel="stylesheet" href="../assets/preview.css"><main><h1>HTML 页面已渲染</h1><img src="../image-preview.png" alt="相对路径图片"><p id="script-status">Loading scripts</p><p id="data-status"></p><button id="increment">点击计数</button><output id="count">0</output></main><script type="module" src="../assets/preview.mjs"></script></html>');
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 1, projects, settings: { autoSave: false, columns: 3, notifications: false, sound: false, closeToTray: true, fontSize: 12 } }));
+// These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 1, projects, settings: { terminalRenderer: 'dom', autoSave: false, columns: 3, notifications: false, sound: false, closeToTray: true, fontSize: 12 } }));
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir };
 env.NO_COLOR = '1';
 env.NODE_DISABLE_COLORS = '1';

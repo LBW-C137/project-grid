@@ -22,7 +22,8 @@ for (const directory of [projects[0].path, ssh.project]) {
   await fs.writeFile(path.join(directory, 'docs/README.md'), content);
   await fs.writeFile(path.join(directory, 'note.txt'), '普通文本打开即可编辑');
 }
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { autoSave: false, notifications: false, restoreSessions: false, closeToTray: false } }));
+// These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { terminalRenderer: 'dom', autoSave: false, notifications: false, restoreSessions: false, closeToTray: false } }));
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: profile, PROJECT_GRID_TEST_SSH_CONFIG: ssh.configFile }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 const packaged = process.argv.includes('--packaged');
 let app, page;

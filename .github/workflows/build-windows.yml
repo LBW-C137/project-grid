@@ -111,6 +111,9 @@ jobs:
       - name: Verify completion notifications only rearm after new input
         run: node scripts/retry.mjs npm run test:completion -- --packaged
 
+      - name: Test GPU terminal renderer
+        run: node scripts/retry.mjs npm run test:gpu-terminal -- --packaged
+
       - name: Verify file operations and microphone UI with isolated test devices
         run: node scripts/retry.mjs npm run test:workspace -- --packaged --slow-copy
 

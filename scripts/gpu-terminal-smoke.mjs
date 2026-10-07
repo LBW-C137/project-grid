@@ -1,0 +1,85 @@
+// The GPU terminal renderer, as a user meets it with the default settings: the terminal draws on a canvas,
+// typed commands run, text can be selected and copied without the card expanding, and switching to the
+// compatible renderer and back keeps the session. Uses its own profile; never touches a real workspace.
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
+import { _electron as electron } from 'playwright';
+import { waitFor } from './wait.mjs';
+const require = createRequire(import.meta.url);
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const output = path.join(root, '.test-output', `gpu-terminal-${Date.now()}`), dataDir = path.join(output, 'profile');
+const project = { id: randomUUID(), name: 'GPU terminal', path: path.join(output, 'project'), kind: 'local', restore: { terminal: false, codex: false } };
+await fs.mkdir(project.path, { recursive: true }); await fs.mkdir(dataDir, { recursive: true });
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { notifications: false, sound: false, announce: false, closeToTray: false, restoreSessions: false, guideVersion: '9.9.9' } }));
+const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
+const packaged = process.argv.includes('--packaged');
+const application = await electron.launch({ executablePath: packaged ? path.join(root, 'release/win-unpacked/Project Grid.exe') : require('electron'), args: packaged ? [] : [root], cwd: root, env, timeout: 30000 });
+const errors = [];
+try {
+  const page = await application.firstWindow();
+  page.on('pageerror', error => errors.push(String(error)));
+  await page.waitForSelector('.project-panel');
+  // A machine without WebGL (some build servers) draws terminals with the DOM renderer by design.
+  if (!await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'))) { console.log('SKIP: WebGL 2 is not available here; terminals use the compatible renderer.'); process.exitCode = 0; }
+  else {
+  await page.getByRole('button', { name: '启动终端', exact: true }).click();
+  const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value.projects[0];
+  await waitFor(async () => (await state()).shellReady, 'shell ready');
+  const host = page.locator('.terminal-host').first();
+  const screen = () => page.evaluate(id => window.projectGrid.attachTerminal(id).then(result => result.value.data), project.id);
+
+  // Drawn on the GPU: a WebGL canvas and no rows of HTML.
+  await waitFor(async () => (await host.locator('.xterm-screen canvas').count()) > 0, 'terminal draws on a canvas');
+  assert.equal(await host.locator('.xterm-rows > div').count(), 0, 'no HTML rows with the GPU renderer');
+
+  // Typing in the small card runs the command and does not expand the project.
+  await host.click({ position: { x: 120, y: 60 } });
+  await page.keyboard.type('Write-Output ("GPU" + "_TERMINAL_OK")');
+  await page.keyboard.press('Enter');
+  await waitFor(async () => (await screen()).includes('GPU_TERMINAL_OK\r\n'), 'typed command ran');
+  assert.equal(await page.locator('.focus-mode').count(), 0, 'typing in a terminal never expands the project');
+
+  // The canvas shows the text: bright pixels where the output is.
+  const brightPixels = async () => {
+    const shot = (await host.screenshot()).toString('base64');
+    return page.evaluate(async data => {
+      const image = new Image(); image.src = `data:image/png;base64,${data}`; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+      const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data; let count = 0;
+      for (let index = 0; index < pixels.length; index += 4) if (pixels[index] + pixels[index + 1] + pixels[index + 2] > 600) count++;
+      return count;
+    }, shot);
+  };
+  assert.ok(await brightPixels() > 400, 'terminal text is drawn');
+
+  // Selecting by dragging and copying with Ctrl+C, inside the small card.
+  const box = await host.boundingBox();
+  await page.mouse.move(box.x + 4, box.y + 4); await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 30, box.y + box.height - 10, { steps: 8 }); await page.mouse.up();
+  await waitFor(async () => (await host.getAttribute('data-has-selection')) === 'true', 'text selected');
+  await page.keyboard.press('Control+c');
+  await waitFor(async () => (await page.evaluate(() => window.projectGrid.readClipboard())).value.includes('GPU_TERMINAL_OK'), 'selection copied');
+  assert.equal(await page.locator('.focus-mode').count(), 0, 'selecting and copying never expands the project');
+
+  // Switching renderers keeps the session and its text.
+  await page.evaluate(() => window.projectGrid.settings({ terminalRenderer: 'dom' }));
+  await waitFor(async () => (await host.locator('.xterm-rows').innerText()).includes('GPU_TERMINAL_OK'), 'compatible renderer shows the same text');
+  assert.equal(await host.locator('.xterm-screen canvas').count(), 0);
+  await page.evaluate(() => window.projectGrid.settings({ terminalRenderer: 'gpu' }));
+  await waitFor(async () => (await host.locator('.xterm-screen canvas').count()) > 0 && (await host.locator('.xterm-rows > div').count()) === 0, 'back on the GPU');
+  await page.keyboard.press('Escape');
+  await host.click({ position: { x: 120, y: 60 } });
+  await page.keyboard.type('Write-Output ("STILL" + "_LIVE")'); await page.keyboard.press('Enter');
+  await waitFor(async () => (await screen()).includes('STILL_LIVE\r\n'), 'the session kept running through the switches');
+  assert.ok(await brightPixels() > 400, 'text is drawn again on the GPU');
+  assert.deepEqual(errors, []);
+  console.log('PASS: GPU terminal renderer draws, types, selects and copies, and switches renderers without losing the session');
+  }
+} finally {
+  await application.evaluate(({ app }) => app.exit(0)).catch(() => {});
+}

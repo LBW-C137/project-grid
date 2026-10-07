@@ -67,3 +67,23 @@ test('Command Prompt prompt markers report the directory, even when split across
   assert.deepEqual(markers.write(split.slice(20) + 'dir\r\n' + prompt('E:\\')), ['D:\\work\\(x) & y', 'E:\\']);
   assert.deepEqual(markers.write('\x1b]0;title\x07plain output'), [], 'other OSC sequences are ignored');
 });
+
+test('input waits while PowerShell asks where the cursor is, then goes in order', () => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  let now = 0; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now, wait: 1500 });
+  gate.input('a'); assert.deepEqual(written, ['a'], 'nothing asked: input goes at once');
+  gate.output('PS> \x1b[6n');
+  gate.input('c'); gate.input('odex\r');
+  assert.deepEqual(written, ['a'], 'keys wait for the answer');
+  gate.input('\x1b[4;86R');
+  assert.deepEqual(written, ['a', '\x1b[4;86R', 'c', 'odex\r'], 'the answer first, then the keys in order');
+  gate.output('\x1b[6n'); now = 100; gate.input('x');
+  now = 1700; gate.input('y');
+  assert.deepEqual(written.slice(4), [], 'still held in order behind x');
+  gate.release();
+  assert.deepEqual(written.slice(4), ['x', 'y']);
+  gate.output('\x1b[6n'); now = 5000; gate.input('z');
+  assert.deepEqual(written.slice(6), ['z'], 'an old unanswered question no longer holds input');
+  gate.dispose();
+});

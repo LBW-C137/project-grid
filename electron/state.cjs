@@ -19,7 +19,7 @@ function cleanHistory(input) {
 // Claude turn was left unfinished. Only non-default values are stored.
 const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'claude' } : {}), ...(restore?.interrupted === true ? { interrupted: true } : {}) });
 
-const defaults = { columns: 0, surface: 'glass', autoSave: true, activityPane: true, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'forest' };
+const defaults = { columns: 0, surface: 'glass', terminalRenderer: 'gpu', autoSave: true, activityPane: true, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'forest' };
 
 // Keyboard shortcuts the user changed, by action; defaults live in the window (src/shortcuts.ts).
 // "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
@@ -52,6 +52,7 @@ function cleanSettings(input = {}) {
     // glass: translucent panes over the wallpaper. solid: opaque panes, on which Windows draws text with
     // ClearType and nothing is blurred behind them.
     surface: input.surface === 'solid' ? 'solid' : 'glass',
+    terminalRenderer: input.terminalRenderer === 'dom' ? 'dom' : 'gpu',
     summary: cleanSummarySettings(input.summary),
     shortcuts: cleanShortcuts(input.shortcuts),
     // Shell for local terminals; SSH projects always use Bash on the server.

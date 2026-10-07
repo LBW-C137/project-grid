@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalPacket } from './types';
 import { createTerminalLinkProvider } from './terminal-links';
 import { styleTerminal } from './terminal-styling';
+import { gpuRenderer, terminalRenderer, useTerminalRenderer } from './terminal-renderer';
 import '@xterm/xterm/css/xterm.css';
 import { t } from './i18n';
 
@@ -17,6 +18,8 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
   const term = useRef<Terminal | null>(null);
   const fit = useRef<FitAddon | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; selection: string } | null>(null);
+  const gpu = useRef<ReturnType<typeof gpuRenderer> | null>(null);
+  const renderer = useTerminalRenderer();
   const menuRef = useRef<HTMLDivElement>(null);
   const report = useRef(onError);
   report.current = onError;
@@ -86,6 +89,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(host.current);
+    gpu.current = gpuRenderer(terminal); gpu.current.set(terminalRenderer() === 'gpu');
     // node-pty uses its bundled modern ConPTY, including on Windows 10.
     // 21376 is xterm's capability threshold for VT wrapping and reflow.
     if (!remote) terminal.options.windowsPty = { backend: 'conpty', buildNumber: 21376 };
@@ -168,9 +172,13 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
       disposed = true; queued = [];
       unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); styling.dispose(); observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(settle);
       terminal.textarea?.removeEventListener('focus', focusIn); terminal.textarea?.removeEventListener('blur', focusOut); focusOut();
+      gpu.current?.dispose(); gpu.current = null;
       terminal.dispose(); term.current = null; fit.current = null;
     };
   }, [id, sessionId]);
+
+  // The GPU renderer, unless the compatible one is chosen in Settings.
+  useEffect(() => { gpu.current?.set(renderer === 'gpu'); }, [renderer]);
 
   useEffect(() => {
     if (term.current) {

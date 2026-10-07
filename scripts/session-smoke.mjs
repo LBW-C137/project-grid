@@ -42,7 +42,8 @@ for (const [index, name] of ['Claude 中断', 'Claude 已完成'].entries()) {
   const sessionId = randomUUID();
   claudeProjects.push({ id: randomUUID(), name, path: directory, kind: 'local', seenEvents: [], restore: { terminal: true, codex: true, cwd: directory, agent: 'claude', threadId: sessionId, ...(index === 0 ? { interrupted: true } : {}) }, sessionId });
 }
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [...projects, ...claudeProjects], settings: { autoSave: false, notifications: false, sound: false, closeToTray: false, restoreSessions: true, columns: 2 } }));
+// These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [...projects, ...claudeProjects], settings: { terminalRenderer: 'dom', autoSave: false, notifications: false, sound: false, closeToTray: false, restoreSessions: true, columns: 2 } }));
 const fixture = await createSSHFixture({ password: true, unknownHost: true, nativeWorker: false });
 await fs.writeFile(path.join(fixture.project, 'README.md'), 'REMOTE_TEXT_PREVIEW 中文');
 await fs.copyFile(path.join(root, 'assets/icon.png'), path.join(fixture.project, '图片.png'));

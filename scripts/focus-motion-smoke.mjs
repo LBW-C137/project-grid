@@ -18,7 +18,8 @@ for (const name of ['界面开发', '服务接口', '数据处理', '工具项�
   await fs.mkdir(project.path); await fs.writeFile(path.join(project.path, 'README.md'), '# Animation fixture');
   projects.push(project);
 }
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { autoSave: false, notifications: false, closeToTray: false, restoreSessions: false } }));
+// These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { terminalRenderer: 'dom', autoSave: false, notifications: false, closeToTray: false, restoreSessions: false } }));
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 const packaged = process.argv.includes('--packaged');
 const executableIndex = process.argv.indexOf('--executable');
