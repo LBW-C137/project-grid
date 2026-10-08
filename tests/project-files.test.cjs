@@ -61,6 +61,35 @@ test('mentions use git tracked and untracked paths, honor ignores and keep paths
   assert.deepEqual(await findFiles(project, '[1]'), [{ path: 'src/untracked [1].ts', kind: 'file' }]);
 });
 
+test('mentions walk a project subfolder ignored by its containing git repository', async t => {
+  const { project: repository } = await fixture(t);
+  const project = { path: path.join(repository.path, '.test-output', 'project') };
+  const exec = require('node:util').promisify(require('node:child_process').execFile);
+  const { gitEnvironment } = require('../electron/project-git.cjs');
+  const options = { cwd: repository.path, windowsHide: true, timeout: 5000, env: gitEnvironment() };
+  await exec('git', ['init'], options);
+  await fs.writeFile(path.join(repository.path, '.gitignore'), '.test-output/\n');
+  await writeMentionFile(project, 'src/components/Button.tsx');
+  await writeMentionFile(project, 'node_modules/excluded/Button.tsx');
+  const { stdout } = await exec('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { ...options, cwd: project.path });
+  assert.equal(stdout, '', 'git returns no files for the ignored project');
+  assert.deepEqual(await findFiles(project, 'butt'), [{ path: 'src/components/Button.tsx', kind: 'file' }]);
+  assert.deepEqual(await findFiles(project, 'src/components'), [{ path: 'src/components', kind: 'dir' }, { path: 'src/components/Button.tsx', kind: 'file' }]);
+});
+
+test('mentions fall back to walking when git fails to list files', async t => {
+  const { project } = await fixture(t);
+  const exec = require('node:util').promisify(require('node:child_process').execFile);
+  const { gitEnvironment } = require('../electron/project-git.cjs');
+  const options = { cwd: project.path, windowsHide: true, timeout: 5000, env: gitEnvironment() };
+  await exec('git', ['init'], options);
+  await writeMentionFile(project, 'src/components/Button.tsx');
+  await fs.writeFile(path.join(project.path, '.git', 'index'), 'invalid git index');
+  assert.equal((await exec('git', ['rev-parse', '--is-inside-work-tree'], options)).stdout.trim(), 'true');
+  await assert.rejects(exec('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], options));
+  assert.deepEqual(await findFiles(project, 'butt'), [{ path: 'src/components/Button.tsx', kind: 'file' }]);
+});
+
 test('mentions rank basename prefix, basename contains, path contains and subsequences by shorter path', async t => {
   const { project } = await fixture(t);
   const names = ['deep/read-long.ts', 'bread-long.ts', 'read-context/other.ts', 'r/e/a/d.txt', 'read.ts', 'bread.ts', '🌸/notes.ts'];

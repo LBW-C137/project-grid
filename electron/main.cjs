@@ -12,7 +12,7 @@ const { createEventServer } = require('./events.cjs');
 const { findFiles, listDirectory, readProjectFile, saveProjectFile, resolveProjectPath, VIDEO_TYPES } = require('./project-files.cjs');
 const { projectPaths } = require('./project-paths.cjs');
 const { ProjectGit } = require('./project-git.cjs');
-const { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, InputGate } = require('./terminal-input.cjs');
+const { isTerminalResponse, isLocalCommand, acceptShellEvent, SubmissionTracker, PromptMarkers, InputGate } = require('./terminal-input.cjs');
 const { PromptQueue } = require('./prompt-queue.cjs');
 const { createTerminalEnvironment } = require('./terminal-env.cjs');
 const { adoptSystemProxy } = require('./system-proxy.cjs');
@@ -912,10 +912,11 @@ function registerIpc() {
     const s = sessions.get(id);
     if (s && s.status !== 'exited') {
       const submitted = s.submissions.write(data);
-      if (submitted && s.codexActive) for (const text of s.submissions.sent) s.promptQueue.submit(text, s.codexActivity === 'working');
+      const prompts = s.submissions.sent.filter(text => !isLocalCommand(text));
+      if (submitted && s.codexActive) for (const text of prompts) s.promptQueue.submit(text, s.codexActivity === 'working');
       // Sending a new prompt means the last result has been read: clear the unviewed state before the next round.
       if (submitted && store.projects.find(p => p.id === s.projectId)?.unread) { store.acknowledge(s.projectId); scheduleState(); }
-      if (submitted && s.codexActive) {
+      if (prompts.length && s.codexActive) {
         store.expectCompletion(s.projectId);
         s.codexActivity = 'working'; s.activityInputAt = Date.now();
         scheduleState(); warmSpeech();

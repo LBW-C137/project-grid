@@ -14,15 +14,16 @@ const skippedFolders = new Set(['.git', 'node_modules', 'dist', 'build', 'out', 
 
 async function projectFileList(root) {
   const options = { cwd: root, windowsHide: true, timeout: 5000, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, env: gitEnvironment() };
-  let git = false;
-  try { git = (await exec('git', ['rev-parse', '--is-inside-work-tree'], options)).stdout.trim() === 'true'; }
-  catch (error) {
-    if (error.code !== 'ENOENT' && !/not a git repository/i.test(error.stderr || '')) throw error;
+  let files = [];
+  try {
+    if ((await exec('git', ['rev-parse', '--is-inside-work-tree'], options)).stdout.trim() === 'true') {
+      files = (await exec('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], options)).stdout.split('\0').filter(Boolean);
+    }
+  } catch {
+    // Git may be unavailable or fail for this folder; the directory walk can still find its files.
   }
-  let files;
-  if (git) files = (await exec('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], options)).stdout.split('\0').filter(Boolean);
-  else {
-    files = [];
+  // A project inside an ignored repository subfolder also has an empty Git file list.
+  if (!files.length) {
     let visited = 0;
     const walk = async relative => {
       const entries = await fs.readdir(path.join(root, relative), { withFileTypes: true });

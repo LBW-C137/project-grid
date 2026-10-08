@@ -7,6 +7,11 @@ function isTerminalResponse(data) {
   return data === '' || reply.test(data);
 }
 
+// Local commands do not imply a model turn; custom slash commands report turns through hooks or rollouts.
+function isLocalCommand(text) {
+  return /^[/!]/.test(text);
+}
+
 // Observe actual submissions. xterm sends focus, mouse and protocol reports on this same channel; none are
 // new work. The text of each submission is kept in sent (until the next write) for the list of prompts;
 // it is empty when the line was recalled from history, whose text the terminal never sees.
@@ -163,4 +168,4 @@ class InputGate {
   dispose() { clearTimeout(this.timer); this.timer = null; this.questions.length = 0; this.held = []; this.expecting = this.settling = false; }
 }
 
-module.exports = { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, PROMPT_MARKER, InputGate };
+module.exports = { isTerminalResponse, isLocalCommand, acceptShellEvent, SubmissionTracker, PromptMarkers, PROMPT_MARKER, InputGate };

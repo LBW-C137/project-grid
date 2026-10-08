@@ -1,6 +1,82 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { isTerminalResponse, acceptShellEvent, SubmissionTracker } = require('../electron/terminal-input.cjs');
+const { isTerminalResponse, isLocalCommand, acceptShellEvent, SubmissionTracker } = require('../electron/terminal-input.cjs');
+const { PromptQueue } = require('../electron/prompt-queue.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+// Exercise the IPC handler with an isolated session, without loading Electron.
+const main = fs.readFileSync(path.join(__dirname, '../electron/main.cjs'), 'utf8');
+function terminalWriter(agent, activity = 'idle') {
+  const calls = { prompts: [], completion: [], forwarded: [], state: 0, speech: 0 };
+  const promptQueue = new PromptQueue();
+  const submit = promptQueue.submit.bind(promptQueue);
+  promptQueue.submit = (text, working) => { calls.prompts.push([text, working]); submit(text, working); };
+  const session = {
+    projectId: 'project', status: 'running', agent, codexActive: true, codexActivity: activity,
+    activityInputAt: 0, submissions: new SubmissionTracker(), promptQueue,
+    gate: { input: data => calls.forwarded.push(data) },
+  };
+  let write;
+  const context = vm.createContext({
+    listen: (_channel, handler) => { write = handler; }, sessions: new Map([['terminal', session]]),
+    store: { projects: [{ id: 'project', unread: false }], expectCompletion: id => calls.completion.push(id) },
+    scheduleState: () => { calls.state++; }, warmSpeech: () => { calls.speech++; },
+    isTerminalResponse, isLocalCommand, Date: { now: () => 1234 },
+  });
+  vm.runInContext(main.slice(main.indexOf("  listen('terminal:write'"), main.indexOf("  listen('terminal:resize'")), context);
+  return { session, calls, write: data => write('terminal', data) };
+}
+
+test('local commands are classified by the submitted prefix, with history retaining prompt behavior', () => {
+  for (const text of ['/model', '/status', '/custom-prompt', '/', '!ls', '!']) assert.equal(isLocalCommand(text), true, text);
+  for (const text of ['', 'fix /model handling', 'explain !ls', '#remember this']) assert.equal(isLocalCommand(text), false, text);
+});
+
+test('local submissions never queue prompts or change activity and completion for either agent', () => {
+  for (const agent of ['claude', 'codex']) for (const activity of ['idle', 'working']) {
+    const { session, calls, write } = terminalWriter(agent, activity);
+    for (const data of ['/model\r', '/status\r!ls\r', '  /model\r', '/custom-prompt\r']) write(data);
+    assert.equal(session.codexActivity, activity);
+    assert.equal(session.activityInputAt, 0);
+    assert.deepEqual(calls.prompts, []);
+    assert.deepEqual(calls.completion, []);
+    assert.equal(calls.state, 0);
+    assert.equal(calls.speech, 0);
+    assert.deepEqual(calls.forwarded, ['/model\r', '/status\r!ls\r', '  /model\r', '/custom-prompt\r']);
+  }
+});
+
+test('mixed submissions queue each real prompt and mark working even when commands come first or last', () => {
+  for (const activity of ['idle', 'working']) {
+    const { session, calls, write } = terminalWriter('claude', activity);
+    const data = '/model\rfix the button\r!ls\radd tests\r/status\r';
+    write(data);
+    assert.deepEqual(calls.prompts, [['fix the button', activity === 'working'], ['add tests', activity === 'working']]);
+    assert.deepEqual(session.promptQueue.list().map(item => item.text), ['fix the button', 'add tests']);
+    assert.equal(session.codexActivity, 'working');
+    assert.equal(session.activityInputAt, 1234);
+    assert.deepEqual(calls.completion, ['project']);
+    assert.equal(calls.state, 1);
+    assert.equal(calls.speech, 1);
+    assert.deepEqual(calls.forwarded, [data]);
+    session.promptQueue.reset();
+  }
+});
+
+test('plain text and unknown recalled history still arm completion on submission', () => {
+  for (const data of ['fix the button\r', '\x1b[A\r', '/model\r\x1b[A\r']) {
+    const { session, calls, write } = terminalWriter('codex');
+    write(data);
+    assert.deepEqual(calls.prompts, [[data.startsWith('fix') ? 'fix the button' : '', false]]);
+    assert.equal(session.codexActivity, 'working');
+    assert.deepEqual(calls.completion, ['project']);
+    assert.equal(calls.state, 1);
+    assert.equal(calls.speech, 1);
+    session.promptQueue.reset();
+  }
+});
 
 test('terminal protocol responses do not dirty an empty shell prompt', () => {
   for (const response of [
