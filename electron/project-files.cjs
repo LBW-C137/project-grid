@@ -2,6 +2,77 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { TextDecoder } = require('node:util');
 const { randomUUID } = require('node:crypto');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const { gitEnvironment } = require('./project-git.cjs');
+
+const exec = promisify(execFile);
+const fileLists = new Map();
+const FILE_CACHE_MS = 20_000;
+const WALK_LIMIT = 20_000;
+const skippedFolders = new Set(['.git', 'node_modules', 'dist', 'build', 'out', '.next', 'target', '.venv', '__pycache__']);
+
+async function projectFileList(root) {
+  const options = { cwd: root, windowsHide: true, timeout: 5000, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, env: gitEnvironment() };
+  let git = false;
+  try { git = (await exec('git', ['rev-parse', '--is-inside-work-tree'], options)).stdout.trim() === 'true'; }
+  catch (error) {
+    if (error.code !== 'ENOENT' && !/not a git repository/i.test(error.stderr || '')) throw error;
+  }
+  let files;
+  if (git) files = (await exec('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], options)).stdout.split('\0').filter(Boolean);
+  else {
+    files = [];
+    let visited = 0;
+    const walk = async relative => {
+      const entries = await fs.readdir(path.join(root, relative), { withFileTypes: true });
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const entry of entries) {
+        if (visited >= WALK_LIMIT) return;
+        visited++;
+        const name = relative ? `${relative}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) { if (!skippedFolders.has(entry.name)) await walk(name); }
+        else if (entry.isFile() || entry.isSymbolicLink()) files.push(name);
+      }
+    };
+    await walk('');
+  }
+  const entries = new Map();
+  for (const file of files) {
+    entries.set(file, { path: file, kind: 'file' });
+    for (let index = file.indexOf('/'); index >= 0; index = file.indexOf('/', index + 1)) {
+      const directory = file.slice(0, index);
+      entries.set(directory, { path: directory, kind: 'dir' });
+    }
+  }
+  return [...entries.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+async function findFiles(project, query = '') {
+  if (project.kind === 'ssh') return [];
+  if (typeof query !== 'string') throw new Error('无效的文件搜索。');
+  const root = path.resolve(project.path), key = project.id || root;
+  let cached = fileLists.get(key);
+  if (!cached || cached.root !== root || cached.expires <= Date.now()) {
+    cached = { root, expires: Infinity, list: projectFileList(root) };
+    fileLists.set(key, cached);
+    const pending = cached;
+    pending.list.then(() => { pending.expires = Date.now() + FILE_CACHE_MS; }, () => { if (fileLists.get(key) === pending) fileLists.delete(key); });
+  }
+  const entries = await cached.list;
+  const needle = query.toLowerCase();
+  if (!needle) return entries.slice(0, 50);
+  const ranked = [];
+  for (const entry of entries) {
+    const name = entry.path.toLowerCase(), basename = name.slice(name.lastIndexOf('/') + 1);
+    let at = 0;
+    for (let index = 0; index < name.length; index++) { if (name[index] === needle[at]) at++; }
+    if (at !== needle.length) continue;
+    const rank = basename.startsWith(needle) ? 0 : basename.includes(needle) ? 1 : name.includes(needle) ? 2 : 3;
+    ranked.push({ entry, rank });
+  }
+  return ranked.sort((a, b) => a.rank - b.rank || a.entry.path.length - b.entry.path.length || a.entry.path.localeCompare(b.entry.path)).slice(0, 50).map(item => item.entry);
+}
 
 const PAGE_SIZE = 200;
 const TEXT_PAGE_BYTES = 256 * 1024;
@@ -149,4 +220,4 @@ async function saveProjectFile(project, relativePath, pageIndex, revision, conte
   return readProjectFile(project, relativePath, pageIndex);
 }
 
-module.exports = { listDirectory, readProjectFile, saveProjectFile, resolveProjectPath, IMAGE_TYPES, VIDEO_TYPES, TEXT_PAGE_BYTES };
+module.exports = { findFiles, listDirectory, readProjectFile, saveProjectFile, resolveProjectPath, IMAGE_TYPES, VIDEO_TYPES, TEXT_PAGE_BYTES };

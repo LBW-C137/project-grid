@@ -1,4 +1,9 @@
 {
+  "无效的文件搜索。": "Invalid file search.",
+  "提及文件": "Mention a file",
+  "正在搜索文件…": "Searching files…",
+  "没有匹配的文件": "No matching files",
+  "给 {agent} 发消息，/ 查看命令，@ 提及文件，Enter 发送，Shift+Enter 换行": "Message {agent}, / for commands, @ to mention files, Enter to send, Shift+Enter for a new line",
   "今天": "Today",
   "昨天": "Yesterday",
   "{n} 天前": "{n} days ago",

@@ -8,6 +8,8 @@ import { dictateInto } from './voice-input';
 import { useStickToBottom } from './useStickToBottom';
 import './reading.css';
 import { t } from './i18n';
+import { useMentions } from './useMentions';
+import { MentionPalette } from './MentionPalette';
 
 const purifier = createDOMPurify(window);
 // Switching to the CLI unmounts the composer; sent messages still belong to that terminal.
@@ -72,7 +74,7 @@ function ToolGroup({ entries, live }: { entries: ConversationEntry[]; live: bool
 // and its tool calls folded between them. The real terminal stays underneath; what is written here goes to
 // it, and the toggle in the card header switches back to it at any time. autoFocus: the card is expanded and
 // this is its terminal in use, so the message box takes the keyboard (never a small card's).
-export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOpenLink }: { terminal: ProjectTerminal; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
+export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, onError, onOpenLink }: { projectId: string; terminal: ProjectTerminal; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
   const [entries, setEntries] = useState<ConversationEntry[]>([]);
   const [draft, setDraft] = useState('');
   const [commands, setCommands] = useState<AgentCommand[]>([]), [requested, setRequested] = useState(false);
@@ -107,6 +109,7 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
   const complete = (command: AgentCommand) => {
     caret.current = command.name.length + 1; edit(command.name + ' '); input.current?.focus();
   };
+  const mentions = useMentions({ projectId, draft, input, disabled: /^\/[^\s]*$/.test(draft), edit, onError });
   useEffect(() => {
     let active = true; setEntries([]);
     void window.projectGrid.terminalConversation(terminal.id).then(result => { if (active && result.ok) setEntries(result.value); });
@@ -169,6 +172,7 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
     if (event.key === 'Tab' && event.shiftKey) { event.preventDefault(); window.projectGrid.writeTerminal(terminal.id, '\x1b[Z'); return; }
+    if (mentions.keys(event)) return;
     if (palette) {
       if (event.key === 'Escape') { event.preventDefault(); setDismissed(true); return; }
       if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); if (matches.length) setSelection(index => (index + (event.key === 'ArrowUp' ? -1 : 1) + matches.length) % matches.length); return; }
@@ -222,7 +226,8 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
       {palette && <div className="dropdown reading-commands" id={listId} role="listbox" aria-label={t('命令')}>{matches.map((command, index) => <div key={command.name} id={optionId(index)} role="option" aria-selected={selection === index} className="reading-command" onMouseDown={event => event.preventDefault()} onClick={() => complete(command)}>
         <code>{command.name}</code><span>{command.source === 'builtin' ? t(command.description) : command.description}</span>{command.source !== 'builtin' && <small>{command.source === 'project' ? t('项目') : command.source === 'user' ? t('用户') : t('技能')}</small>}
       </div>)}</div>}
-      <textarea ref={input} rows={1} onPaste={pasteImage} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette} aria-controls={palette ? listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
+      <MentionPalette mentions={mentions} />
+      <textarea ref={input} rows={1} onPaste={pasteImage} onSelect={mentions.trackCaret} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette || mentions.open} aria-controls={palette ? listId : mentions.open ? mentions.listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : mentions.open && mentions.files[mentions.selection] ? mentions.optionId(mentions.selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，@ 提及文件，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
         onFocus={() => window.projectGrid.terminalFocus(terminal.id, false)} />
       {working && <button type="button" className="icon-button" title={t('中断（Esc）')} aria-label={t('中断（Esc）')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b')}><Stop size={15} weight="fill" /></button>}
       <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={(!draft.trim() && !images) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
