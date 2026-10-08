@@ -10,6 +10,9 @@ export default defineConfig(({ command }) => ({
     },
   }],
   base: './',
-  server: { host: '127.0.0.1', port: 5178, strictPort: true, watch: { ignored: ['**/.test-output/**', '**/release/**'] } },
+  // The dependency scan would otherwise glob every .html under the project, including test profiles in
+  // .test-output and the promo video's compositions, and dev startup slowed as those folders grew.
+  optimizeDeps: { entries: ['index.html'] },
+  server: { host: '127.0.0.1', port: 5178, strictPort: true, watch: { ignored: ['**/.test-output/**', '**/release/**', '**/promo-video/**'] } },
   build: { target: 'es2022', chunkSizeWarningLimit: 750 },
 }));

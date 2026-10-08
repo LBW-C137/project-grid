@@ -46,6 +46,14 @@ const root = path.join(__dirname, '..');
 const integrationDir = app.isPackaged ? path.join(process.resourcesPath, 'integration') : path.join(root, 'integration');
 const devUrl = !app.isPackaged ? process.env.PROJECT_GRID_DEV_URL : null;
 if (process.env.PROJECT_GRID_DATA_DIR) app.setPath('userData', path.resolve(process.env.PROJECT_GRID_DATA_DIR));
+else if (!app.isPackaged) {
+  // `npm run dev` / `npm start` run beside the installed app, often from one of its own terminals.
+  const devProfile = path.join(app.getPath('appData'), 'Project Grid Dev');
+  require('./dev-profile.cjs').seedDevProfile(path.join(app.getPath('appData'), 'Project Grid'), devProfile);
+  app.setPath('userData', devProfile);
+}
+// Downloaded voice models are shared with the installed app instead of being fetched again for a dev profile.
+const voiceDirectory = () => path.join(!app.isPackaged && !process.env.PROJECT_GRID_DATA_DIR ? path.join(app.getPath('appData'), 'Project Grid') : app.getPath('userData'), 'voice');
 app.setName('Project Grid');
 const installed = isInstalledBuild(app.isPackaged, process.execPath);
 const appUserModelId = windowsAppId({ packaged: app.isPackaged, installed, profile: process.env.PROJECT_GRID_DATA_DIR });
@@ -1004,8 +1012,10 @@ function registerIpc() {
   handle('app:quit', requestQuit);
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
-else {
+if (!app.requestSingleInstanceLock()) {
+  console.log(`Project Grid is already running with the profile ${app.getPath('userData')}; its window was brought to the front.`);
+  app.quit();
+} else {
   app.on('second-instance', () => showWindow());
   // Clicking the Dock icon brings back a window that was closed to the menu bar.
   app.on('activate', () => showWindow());
@@ -1040,10 +1050,10 @@ else {
     }
     store = new WorkspaceStore(path.join(app.getPath('userData'), 'workspace.json'));
     summarySecrets = new SecretStore(path.join(app.getPath('userData'), 'summary-keys.json'), safeStorage);
-    voiceManager = new VoiceManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
+    voiceManager = new VoiceManager({ directory: voiceDirectory(), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
     // Download the offline model in the background after installation so dictation works on first use.
     // Waits for startup and session restore first; isolated test profiles skip the 239 MB download.
-    speechManager = new SpeechManager({ directory: path.join(app.getPath('userData'), 'voice'), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('speech:state', state), busy: roundsWorking });
+    speechManager = new SpeechManager({ directory: voiceDirectory(), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('speech:state', state), busy: roundsWorking });
     if (!process.env.PROJECT_GRID_DATA_DIR) setTimeout(() => { if (!quitting) voiceManager.prepare().catch(() => {}); }, 8000);
     // The natural voice for spoken notices downloads once, after voice input, while announcing is on.
     // Its model is loaded only while a round is being worked on (warmSpeech), not for an idle window.
