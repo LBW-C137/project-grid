@@ -101,6 +101,9 @@ jobs:
       - name: Verify session recovery, clipboard and SSH desktop interaction
         run: node scripts/retry.mjs npm run test:sessions -- --packaged
 
+      - name: Verify session recovery with delayed window cursor-position answers
+        run: node scripts/retry.mjs npm run test:restore-slow -- --packaged
+
       - name: Verify animated project expansion and return
         run: |
           node scripts/verify-installer-payload.cjs

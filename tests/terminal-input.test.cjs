@@ -88,6 +88,158 @@ test('input waits while PowerShell asks where the cursor is, then goes in order'
   gate.dispose();
 });
 
+test('three cursor answers delayed over 700 ms are dropped before restoring the whole command', t => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let now = 74; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now });
+  const advance = time => { const elapsed = time - now; now = time; t.mock.timers.tick(elapsed); };
+  const command = 'claude --resume abc "继续"\r';
+  gate.output('\x1b[6n');
+  advance(580); gate.output('\x1b[6n');
+  advance(833); gate.input('\x1b[1;1R');
+  assert.equal(gate.open, 1);
+  advance(1172); gate.output('\x1b[6n');
+  advance(1394); gate.input('\x1b[1;1R');
+  assert.equal(gate.open, 1);
+  advance(1895); gate.input('\x1b[1;1R');
+  assert.equal(gate.open, 0, 'the final late answer is dropped without another re-ask');
+  assert.deepEqual(written, []);
+  gate.afterPrompt(command);
+  advance(3394); assert.deepEqual(written, []);
+  advance(3395); assert.deepEqual(written, [command], 'the timeout writes the command with its first letter');
+  gate.dispose();
+});
+
+test('a late first answer is dropped and a timely second answer precedes the whole restored command', t => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let now = 1000; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now });
+  const advance = time => { const elapsed = time - now; now = time; t.mock.timers.tick(elapsed); };
+  const command = 'claude --resume abc "继续"\r';
+  gate.output('\x1b[6n');
+  advance(1509); gate.output('\x1b[6n');
+  advance(1552); gate.input('\x1b[1;1R');
+  assert.deepEqual(written, [], 'the answer 552 ms after its question does not reach the prompt');
+  assert.equal(gate.open, 1, 'the current question still needs its own answer');
+  advance(1668); gate.input('\x1b[1;1R');
+  assert.deepEqual(written, ['\x1b[1;1R'], 'the answer 159 ms after its question is forwarded');
+  assert.equal(gate.open, 0);
+  gate.afterPrompt(command);
+  advance(3167); assert.deepEqual(written, ['\x1b[1;1R']);
+  advance(3168);
+  assert.deepEqual(written, ['\x1b[1;1R', command], 'the command keeps its first letter');
+  gate.dispose();
+});
+
+test('a cursor answer 300 ms after its question is forwarded', () => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  let now = 1000; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now });
+  gate.output('\x1b[6n');
+  now = 1300; gate.input('\x1b[1;1R');
+  assert.deepEqual(written, ['\x1b[1;1R']);
+  assert.equal(gate.open, 0);
+  gate.dispose();
+});
+
+test('two open cursor questions asked 100 ms apart both receive their answers', () => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  let now = 1000; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now });
+  gate.output('\x1b[6n');
+  now = 1100; gate.output('\x1b[6n');
+  now = 1300; gate.input('\x1b[1;1R');
+  assert.equal(gate.open, 1);
+  now = 1400; gate.input('\x1b[2;1R');
+  assert.deepEqual(written, ['\x1b[1;1R', '\x1b[2;1R']);
+  assert.equal(gate.open, 0);
+  gate.dispose();
+});
+
+test('Codex receives a cursor answer even when it is 2 s late', () => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  let now = 1000; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now, shellOwnsInput: () => false });
+  gate.output('\x1b[6n');
+  now = 3000; gate.input('\x1b[1;1R');
+  assert.deepEqual(written, ['\x1b[1;1R']);
+  assert.equal(gate.open, 0);
+  gate.dispose();
+});
+
+test('a chunk drops its late answer and forwards other responses and the timely answer in order', () => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  let now = 1000; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now });
+  gate.output('\x1b[6n');
+  now = 1509; gate.output('\x1b[6n');
+  now = 1552;
+  gate.input('\x1b[1;1R\x1b[?1;2c\x1b[?2;3R\x1b[O');
+  assert.deepEqual(written, ['\x1b[?1;2c\x1b[?2;3R\x1b[O']);
+  assert.equal(gate.open, 0);
+  gate.dispose();
+});
+
+test('pushing questions prunes unanswered questions older than 30 s', () => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  let now = 1000; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now });
+  gate.output('\x1b[6n');
+  now = 31000; gate.output('\x1b[6n');
+  assert.equal(gate.open, 2, 'a question exactly 30 s old is retained');
+  now = 31001; gate.output('\x1b[6n\x1b[?6n');
+  assert.equal(gate.open, 3, 'only the older question is pruned and each new question is queued');
+  now = 31100; gate.input('\x1b[1;1R\x1b[2;1R\x1b[?3;1R');
+  assert.deepEqual(written, ['\x1b[1;1R\x1b[2;1R\x1b[?3;1R'], 'the missing answer no longer misaligns later answers');
+  assert.equal(gate.open, 0);
+  gate.dispose();
+});
+
+test('a dropped final answer settles a restored command and releases held keys in order', t => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let now = 1000; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now });
+  gate.afterPrompt('claude --resume abc\r'); gate.input('x');
+  gate.output('\x1b[6n');
+  now = 1700; t.mock.timers.tick(700); gate.input('\x1b[1;1R');
+  assert.equal(gate.open, 0);
+  t.mock.timers.tick(149); assert.deepEqual(written, []);
+  t.mock.timers.tick(1); assert.deepEqual(written, ['claude --resume abc\r', 'x']);
+  gate.dispose();
+});
+
+test('cursor answers at the stale boundary or without a queued question are forwarded', () => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  let now = 1000; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now, stale: 600 });
+  gate.output('\x1b[6n');
+  now = 1600; gate.input('\x1b[1;1R');
+  gate.output('\x1b[6n');
+  now = 2201; gate.input('\x1b[2;1R');
+  gate.input('\x1b[3;1R');
+  assert.deepEqual(written, ['\x1b[1;1R', '\x1b[3;1R']);
+  assert.equal(gate.open, 0);
+  gate.dispose();
+});
+
+test('an answer that arrives after the gate stopped waiting for it is still dropped at the shell prompt', t => {
+  const { InputGate } = require('../electron/terminal-input.cjs');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let now = 0; const written = [];
+  const gate = new InputGate(data => written.push(data), { now: () => now, wait: 1500 });
+  gate.output('\x1b[6n'); gate.input('x');               // held behind the open question
+  now = 1500; t.mock.timers.tick(1500);                   // the gate gives up waiting and lets the key through
+  assert.deepEqual(written, ['x']); assert.equal(gate.open, 0);
+  now = 1700; gate.input('\x1b[3;1R');                    // the window's answer, far too late
+  assert.deepEqual(written, ['x'], 'not taken for an answer to nothing and forwarded as keys');
+  now = 2000; gate.output('\x1b[6n'); now = 2100; gate.input('\x1b[3;2R');
+  assert.deepEqual(written, ['x', '\x1b[3;2R'], 'the next question still gets its own answer');
+  gate.dispose();
+});
+
 test('a command restored at a prompt waits for that prompt\'s question and answer, not only an open one', t => {
   const { InputGate } = require('../electron/terminal-input.cjs');
   t.mock.timers.enable({ apis: ['setTimeout'] });

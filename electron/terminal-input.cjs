@@ -100,15 +100,22 @@ class PromptMarkers {
 // answer waits while a question is open, at most a moment, and then goes in order.
 const QUESTION = /\x1b\[\??6n/g, ANSWER = /\x1b\[\??\d+;\d+R/g;
 class InputGate {
-  constructor(write, { now = Date.now, wait = 1500, settle = 150, patience = 8000 } = {}) {
-    Object.assign(this, { write, now, wait, settle, patience });
-    this.open = 0; this.askedAt = 0; this.held = []; this.timer = null; this.expecting = false; this.settling = false;
+  constructor(write, { now = Date.now, wait = 1500, settle = 150, patience = 8000, stale = 350, shellOwnsInput = () => true } = {}) {
+    Object.assign(this, { write, now, wait, settle, patience, stale, shellOwnsInput });
+    this.questions = []; this.askedAt = 0; this.held = []; this.timer = null; this.expecting = false; this.settling = false;
   }
+  // Questions still awaited. One given up on (timed out, or typed past) stays queued, so its late answer is
+  // still matched to it and dropped rather than taken for the answer to a newer question.
+  get open() { return this.questions.filter(question => !question.expired).length; }
+  expire() { for (const question of this.questions) question.expired = true; }
   // What the shell printed.
   output(data) {
     const asked = String(data).match(QUESTION)?.length || 0;
     if (!asked) return;
-    this.open += asked; this.askedAt = this.now(); this.expecting = false;
+    const now = this.now();
+    this.questions = this.questions.filter(question => now - question.at <= 30000);
+    for (let i = 0; i < asked; i++) this.questions.push({ at: now, expired: false });
+    this.askedAt = now; this.expecting = false;
     // A restored command has no one waiting on it, so it gives a busy window (many terminals starting at once)
     // longer to answer than typed keys do.
     if (this.held.length) this.arm(this.settling ? this.patience : this.wait);
@@ -116,13 +123,22 @@ class InputGate {
   // What goes to the shell: keys, pasted text, or the window's answers.
   input(data) {
     if (isTerminalResponse(data)) {
-      const answers = data.match(ANSWER)?.length || 0;
-      this.write(data);
-      if (answers) { this.open = Math.max(0, this.open - answers); if (!this.open) this.answered(); }
+      let answers = 0;
+      const forwarded = data.replace(ANSWER, answer => {
+        const question = this.questions.shift();
+        answers++;
+        // ConPTY stops waiting after ~500 ms, counted from before the question reached us; a late answer reaches
+        // the prompt as keys and eats the next letter ("laude"). Dropping one it still wanted costs at most that
+        // wait, so the cut-off is kept well under it. Codex's TUI waits longer and still needs its answer.
+        if (question && this.shellOwnsInput() && (question.expired || this.now() - question.at > this.stale)) return '';
+        return answer;
+      });
+      if (forwarded || !data) this.write(forwarded);
+      if (answers && !this.open) this.answered();
       return;
     }
     if (this.held.length || (this.open && this.now() - this.askedAt < this.wait)) { this.held.push(data); if (!this.timer) this.arm(Math.max(0, this.askedAt + this.wait - this.now())); return; }
-    this.open = 0; this.write(data);
+    this.expire(); this.write(data);
   }
   // A command restored at a new prompt. The prompt event is sent before PowerShell draws the prompt and asks,
   // so there is no question to wait behind yet, and "claude" arrived as "laude". The command waits for the
@@ -141,10 +157,10 @@ class InputGate {
   // An answer that never comes (no window showing the terminal yet) does not hold input for longer than wait.
   arm(delay) {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => { this.timer = null; this.open = 0; this.release(); }, delay);
+    this.timer = setTimeout(() => { this.timer = null; this.expire(); this.release(); }, delay);
     this.timer.unref?.();
   }
-  dispose() { clearTimeout(this.timer); this.timer = null; this.held = []; this.expecting = this.settling = false; }
+  dispose() { clearTimeout(this.timer); this.timer = null; this.questions.length = 0; this.held = []; this.expecting = this.settling = false; }
 }
 
 module.exports = { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, PROMPT_MARKER, InputGate };

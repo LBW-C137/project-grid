@@ -544,7 +544,7 @@ function startTerminal(id) {
     flushTimer: null, lastActivityAt: Date.now(), error: null, submissions: new SubmissionTracker(),
   };
   s.actions = new ActionLog(change => publishAction(s, change));
-  s.gate = new InputGate(data => { if (sessions.get(id) === s && s.status !== 'exited') terminal.write(data); });
+  s.gate = new InputGate(data => { if (sessions.get(id) === s && s.status !== 'exited') terminal.write(data); }, { shellOwnsInput: () => !s.codexActive });
   s.promptQueue = new PromptQueue(() => { if (sessions.get(id) === s) scheduleState(); });
   // A prompt the agent's own record shows it received is being worked on. History read when a session is
   // resumed is older than the agent's start and is left out.
