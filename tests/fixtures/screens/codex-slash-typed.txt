@@ -1,0 +1,48 @@
+
+  >_ OpenAI Codex (v0.161.0)
+     C:\work\demo-app
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› /model  choose what model and reasoning effort to use
+
+› /model
+
+  GPT-6.1-Sol high · C:\work\demo-app · 872K wi…

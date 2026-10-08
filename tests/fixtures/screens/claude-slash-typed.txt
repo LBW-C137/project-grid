@@ -1,0 +1,48 @@
+  PROJECT GRID
+  Type codex to start, or codex resume to continue a session.
+
+PS C:\work\demo-app> claude --permission-mode d
+efault
+ ▐▛███▛█   Claude Code v2.1.293
+▝▜██████▀  Opus 5.5 with high effort · Claude Max
+ ▝▝   ▝▝   C:\work\demo-app
+
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /model
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /model                            Set the AI model for Claude Code (currently Opus 5.5)
+    /auto-mode-setup                  Teach auto mode about your environment, plus optional rule tweaks
+    /code-review                      3 free /ultrareview · Review the current diff, or a PR number/branch/path
+                                      target, for correctness bugs (plus reuse/simplification/efficiency cleanu…
+    /update-config                    Use this skill to configure the Claude Code harness via settings.json.
+                                      Automated behaviors ("from now on when X", "each time X", "whenever X", "…
+    /media-use                        Agent Media OS for a HyperFrames project. Resolve BGM, SFX, image, icon,
+                                      brand logo, voice, color grade, or LUT into a frozen local file or paste-…
+    /loop                             Run a prompt or slash command on a recurring interval (e.g. /loop 5m
+                                      /foo). Omit the interval to let the model self-pace.
+    /claude-api                       Reference for the Claude API / Anthropic SDK — model ids, pricing, params,
+                                      streaming, tool use, MCP, agents, caching, token counting, model migratio…
+    /advisor                          Let Claude consult a stronger model at key moments
+    /effort                           Set effort level for model usage
+    /status                           Show Claude Code status including version, model, account, API
+                                      connectivity, and tool statuses
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

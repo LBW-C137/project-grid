@@ -6,6 +6,7 @@ import type { TerminalPacket } from './types';
 import { createTerminalLinkProvider } from './terminal-links';
 import { styleTerminal } from './terminal-styling';
 import { gpuRenderer, terminalRenderer, useTerminalRenderer } from './terminal-renderer';
+import { registerScreen } from './terminal-screen';
 import '@xterm/xterm/css/xterm.css';
 import { t } from './i18n';
 import { isMac, isWindows } from './platform';
@@ -97,6 +98,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const links = terminal.registerLinkProvider(createTerminalLinkProvider(terminal, activateLink, hoverLink, leaveLink));
     const styling = styleTerminal(terminal);
     term.current = terminal; fit.current = fitAddon;
+    const unregister = registerScreen(id, terminal);
     let disposed = false;
     let ready = false;
     let lastSeq = 0;
@@ -181,7 +183,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
       disposed = true; queued = [];
       unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); styling.dispose(); observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(settle);
       terminal.textarea?.removeEventListener('focus', focusIn); terminal.textarea?.removeEventListener('blur', focusOut); focusOut();
-      gpu.current?.dispose(); gpu.current = null;
+      gpu.current?.dispose(); gpu.current = null; unregister();
       terminal.dispose(); term.current = null; fit.current = null;
     };
   }, [id, sessionId]);

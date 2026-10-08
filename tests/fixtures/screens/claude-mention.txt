@@ -1,0 +1,48 @@
+  PROJECT GRID
+  Type codex to start, or codex resume to continue a session.
+
+PS C:\work\demo-app> claude --permission-mode d
+efault
+ ▐▛███▛█   Claude Code v2.1.293
+▝▜██████▀  Opus 5.5 with high effort · Claude Max
+ ▝▝   ▝▝   C:\work\demo-app
+
+
+❯ /model
+  ⎿  Kept model as Opus 5.5
+
+❯ Create a file named hello.txt containing the word hi. Do it now without asking questions.
+
+● Write(hello.txt)
+  ⎿  User rejected write to hello.txt
+      1 hi
+
+✻ Sautéed for 3s · done 15:33
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ @
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    * claude (agent) – Catch-all for any task that doesn't fit a more specific age…
+    * claude-code-guide (agent) – Use this agent when the user asks questions ("Can Claude...…
+    * Explore (agent) – Fast read-only search agent for locating code. Use it to fi…
+    * general-purpose (agent) – General-purpose agent for researching complex questions, se…
+    * Plan (agent) – Software architect agent for designing implementation plans…
+    * statusline-setup (agent) – Use this agent to configure the user's Claude Code status l…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

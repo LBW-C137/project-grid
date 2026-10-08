@@ -1,0 +1,48 @@
+  PROJECT GRID
+  Type codex to start, or codex resume to continue a session.
+
+PS C:\work\demo-app> claude --permission-mode d
+efault
+ ▐▛███▛█   Claude Code v2.1.293
+▝▜██████▀  Opus 5.5 with high effort · Claude Max
+ ▝▝   ▝▝   C:\work\demo-app
+
+
+❯ /model
+  ⎿  Kept model as Opus 5.5
+
+❯ Create a file named hello.txt containing the word hi. Do it now without asking questions.
+
+● Write(hello.txt)
+  ⎿  User rejected write to hello.txt
+      1 hi
+
+✻ Sautéed for 3s · done 15:33
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏺ Opus 5.5 · demo-app · ctx 4%                                                           ● high · /effort
+  ⏸ manual mode on · ← for agents
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
