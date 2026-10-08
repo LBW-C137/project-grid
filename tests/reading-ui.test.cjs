@@ -1,0 +1,271 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const Module = require('node:module');
+const ts = require('typescript');
+const React = require('react');
+const { renderToStaticMarkup } = require('react-dom/server');
+const { choiceKeys, selectedChoiceIndex, choiceIdentity, writeChoiceKeys } = require('../src/choice-keys.ts');
+const { parseAgentScreen } = require('../src/agent-screen.ts');
+const en = require('../electron/locales/en.json');
+
+// Components use test-only screen values until feat/screen-parser replaces the stub.
+const fakeScreen = overrides => ({
+  banner: { product: 'Claude Code', version: '2.1.293', model: 'Opus 5.5', effort: 'high', plan: 'Claude Max', directory: 'C:\\work\\demo-app' },
+  status: { model: null, effort: null, context: 'ctx 4%', mode: 'manual mode on', notes: [] },
+  choice: null, overlay: 'none', ...overrides,
+});
+const fakeChoice = () => ({
+  kind: 'permission', title: 'Run this command?', context: ['$ echo hello', 'Reason: write hello.txt'],
+  options: [
+    { number: 1, label: 'Yes', detail: '', hotkey: 'y', selected: false },
+    { number: 2, label: 'Always allow', detail: 'Commands starting with echo', hotkey: 'p', selected: true },
+    { number: 3, label: 'No', detail: '', hotkey: 'esc', selected: false },
+  ], hint: 'Enter to confirm · Esc to cancel',
+});
+
+// Transpile only these UI modules. No Electron, DOM, terminal or production parser is started.
+function loadUI(name, overrides = {}) {
+  const filename = path.join(__dirname, '..', 'src', name);
+  const mod = new Module(filename, module);
+  mod.filename = filename; mod.paths = Module._nodeModulePaths(path.dirname(filename));
+  const originalRequire = mod.require.bind(mod);
+  mod.require = name => {
+    if (Object.hasOwn(overrides, name)) return overrides[name];
+    if (name === '@phosphor-icons/react') return { CircleNotch: props => React.createElement('svg', { className: props.className }) };
+    if (name === './i18n') return { t: text => en[text] ?? text };
+    if (name === './choice-keys') return require('../src/choice-keys.ts');
+    return originalRequire(name);
+  };
+  mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
+  }).outputText, filename);
+  return mod.exports;
+}
+
+test('choice keys move up, down or confirm in place using option positions', () => {
+  assert.deepEqual(choiceKeys(1, 3), ['\x1b[B', '\x1b[B', '\r']);
+  assert.deepEqual(choiceKeys(3, 0), ['\x1b[A', '\x1b[A', '\x1b[A', '\r']);
+  assert.deepEqual(choiceKeys(2, 2), ['\r']);
+  assert.equal(selectedChoiceIndex(fakeChoice()), 1);
+  assert.equal(selectedChoiceIndex({ ...fakeChoice(), options: [] }), 0);
+});
+
+test('choice identity survives cursor redraws and changes for the next menu', () => {
+  const choice = fakeChoice();
+  assert.equal(choiceIdentity(choice), choiceIdentity({ ...choice, options: choice.options.map(option => ({ ...option, selected: !option.selected })) }));
+  assert.notEqual(choiceIdentity(choice), choiceIdentity({ ...choice, title: 'Select effort' }));
+  assert.notEqual(choiceIdentity(choice), choiceIdentity({ ...choice, options: choice.options.slice(1) }));
+});
+
+test('choice writes are separate and spaced 25 ms apart, with Enter last', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const written = [];
+  const pending = writeChoiceKeys(0, 2, key => written.push(key));
+  assert.deepEqual(written, ['\x1b[B']);
+  t.mock.timers.tick(24); await Promise.resolve(); assert.equal(written.length, 1);
+  t.mock.timers.tick(1); await Promise.resolve(); assert.deepEqual(written, ['\x1b[B', '\x1b[B']);
+  t.mock.timers.tick(25); await pending; assert.deepEqual(written, ['\x1b[B', '\x1b[B', '\r']);
+});
+
+test('dismissing a choice aborts its remaining keys', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let active = true; const written = [];
+  const pending = writeChoiceKeys(2, 0, key => written.push(key), () => active);
+  active = false; t.mock.timers.tick(25); await pending;
+  assert.deepEqual(written, ['\x1b[A']);
+});
+
+test('screen parser stub preserves its replacement contract', () => {
+  for (const agent of ['claude', 'codex']) assert.deepEqual(parseAgentScreen(agent, ['anything']), {
+    banner: null, status: { model: null, effort: null, context: null, mode: null, notes: [] }, choice: null, overlay: 'none',
+  });
+});
+
+test('welcome renders CLI metadata and the cached agent commands without a terminal toggle', () => {
+  const { ReadingWelcome } = loadUI('ReadingWelcome.tsx');
+  for (const agent of ['claude', 'codex']) {
+    const names = agent === 'claude' ? ['/init', '/help', '/model', '/status', '/review'] : ['/init', '/model', '/status', '/review', '/approvals'];
+    const commands = names.map(name => ({ name, source: 'builtin', description: '审查代码', view: 'reading' }));
+    const html = renderToStaticMarkup(React.createElement(ReadingWelcome, { agent, screen: fakeScreen(), commands, complete: () => {}, disabled: false }));
+    assert.match(html, /Claude Code/); assert.match(html, /v2\.1\.293/); assert.match(html, /Opus 5\.5/); assert.match(html, /high/);
+    assert.match(html, /Claude Max/); assert.match(html, /C:\\work\\demo-app/); assert.match(html, /Review code/);
+    assert.equal((html.match(/<button/g) ?? []).length, 5);
+    for (const name of names) assert.ok(html.includes(name));
+    assert.doesNotMatch(html, /切换到终端|Switch to terminal/);
+  }
+});
+
+test('welcome uses startup spinner and status model before a banner is available', () => {
+  const { ReadingWelcome } = loadUI('ReadingWelcome.tsx');
+  const screen = fakeScreen({ banner: null, status: { model: 'GPT-6.1-Sol', effort: 'high', context: null, mode: null, notes: [] } });
+  const html = renderToStaticMarkup(React.createElement(ReadingWelcome, { agent: 'codex', screen, commands: [], complete: () => {}, disabled: false }));
+  assert.match(html, /Codex/); assert.match(html, /Starting…/); assert.match(html, /loading-spinner/); assert.match(html, /GPT-6\.1-Sol/);
+});
+
+test('choice renders context, printed numbers, details, hotkeys and CLI selection', () => {
+  const { ReadingChoice } = loadUI('ReadingChoice.tsx');
+  const html = renderToStaticMarkup(React.createElement(ReadingChoice, { choice: fakeChoice(), terminalId: 'test', onError: () => {} }));
+  assert.match(html, /is-permission/); assert.match(html, /Run this command\?/); assert.match(html, /\$ echo hello/);
+  assert.match(html, /Commands starting with echo/); assert.match(html, /<kbd>p<\/kbd>/);
+  assert.match(html, /is-cli-selected/); assert.match(html, /data-highlighted="true"/); assert.match(html, /Cancel/);
+});
+
+function elements(node) {
+  if (Array.isArray(node)) return node.flatMap(elements);
+  if (!React.isValidElement(node)) return [];
+  return [node, ...elements(node.props.children)];
+}
+
+// Exercise the component's handlers with persistent hook slots, without a DOM or native GUI.
+function choiceHarness(t, choice = fakeChoice()) {
+  const slots = []; let cursor = 0;
+  const hooks = {
+    useState: initial => {
+      const index = cursor++;
+      if (!Object.hasOwn(slots, index)) slots[index] = typeof initial === 'function' ? initial() : initial;
+      return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }];
+    },
+    useRef: initial => {
+      const index = cursor++;
+      if (!Object.hasOwn(slots, index)) slots[index] = { current: initial };
+      return slots[index];
+    },
+    useEffect: () => {},
+  };
+  const written = [], previous = globalThis.window;
+  globalThis.window = { projectGrid: { writeTerminal: (id, key) => written.push({ id, key }) } };
+  t.after(() => { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; });
+  const { ReadingChoice } = loadUI('ReadingChoice.tsx', { react: hooks });
+  const render = () => {
+    cursor = 0;
+    const root = ReadingChoice({ choice, terminalId: 'native-choice', onError: message => assert.fail(message) });
+    root.props.ref.current = { focus: () => {} };
+    return root;
+  };
+  const press = key => {
+    let prevented = false;
+    render().props.onKeyDown({ key, nativeEvent: { isComposing: false }, preventDefault: () => { prevented = true; }, stopPropagation: () => {} });
+    assert.equal(prevented, true);
+  };
+  const options = () => elements(render()).filter(node => node.props.className?.split(' ').includes('reading-choice-option'));
+  return { written, render, press, options };
+}
+
+test('welcome command rows call the existing completion callback with the cached command', () => {
+  const { ReadingWelcome } = loadUI('ReadingWelcome.tsx');
+  const command = { name: '/model', source: 'builtin', description: '切换模型', view: 'terminal' };
+  const picked = [];
+  const root = ReadingWelcome({ agent: 'claude', screen: fakeScreen(), commands: [command], complete: value => picked.push(value), disabled: false });
+  elements(root).find(node => node.type === 'button').props.onClick();
+  assert.deepEqual(picked, [command]);
+});
+
+test('choice arrows move a local highlight; Enter submits once and keeps a pending card', t => {
+  const harness = choiceHarness(t);
+  assert.equal(harness.options()[1].props['data-highlighted'], true);
+  harness.press('ArrowDown'); assert.equal(harness.options()[2].props['data-highlighted'], true);
+  harness.press('ArrowUp'); assert.equal(harness.options()[1].props['data-highlighted'], true);
+  assert.deepEqual(harness.written, []);
+  harness.press('Enter'); harness.press('Enter'); harness.press('Escape');
+  assert.deepEqual(harness.written, [{ id: 'native-choice', key: '\r' }]);
+  assert.equal(harness.render().props['aria-busy'], true);
+  assert.ok(harness.options().every(option => option.props.disabled));
+  assert.ok(elements(harness.options()[1]).some(node => node.props.className === 'loading-spinner'));
+});
+
+test('choice number keys target printed numbers and write relative to the CLI cursor', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const choice = fakeChoice(); choice.options.forEach((option, index) => { option.number = [4, 7, 9][index]; });
+  const harness = choiceHarness(t, choice);
+  harness.press('4'); harness.options()[2].props.onClick();
+  assert.deepEqual(harness.written, [{ id: 'native-choice', key: '\x1b[A' }]);
+  t.mock.timers.tick(25); await Promise.resolve();
+  assert.deepEqual(harness.written, [{ id: 'native-choice', key: '\x1b[A' }, { id: 'native-choice', key: '\r' }]);
+});
+
+test('choice Esc and cancel button each send a single Escape and wait for CLI dismissal', t => {
+  for (const action of ['Escape', 'button']) {
+    const harness = choiceHarness(t);
+    if (action === 'Escape') harness.press('Escape');
+    else elements(harness.render()).find(node => node.props.className === 'text-button').props.onClick();
+    harness.press('Escape'); harness.press('Enter');
+    assert.deepEqual(harness.written, [{ id: 'native-choice', key: '\x1b' }]);
+    assert.equal(harness.render().props['aria-busy'], true);
+  }
+});
+
+function readingMode() {
+  return loadUI('reading-mode.ts', { react: { useSyncExternalStore: (_subscribe, snapshot) => snapshot() } });
+}
+const terminal = (id, needsInput = 'Allow command?') => ({ id, sessionId: 'session', codexActive: true, needsInput });
+const isReading = (mode, value) => mode.readingShown(value, mode.useTerminalChoice());
+
+test('needsInput falls back at 1.5 seconds and automatically returns after acknowledgment', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const mode = readingMode(), value = terminal('fallback');
+  mode.syncReading(value); assert.equal(isReading(mode, value), true);
+  t.mock.timers.tick(1499); assert.equal(isReading(mode, value), true);
+  t.mock.timers.tick(1); assert.equal(isReading(mode, value), false);
+  mode.syncReading(terminal(value.id, null)); assert.equal(isReading(mode, value), true);
+});
+
+test('a parsed choice cancels a pending handoff and its disappearance does not rearm that notice', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const mode = readingMode(), value = terminal('native');
+  mode.syncReading(value); t.mock.timers.tick(1000); mode.setChoiceVisible(value.id, true);
+  t.mock.timers.tick(1000); assert.equal(isReading(mode, value), true);
+  mode.setChoiceVisible(value.id, false); mode.syncReading(value); t.mock.timers.tick(2000);
+  assert.equal(isReading(mode, value), true);
+  mode.syncReading(terminal(value.id, null)); mode.syncReading(value); t.mock.timers.tick(1500);
+  assert.equal(isReading(mode, value), false, 'a new notice gets its own timeout');
+});
+
+test('a choice already visible keeps reading open for a permission hook', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const mode = readingMode(), value = terminal('already-visible');
+  mode.setChoiceVisible(value.id, true); mode.syncReading(value); t.mock.timers.tick(5000);
+  assert.equal(isReading(mode, value), true);
+});
+
+test('permission notice clearing or agent exit cancels its timeout', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const mode = readingMode(), value = terminal('cancel');
+  mode.syncReading(value); mode.syncReading(terminal(value.id, null)); t.mock.timers.tick(1500);
+  assert.equal(isReading(mode, value), true);
+  mode.syncReading(value); mode.syncReading({ ...value, codexActive: false }); t.mock.timers.tick(1500);
+  assert.equal(isReading(mode, value), true);
+});
+
+test('one automatic handoff per notice and manual toggles cancel automatic return', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const mode = readingMode(), value = terminal('manual');
+  mode.syncReading(value); t.mock.timers.tick(1500); assert.equal(isReading(mode, value), false);
+  mode.setReading(value.id, true); mode.syncReading(value); t.mock.timers.tick(1500);
+  assert.equal(isReading(mode, value), true);
+  mode.syncReading(terminal(value.id, null)); mode.syncReading(value); t.mock.timers.tick(1500);
+  mode.setReading(value.id, false); mode.syncReading(terminal(value.id, null));
+  assert.equal(isReading(mode, value), false);
+  mode.agentExited({ ...value, codexActive: false }); assert.equal(isReading(mode, value), true);
+});
+
+test('manual choice during the delay cancels the pending handoff', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const mode = readingMode(), value = terminal('manual-delay');
+  mode.syncReading(value); mode.setReading(value.id, false); mode.setReading(value.id, true); t.mock.timers.tick(1500);
+  assert.equal(isReading(mode, value), true);
+});
+
+test('choice visibility and handoff timers are isolated per terminal', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const mode = readingMode(), first = terminal('first'), second = terminal('second');
+  mode.syncReading(first); mode.syncReading(second); mode.setChoiceVisible(first.id, true); t.mock.timers.tick(1500);
+  assert.equal(isReading(mode, first), true); assert.equal(isReading(mode, second), false);
+});
+
+test('reading view requires an active agent and a live terminal session', () => {
+  const mode = readingMode(), value = terminal('shell', null);
+  assert.equal(mode.readingShown({ ...value, codexActive: false }, []), false);
+  assert.equal(mode.readingShown({ ...value, sessionId: null }, []), false);
+});
