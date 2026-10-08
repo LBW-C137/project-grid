@@ -55,6 +55,12 @@ try {
   await waitFor(async () => (await state()).projects[0].terminals.length === 2 && (await state()).projects[0].terminals.every(terminal => terminal.shellReady), 'independent split ready');
   controlId = (await state()).projects[0].terminals[1].id;
   const terminal = page.locator(`[data-terminal-id="${projects[0].id}"]`), control = page.locator(`[data-terminal-id="${controlId}"]`);
+  // The card header's toggle acts on the split in use: select the split, then switch it to the raw terminal.
+  const showTerminal = async split => {
+    await split.locator('.reading-status').click();
+    await page.locator(`[data-project-id="${projects[0].id}"] .panel-header`).getByRole('button', { name: '切换到终端', exact: true }).click();
+    await split.locator('.reading-view').waitFor({ state: 'detached' });
+  };
   const fixture = '\x1b[48;2;30;30;30mDARK_SURFACE\x1b[0m\r\n\x1b[48;2;69;31;29mDIFF_RED\x1b[0m\r\n\x1b[48;2;29;60;35mDIFF_GREEN\x1b[0m\r\n\x1b[41mANSI_RED\x1b[0m\r\n\x1b[7mINVERSE\x1b[0m\r\n';
   const paint = `[Console]::Write([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(fixture).toString('base64')}')))`;
   await write(controlId, `Clear-Host; ${paint}\r`);
@@ -69,7 +75,7 @@ try {
   await waitFor(async () => (await state()).projects[0].terminals[0].codexActive, 'Codex identity reaches renderer');
   // A running agent shows its conversation as a document by default; this test is about Codex's own input box in
   // the terminal, so it switches to the terminal the way a user does.
-  await terminal.locator('.reading-view .reading-empty button').click();
+  await showTerminal(terminal);
   await waitFor(async () => terminal.locator('.xterm-rows').innerText().then(text => text.includes('Ask Codex to do anything')), 'real offline Codex input prompt');
   assert.deepEqual(await cellBackgrounds(), original, 'another shell in the same project keeps all ANSI backgrounds');
   const sessions = (await state()).projects[0].terminals.map(terminal => terminal.sessionId);
@@ -117,7 +123,7 @@ try {
   const quote = value => "'" + value.replaceAll("'", "''") + "'";
   await write(controlId, `Clear-Host; Send-ProjectGridEvent 'codex-started'; ${paint}; for ($pgComposer=0; $pgComposer -lt 1200 -and -not (Test-Path -LiteralPath ${quote(doneFile)}); $pgComposer++) { Start-Sleep -Milliseconds 100 }; Send-ProjectGridEvent 'codex-exited'\r`);
   await waitFor(async () => (await state()).projects[0].terminals[1].codexActive, 'control becomes an authenticated Codex fixture');
-  await control.locator('.reading-view .reading-empty button').click();
+  await showTerminal(control);
   await waitFor(async () => (await cellBackgrounds()).DARK_SURFACE === 'rgba(0, 0, 0, 0)', 'same dark history surface becomes transparent');
   const agentColors = await cellBackgrounds();
   for (const label of ['DIFF_RED', 'DIFF_GREEN', 'ANSI_RED', 'INVERSE']) assert.equal(agentColors[label], original[label], `${label} background survives`);
