@@ -92,6 +92,9 @@ jobs:
       - name: Verify installer and automatic update metadata
         run: node scripts/verify-update-artifacts.cjs
 
+      - name: Verify repeated portable launches preserve running terminals
+        run: node scripts/retry.mjs npm run test:portable
+
       - name: Verify desktop with actual terminal button clicks
         run: node scripts/retry.mjs npm run test:desktop -- --packaged
 
@@ -201,6 +204,9 @@ jobs:
         with:
           name: desktop-test-screenshots
           path: |
+            .test-output/portable-*/*.png
+            .test-output/portable-*/results.json
+            .test-output/portable-*/*.log
             .test-output/desktop-*/*.png
             .test-output/sessions-*/*.png
             .test-output/workspace-*/*.png
