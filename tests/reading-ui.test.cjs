@@ -269,3 +269,42 @@ test('reading view requires an active agent and a live terminal session', () => 
   assert.equal(mode.readingShown({ ...value, codexActive: false }, []), false);
   assert.equal(mode.readingShown({ ...value, sessionId: null }, []), false);
 });
+
+test('reading entry rendering parses only the last 40 blocks and leaves the welcome branch intact', t => {
+  const tail = require('../src/useVisibleTail.ts');
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {} });
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { createElement: () => ({ innerHTML: '', querySelectorAll: () => [] }) } });
+  t.after(() => {
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow); else delete globalThis.window;
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument); else delete globalThis.document;
+  });
+  let entries = Array.from({ length: 400 }, (_, index) => ({ id: String(index), at: 0, role: 'assistant', text: `answer-${index}` }));
+  const parsed = [], icon = () => React.createElement('svg');
+  const { ReadingView } = loadUI('ReadingView.tsx', {
+    marked: { marked: { parse: text => { parsed.push(text); return text; } } },
+    dompurify: { default: () => ({ sanitize: html => html }) },
+    '@phosphor-icons/react': Object.fromEntries(['ArrowDown', 'CaretDown', 'CaretRight', 'CircleNotch', 'Image', 'PaperPlaneRight', 'Stop'].map(name => [name, icon])),
+    './ActivityPane': {}, './voice-input': {}, './terminal-screen': { useScreen: () => null },
+    './agent-screen': { parseAgentScreen: () => fakeScreen() },
+    './ReadingWelcome': { ReadingWelcome: () => React.createElement('p', null, 'welcome preserved') },
+    './ReadingChoice': {}, './choice-keys': {}, './reading-mode': {},
+    './useStickToBottom': { useStickToBottom: () => ({ stuck: true, unseen: 0, ready: true, holdPosition() {}, toBottom() {} }) },
+    './useReadingConversation': { conversationKey: () => 'session', useReadingConversation: () => entries },
+    './useVisibleTail': tail, './reading.css': {},
+    './useMentions': { useMentions: () => ({ open: false }) }, './MentionPalette': { MentionPalette: () => null },
+    './i18n': { t: (text, values) => (en[text] ?? text).replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? name)) },
+  });
+  const render = () => renderToStaticMarkup(React.createElement(ReadingView, {
+    projectId: 'project', terminal: { id: 'terminal', sessionId: 'session', agent: 'codex', codexActive: true, needsInput: null },
+    autoFocus: false, onShowTerminal() {}, onError() {}, onOpenLink() {},
+  }));
+  const html = render();
+  assert.equal(parsed.length, 40);
+  assert.equal(parsed[0], 'answer-360'); assert.equal(parsed.at(-1), 'answer-399');
+  assert.match(html, /Show earlier conversation \(360\)/);
+  assert.doesNotMatch(html, /answer-359/);
+  entries = []; parsed.length = 0;
+  assert.match(render(), /welcome preserved/); assert.equal(parsed.length, 0);
+});

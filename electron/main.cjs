@@ -265,12 +265,12 @@ function publishAction(s, change) {
 }
 // The conversation for the reading view reaches the window the same way, in small batches.
 function publishConversation(s, change) {
-  if (sessions.get(s.terminalId) !== s) return;
+  if (sessions.get(s.terminalId) !== s || s.conversation.loading) return;
   (s.conversationChanges ||= []).push(change);
   s.conversationTimer ||= setTimeout(() => {
     const changes = s.conversationChanges; s.conversationChanges = []; s.conversationTimer = null;
-    if (sessions.get(s.terminalId) !== s) return;
-    send('terminal:conversation', changes.length > 40 || changes.some(item => item.reset) ? { id: s.terminalId, list: s.conversation.list } : { id: s.terminalId, changes: changes.map(item => item.entry) });
+    if (sessions.get(s.terminalId) !== s || s.conversation.loading) return;
+    send('terminal:conversation', changes.length > 40 || changes.some(item => item.reset) ? { id: s.terminalId, list: s.conversation.snapshot() } : { id: s.terminalId, changes: changes.map(item => item.entry) });
   }, 120);
 }
 // A skill step names the skill; what the skill is for comes from its SKILL.md, a moment later.
@@ -286,7 +286,7 @@ function followClaude(project, s, event) {
   const home = path.resolve(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
   if (!file || path.basename(file) !== `${event.sessionId}.jsonl` || !file.toLowerCase().startsWith(home.toLowerCase() + path.sep)) return;
   if (s.claudeTranscript?.filename !== file) {
-    s.claudeTranscript = new TranscriptTail(file); s.actions.reset(); s.conversation.reset();
+    s.claudeTranscript = new TranscriptTail(file, { onHistory: ready => ready ? s.conversation.endHistory() : s.conversation.beginHistory() }); s.actions.reset(); s.conversation.reset();
     s.activityMonitor?.stop();
     const tail = s.claudeTranscript;
     s.activityMonitor = monitorActivity(async () => { await tail.read(record => { noteReply(s, claudeReply(record)); claudeConversation(s.conversation, record, project.path); describeActions(s, project.path, claudeRecord(s.actions, record, project.path)); }); return null; }, () => {});
@@ -374,6 +374,7 @@ function onEvent(event) {
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
     const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0,
+      onHistory: ready => ready ? s.conversation.endHistory() : s.conversation.beginHistory(),
       onRecord: record => {
         noteReply(s, codexReply(record)); codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
         if (record?.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload?.type)) s.promptQueue.finish(Date.parse(record.timestamp) || Date.now());
@@ -894,7 +895,7 @@ function registerIpc() {
     disposeTerminal(id); startTerminal(id); return true;
   });
   handle('terminal:actions', id => { findProject(id); return sessions.get(id)?.actions.list || []; });
-  handle('terminal:conversation', id => { findProject(id); return sessions.get(id)?.conversation.list || []; });
+  handle('terminal:conversation', id => { findProject(id); return sessions.get(id)?.conversation.snapshot() || []; });
   handle('terminal:commands', async id => {
     const project = findProject(id), s = sessions.get(id);
     const commands = await listAgentCommands({ agent: s?.agent || 'claude', projectPath: project.kind === 'ssh' ? undefined : project.path });

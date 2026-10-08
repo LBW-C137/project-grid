@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { shouldStickToBottom, countNewEntries } = require('../src/useStickToBottom.ts');
+const { shouldStickToBottom, countNewEntries, scrollToLatest } = require('../src/useStickToBottom.ts');
 
 const metrics = (scrollTop, scrollHeight = 1000, clientHeight = 200) => ({ scrollTop, scrollHeight, clientHeight });
 
@@ -65,4 +65,21 @@ test('new message count includes arrivals in a rolling list with unchanged lengt
 test('message count includes multiple new IDs and ignores removals', () => {
   assert.equal(countNewEntries(new Set(['a', 'b']), [{ id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }]), 3);
   assert.equal(countNewEntries(new Set(['a', 'b']), [{ id: 'b' }]), 0);
+});
+
+test('opening, resizing and following new entries use an explicit instant jump', () => {
+  const writes = [], node = { scrollHeight: 1400, scrollTo: options => writes.push(options) };
+  scrollToLatest(node);
+  node.scrollHeight = 1800; scrollToLatest(node);
+  assert.deepEqual(writes, [{ top: 1400, behavior: 'instant' }, { top: 1800, behavior: 'instant' }]);
+});
+
+test('only an explicitly requested jump animates; the next automatic jump is instant', () => {
+  const writes = [], node = { scrollHeight: 1400, scrollTo: options => writes.push(options) };
+  scrollToLatest(node, 'smooth'); scrollToLatest(node);
+  assert.deepEqual(writes.map(write => write.behavior), ['smooth', 'instant']);
+});
+
+test('a protected prepend preserves the released follow state', () => {
+  assert.equal(shouldStickToBottom(false, metrics(1800, 2200), metrics(600), true, false), false);
 });

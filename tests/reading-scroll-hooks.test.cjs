@@ -1,0 +1,105 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { hookHarness } = require('./helpers/hook-harness.cjs');
+const { blocks } = require('../src/useVisibleTail.ts');
+const entries = count => Array.from({ length: count }, (_, index) => ({ id: String(index), role: 'assistant', at: 0 }));
+
+function scrollHarness(t) {
+  const handlers = {}, writes = [], frames = new Map(); let frame = 0, resize;
+  const node = {
+    scrollTop: 0, scrollHeight: 1000, clientHeight: 200,
+    scrollTo(options) { writes.push(options); if (options.behavior !== 'smooth') this.scrollTop = Math.max(0, Math.min(options.top, this.scrollHeight - this.clientHeight)); },
+    addEventListener(name, handler) { handlers[name] = handler; }, removeEventListener() {},
+  };
+  const globals = {
+    requestAnimationFrame: callback => { frames.set(++frame, callback); return frame; },
+    cancelAnimationFrame: id => frames.delete(id),
+    ResizeObserver: class { constructor(callback) { resize = callback; } observe() {} disconnect() {} },
+    window: { addEventListener() {}, removeEventListener() {} },
+  };
+  const descriptors = Object.fromEntries(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { value, writable: true, configurable: true });
+  const harness = hookHarness('src/useStickToBottom.ts');
+  t.after(() => {
+    harness.dispose();
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
+    }
+  });
+  const container = { current: node }, content = { current: {} };
+  return {
+    node, writes, handlers, container,
+    render: (list, key = 'terminal:session') => harness.render('useStickToBottom', container, content, list, key),
+    resize: () => resize(),
+    frame: () => { for (const callback of frames.values()) callback(); frames.clear(); },
+  };
+}
+
+test('the first nonempty layout pins instantly and becomes ready before paint', t => {
+  const h = scrollHarness(t), empty = [];
+  assert.equal(h.render(empty).result.ready, false);
+  h.node.scrollHeight = 2000;
+  const frame = h.render(entries(40));
+  assert.equal(frame.renders[0].ready, false, 'list begins hidden');
+  assert.equal(frame.result.ready, true, 'layout update reveals it before paint');
+  assert.equal(h.node.scrollTop, 1800);
+  assert.ok(h.writes.every(write => write.behavior === 'instant'));
+});
+
+test('switching terminal or session resets readiness, follow state and unseen IDs', t => {
+  const h = scrollHarness(t), list = entries(40);
+  h.render(list); h.frame();
+  h.handlers.wheel({ deltaY: -1 }); h.node.scrollTop = 100; h.handlers.scroll();
+  assert.equal(h.render([...list, { id: 'new' }]).result.unseen, 1);
+  for (const key of ['second:session', 'second:new-session']) {
+    h.node.scrollTop = 0;
+    const frame = h.render(list, key);
+    assert.equal(frame.renders[0].ready, false);
+    assert.deepEqual([frame.result.stuck, frame.result.unseen, frame.result.ready], [true, 0, true]);
+    assert.equal(h.node.scrollTop, 800);
+  }
+});
+
+test('stuck streaming and resize pin instantly; a scrolled-up reader stays and counts only new IDs', t => {
+  const h = scrollHarness(t), list = entries(40);
+  h.render(list); h.frame();
+  h.node.scrollHeight = 1200; h.resize();
+  assert.equal(h.node.scrollTop, 1000); h.frame();
+  h.node.scrollHeight = 1400; h.render([...list, { id: 'new' }]);
+  assert.equal(h.node.scrollTop, 1200); h.frame();
+  h.handlers.wheel({ deltaY: -20 }); h.node.scrollTop = 300; h.handlers.scroll();
+  const count = h.writes.length;
+  h.node.scrollHeight = 1600;
+  assert.equal(h.render([...list, { id: 'new' }, { id: 'newer' }]).result.unseen, 1);
+  h.resize(); assert.equal(h.node.scrollTop, 300); assert.equal(h.writes.length, count);
+  assert.equal(h.render([...list, { id: 'new', text: 'updated' }, { id: 'newer' }]).result.unseen, 1);
+});
+
+test('automatic content growth interrupts a smooth latest-button jump with an instant pin', t => {
+  const h = scrollHarness(t), list = entries(40);
+  const initial = h.render(list).result; h.frame();
+  h.node.scrollTop = 200; initial.toBottom('smooth');
+  assert.equal(h.writes.at(-1).behavior, 'smooth');
+  h.node.scrollHeight = 1500; h.resize();
+  assert.equal(h.writes.at(-1).behavior, 'instant');
+  assert.equal(h.node.scrollTop, 1300);
+  h.node.scrollTop = 0; initial.toBottom();
+  assert.equal(h.writes.at(-1).behavior, 'instant', 'sending a prompt does not animate');
+});
+
+test('earlier-page layout compensates scroll height and anchors streamed arrivals', t => {
+  const harness = hookHarness('src/useVisibleTail.ts'); t.after(() => harness.dispose());
+  let held = 0;
+  const node = { scrollTop: 230, scrollHeight: 1000, scrollTo(options) { assert.equal(options.behavior, 'instant'); this.scrollTop = options.top; } };
+  const container = { current: node }, list = blocks(entries(100));
+  const render = (grouped, key = 'first', stuck = false) => harness.render('useVisibleTail', grouped, key, container, stuck, () => held++).result;
+  const initial = render(list, 'first', true);
+  assert.equal(initial.visible.length, 40); initial.showEarlier(); node.scrollHeight = 1800;
+  const earlier = render(list);
+  assert.equal(held, 1); assert.equal(earlier.visible.length, 80); assert.equal(earlier.earlier, 20);
+  assert.equal(node.scrollTop, 1030);
+  const streaming = render(blocks(entries(102)));
+  assert.equal(streaming.visible[0].entry.id, '20'); assert.equal(streaming.visible.length, 82);
+  assert.equal(node.scrollTop, 1030);
+  assert.equal(render(list, 'second', true).visible.length, 40, 'another session starts with one tail page');
+});

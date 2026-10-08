@@ -160,12 +160,18 @@ class ActionLog {
 
 // Follows a growing JSON-lines file from where the last read stopped, a bounded amount per call.
 class TranscriptTail {
-  constructor(filename) { this.filename = filename; this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; }
+  constructor(filename, { onHistory = () => {} } = {}) {
+    this.filename = filename; this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false;
+    this.onHistory = onHistory; this.historyPending = true; onHistory(false);
+  }
   async read(onRecord) {
     let file; try { file = await fs.open(this.filename, 'r'); } catch { return; }
     try {
       const stat = await file.stat();
-      if (stat.size < this.offset) { this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; }
+      if (stat.size < this.offset) {
+        this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false;
+        this.historyPending = true; this.onHistory(false);
+      }
       const end = Math.min(stat.size, this.offset + 4 * 1024 * 1024);
       while (this.offset < end) {
         const chunk = Buffer.alloc(Math.min(65536, end - this.offset));
@@ -181,6 +187,7 @@ class TranscriptTail {
         }
         if (this.buffer.length > 1024 * 1024) { this.buffer = Buffer.alloc(0); this.skipping = true; }
       }
+      if (this.historyPending && this.offset >= stat.size) { this.historyPending = false; this.onHistory(true); }
     } finally { await file.close(); }
   }
 }

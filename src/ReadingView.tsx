@@ -12,6 +12,8 @@ import { ReadingChoice } from './ReadingChoice';
 import { choiceIdentity } from './choice-keys';
 import { READING_HANDOFF_DELAY, setChoiceVisible } from './reading-mode';
 import { useStickToBottom } from './useStickToBottom';
+import { conversationKey, useReadingConversation } from './useReadingConversation';
+import { blocks, useVisibleTail } from './useVisibleTail';
 import './reading.css';
 import { t } from './i18n';
 import { useMentions } from './useMentions';
@@ -47,18 +49,6 @@ function Markdown({ text }: { text: string }) {
   return <div className="reading-markdown" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-type Block = { kind: 'message'; entry: ConversationEntry } | { kind: 'tools'; id: string; entries: ConversationEntry[] };
-// Tool calls that follow one another fold into one group between the messages around them.
-function blocks(entries: ConversationEntry[]): Block[] {
-  const result: Block[] = [];
-  for (const entry of entries) {
-    const last = result.at(-1);
-    if (entry.role === 'tool') { if (last?.kind === 'tools') last.entries.push(entry); else result.push({ kind: 'tools', id: entry.id, entries: [entry] }); }
-    else result.push({ kind: 'message', entry });
-  }
-  return result;
-}
-
 function ToolGroup({ entries, live }: { entries: ConversationEntry[]; live: boolean }) {
   const running = entries.some(entry => !entry.tool?.done);
   const [open, setOpen] = useState(false);
@@ -81,7 +71,7 @@ function ToolGroup({ entries, live }: { entries: ConversationEntry[]; live: bool
 // it, and the toggle in the card header switches back to it at any time. autoFocus: the card is expanded and
 // this is its terminal in use, so the message box takes the keyboard (never a small card's).
 export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, onError, onOpenLink }: { projectId: string; terminal: ProjectTerminal; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
-  const [entries, setEntries] = useState<ConversationEntry[]>([]);
+  const entries = useReadingConversation(terminal.id, terminal.sessionId);
   const visibleScreen = useScreen(terminal.id);
   const screen = useMemo(() => parseAgentScreen(terminal.agent === 'claude' ? 'claude' : 'codex', visibleScreen?.rows ?? []), [terminal.agent, visibleScreen]);
   const choiceKey = screen.choice ? choiceIdentity(screen.choice) : null;
@@ -95,7 +85,8 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   // Images pasted for the next message. The agent holds them itself; this only counts them.
   const [images, setImages] = useState(0);
   const scroller = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null);
-  const { stuck, unseen, toBottom } = useStickToBottom(scroller, content, entries, terminal.sessionId);
+  const conversation = conversationKey(terminal.id, terminal.sessionId);
+  const { stuck, unseen, toBottom, ready, holdPosition } = useStickToBottom(scroller, content, entries, conversation);
   useLayoutEffect(() => { if (caret.current !== null) { input.current?.setSelectionRange(caret.current, caret.current); caret.current = null; } });
   useEffect(() => { if (draft.startsWith('/') || !entries.length) setRequested(true); }, [draft, entries.length]);
   // Capture composer ownership before disabling it; another card's focus must stay where it is.
@@ -143,20 +134,6 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   };
   const mentions = useMentions({ projectId, draft, input, disabled: /^\/[^\s]*$/.test(draft), edit, onError });
   useEffect(() => {
-    let active = true; setEntries([]);
-    void window.projectGrid.terminalConversation(terminal.id).then(result => { if (active && result.ok) setEntries(result.value); });
-    const off = window.projectGrid.onTerminalConversation(packet => {
-      if (packet.id !== terminal.id) return;
-      if (packet.list) { setEntries(packet.list); return; }
-      setEntries(current => {
-        const next = [...current];
-        for (const entry of packet.changes || []) { const at = next.findIndex(item => item.id === entry.id); if (at < 0) next.push(entry); else next[at] = entry; }
-        return next.slice(-400);
-      });
-    });
-    return () => { active = false; off(); };
-  }, [terminal.id, terminal.sessionId]);
-  useEffect(() => {
     if (!autoFocus) return;
     if (choiceVisible.current) { restoreComposer.current = true; (choiceHost.current?.firstElementChild as HTMLElement | null)?.focus(); }
     else input.current?.focus();
@@ -164,6 +141,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const working = terminal.codexActive && terminal.codexActivity === 'working';
   const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
   const grouped = useMemo(() => blocks(entries), [entries]);
+  const tail = useVisibleTail(grouped, conversation, scroller, stuck, holdPosition);
   const queueTerminalHandoff = (immediate = false) => {
     if (handoff.current !== null) clearTimeout(handoff.current);
     const showTerminal = () => {
@@ -260,11 +238,14 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   };
   let body: ReactNode;
   if (!entries.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={screen} commands={commands} complete={complete} disabled={hasChoice} />;
-  else body = grouped.map((block, index) => block.kind === 'tools'
-    ? <ToolGroup key={block.id} entries={block.entries} live={index === grouped.length - 1} />
+  else body = <>
+    {tail.earlier > 0 && <button type="button" className="text-button reading-earlier" onClick={tail.showEarlier}>{t('显示更早的对话（{count}）', { count: tail.earlier })}</button>}
+    {tail.visible.map((block, index) => block.kind === 'tools'
+    ? <ToolGroup key={block.id} entries={block.entries} live={index === tail.visible.length - 1} />
     : block.entry.role === 'user'
       ? <div key={block.entry.id} className="reading-user"><span>{t('你')}</span><p>{block.entry.text}</p></div>
-      : <div key={block.entry.id} className="reading-assistant"><Markdown text={block.entry.text || ''} /></div>);
+      : <div key={block.entry.id} className="reading-assistant"><Markdown text={block.entry.text || ''} /></div>)}
+  </>;
   return <div className="reading-view" onClick={event => {
     const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
     if (button) { const code = button.closest('.reading-code')?.querySelector('pre')?.textContent || ''; void window.projectGrid.copy(code).then(result => { if (result.ok) { button.textContent = t('已复制'); setTimeout(() => { button.textContent = t('复制'); }, 1400); } else onError(result.error); }); return; }
@@ -272,10 +253,10 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (link) { event.preventDefault(); const href = link.getAttribute('href') || ''; if (href) onOpenLink(href); }
   }}>
     <div className="reading-scroll-area">
-      <div className="reading-scroll" ref={scroller} tabIndex={0}><div className="reading-content" ref={content}>{body}</div></div>
+      <div className="reading-scroll" ref={scroller} tabIndex={0}><div className="reading-content" ref={content} style={{ visibility: entries.length && !ready ? 'hidden' : undefined }}>{body}</div></div>
       {!stuck && <div className="reading-latest">
         {unseen > 0 && <span className="reading-unseen" role="status">{t('{count} 条新消息', { count: unseen })}</span>}
-        <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={toBottom}><ArrowDown size={18} /></button>
+        <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={() => toBottom('smooth')}><ArrowDown size={18} /></button>
       </div>}
     </div>
     <div className={`reading-status ${working ? 'is-working' : ''}`} role="status">
