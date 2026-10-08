@@ -906,5 +906,6 @@
   "{count} 条新消息": "{count} new message(s)",
   "正在启动…": "Starting…",
   "试试这些命令": "Try these commands",
-  "Shift+Tab 切换模式": "Shift+Tab to switch modes"
+  "Shift+Tab 切换模式": "Shift+Tab to switch modes",
+  "{position} / {total}": "{position} / {total}"
 }

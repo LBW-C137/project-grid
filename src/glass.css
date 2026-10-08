@@ -74,6 +74,16 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-slot.drag-placeholder::before { content: ''; position: absolute; inset: 0; border: 1px dashed #d3ecff85; border-radius: var(--glass-radius); background: #b6ddff12; box-shadow: inset 0 0 24px #b6ddff0c; pointer-events: none; }
 .project-panel { background: var(--glass-sheen), var(--glass); border-color: var(--glass-hairline); border-radius: var(--glass-radius); box-shadow: var(--glass-lift); isolation: isolate; }
 .project-panel:hover { border-color: transparent; }
+/* Shortcut navigation has its own blue ring above the pink/green status edges. */
+.project-panel.is-nav-target > .panel-nav-ring { position: absolute; inset: 1px; z-index: 4; border-radius: inherit; pointer-events: none; outline: 2px solid #4ea1ff; outline-offset: 2px; box-shadow: 0 0 14px #4ea1ff70, inset 0 0 10px #4ea1ff28; animation: project-nav-glow 1.2s ease-in-out both; }
+.project-switch-hud { position: absolute; top: var(--layout-gap); left: 50%; transform: translateX(-50%); z-index: 60; max-width: calc(100% - 2 * var(--layout-gap)); pointer-events: none; }
+.project-switch-hud-content { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border: 1px solid #4ea1ff70; border-radius: 999px; background: var(--glass-sheen), rgba(9, 27, 46, .88); backdrop-filter: blur(16px) saturate(150%); box-shadow: inset 0 1px 0 #ffffff25, 0 5px 20px #020c2160; color: #f1f7ff; font-size: 12px; animation: project-nav-glow 1.2s ease-in-out both; }
+.project-switch-index { flex: none; padding: 2px 5px; border-radius: 4px; color: #b6d9ff; background: #4ea1ff28; font-variant-numeric: tabular-nums; }
+.project-switch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.project-switch-position { flex: none; color: #b6cce2; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@keyframes project-nav-glow { 0% { opacity: .35; } 15%, 75% { opacity: 1; } 100% { opacity: 0; } }
+:root[data-motion="off"] :is(.panel-nav-ring, .project-switch-hud-content) { animation: none; opacity: 1; }
+:root[data-surface="solid"] .project-switch-hud-content { background: var(--glass-solid); backdrop-filter: none; }
 .focus-sidebar { position: relative; }
 .project-panel::after, .focus-sidebar::after, .file-preview::after {
   content: ''; position: absolute; inset: 0; z-index: 2; padding: 1px; pointer-events: none; border-radius: calc(var(--glass-radius) - 1px);
