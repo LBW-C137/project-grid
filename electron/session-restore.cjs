@@ -33,9 +33,9 @@ async function recentSession(projectPath, codexHome = process.env.CODEX_HOME || 
     try {
       const meta = await sessionMeta(file.filename);
       if (!interactiveSession(meta, projectPath) || threadId && meta.id !== threadId) continue;
-      let state = 'unknown', first = true;
-      for await (const record of records(file.filename)) {
-        if (first) first = false; else state = advanceTaskState(state, record);
+      let state = 'unknown';
+      for await (const record of records(file.filename, { historyWindow: true })) {
+        state = advanceTaskState(state, record);
       }
       return { id: meta.id, state, modifiedAt: file.modified };
     } catch { }

@@ -10,6 +10,8 @@ const { TranscriptTail, ActionLog, claudeRecord } = require('../electron/agent-a
 const { ConversationLog, claudeConversation } = require('../electron/conversation.cjs');
 const { monitorActivity } = require('../electron/codex-activity.cjs');
 const { claudeResumeCommand } = require('../electron/session-restore.cjs');
+const { claudeReply } = require('../electron/round-summary.cjs');
+const { HISTORY_WINDOW } = require('../electron/transcript-window.cjs');
 
 const user = content => ({ type: 'user', uuid: 'prompt', message: { content } });
 async function fixture(t) {
@@ -107,7 +109,8 @@ function mainHarness(t, f) {
     setRestore: (_id, value) => Object.assign(restore, value), expectCompletion() {} };
   const context = vm.createContext({ path, sessions, store, TranscriptTail, monitorActivity, claudeConversation, claudeRecord,
     claudeConfigDir: () => f.home, findClaudeSession: (cwd, id) => findClaudeSession(cwd, id, f.home),
-    claudeReply: () => null, noteReply() {}, describeActions() {}, broadcast() {}, acceptShellEvent: () => true,
+    claudeReply, noteReply: (session, reply) => { if (reply?.reset) session.lastReply = ''; else if (reply?.text) session.lastReply = reply.text; },
+    describeActions() {}, broadcast() {}, acceptShellEvent: () => true,
     quitting: false, Date, claudeResumeCommand, restorePlans: new Map(),
   });
   vm.runInContext(main.slice(main.indexOf('function followClaude('), main.indexOf('// A round being worked')), context);
@@ -126,6 +129,38 @@ test('following a known id loads history immediately, and same-session hooks pre
   h.context.followClaude(h.project, h.s, { sessionId: 'session', transcriptPath: file });
   await h.s.activityMonitor.poll();
   assert.equal(h.s.claudeTranscript, tail); assert.equal(h.resets(), 1); assert.equal(h.s.conversation.list.length, 2);
+});
+
+test('both Claude followers load a large session window and clear old consumers when it is replaced', async t => {
+  const f = await fixture(t), file = await f.write('large', [user('excluded'),
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'excluded', name: 'Skill', input: { skill: 'excluded-skill' } }] } },
+    { padding: 'x'.repeat(HISTORY_WINDOW + 1000) },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'excluded' }] } },
+    { type: 'assistant', uuid: 'recent', message: { content: [{ type: 'text', text: 'Recent answer' },
+      { type: 'tool_use', id: 'recent-skill', name: 'Skill', input: { skill: 'recent-skill' } }] } }]);
+  const h = mainHarness(t, f), described = [];
+  h.context.skillDescription = async name => { described.push(name); return 'Recent skill description'; };
+  vm.runInContext(main.slice(main.indexOf('function describeActions('), main.indexOf('// Claude Code writes each tool call')), h.context);
+  assert.equal(await h.context.followClaudeSession(h.project, h.s, 'large'), true);
+  assert.equal(h.s.claudeTranscript.historyPending, false);
+  assert.deepEqual(h.s.conversation.snapshot().filter(entry => entry.text).map(entry => entry.text), ['Recent answer']);
+  assert.equal(h.s.lastReply, 'Recent answer');
+  assert.deepEqual(described, ['recent-skill'], 'only in-window skill calls reach describeActions');
+  assert.deepEqual(h.s.actions.list.map(action => action.id), ['recent-skill']);
+  assert.equal(h.s.actions.list[0].description, 'Recent skill description');
+  const tail = h.s.claudeTranscript;
+  h.context.followClaude(h.project, h.s, { sessionId: 'large', transcriptPath: file });
+  await h.s.activityMonitor.poll();
+  assert.equal(h.s.claudeTranscript, tail); assert.equal(h.resets(), 1);
+  await fs.rename(file, `${file}.old`);
+  h.s.lastTask = 'Previous task';
+  await fs.writeFile(file, JSON.stringify({ padding: 'x'.repeat(HISTORY_WINDOW + 2000) }) + '\n'
+    + JSON.stringify({ type: 'assistant', uuid: 'new', message: { content: [{ type: 'tool_use', id: 'new-tool', name: 'Read', input: { file_path: 'new.txt' } }] } }) + '\n');
+  await h.s.activityMonitor.poll();
+  assert.equal(h.resets(), 2); assert.equal(h.s.lastReply, '', 'an excluded reply cannot leave the previous session reply behind');
+  assert.equal(h.s.lastTask, 'Previous task', 'history callbacks preserve the task remembered from live hooks, including continue prompts');
+  assert.deepEqual(h.s.conversation.snapshot().map(entry => entry.role), ['tool']);
+  assert.deepEqual(h.s.actions.list.map(action => action.id), ['new-tool']);
 });
 
 test('restored sessions follow before a hook and keep history when the agent-started event arrives', async t => {

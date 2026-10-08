@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
+const { transcriptWindow } = require('./transcript-window.cjs');
 
 const ROLLOUT = /^rollout-.*\.jsonl$/;
 // Without a watcher every file is looked at again this often. With one, only the files it reports are;
@@ -8,9 +9,10 @@ const ROLLOUT = /^rollout-.*\.jsonl$/;
 // (some network folders).
 const WALK_INTERVAL = 2000, NAMES_INTERVAL = 10000, WATCHED_WALK_INTERVAL = 5 * 60000, IDLE_CLOSE = 60000, META_LIMIT = 5000;
 
-async function* records(filename) {
-  let buffer = Buffer.alloc(0); let skipping = false;
-  for await (const chunk of fs.createReadStream(filename, { highWaterMark: 64 * 1024 })) {
+async function* records(filename, { historyWindow = false } = {}) {
+  const window = historyWindow ? transcriptWindow((await fsp.stat(filename)).size) : { offset: 0, skipping: false };
+  let buffer = Buffer.alloc(0); let skipping = window.skipping;
+  for await (const chunk of fs.createReadStream(filename, { start: window.offset, highWaterMark: 64 * 1024 })) {
     buffer = Buffer.concat([buffer, chunk]);
     let index;
     while ((index = buffer.indexOf(10)) >= 0) {

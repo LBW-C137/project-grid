@@ -86,9 +86,22 @@ def image_type(data):
     if data[4:8] == b"ftyp" and (b"avif" in data[8:] or b"avis" in data[8:]): return "image/avif"
     return None
 
-def json_records(filename):
+HISTORY_WINDOW = 8 * 1024 * 1024
+LIVE_READ_LIMIT = 4 * 1024 * 1024
+
+def transcript_window(size):
+    offset = max(0, size - HISTORY_WINDOW)
+    return offset, offset > 0
+
+def json_records(filename, history_window=False):
     """Skip oversized transcript messages; lifecycle events remain small."""
     with open(filename, "rb") as source:
+        if history_window:
+            offset, skipping = transcript_window(os.fstat(source.fileno()).st_size)
+            source.seek(offset)
+            if skipping:
+                line = source.readline(1024 * 1024 + 1)
+                while line and not line.endswith(b"\n"): line = source.readline(1024 * 1024 + 1)
         while True:
             line = source.readline(1024 * 1024 + 1)
             if not line: break
@@ -111,7 +124,8 @@ def recent_session(root, codex_home, thread_id=None):
     for modified, filename in sorted(candidates, reverse=True):
         try:
             records = json_records(filename)
-            meta = next(records, {})
+            try: meta = next(records, {})
+            finally: records.close()
             payload = meta.get("payload", {})
             source = payload.get("source", "cli")
             if meta.get("type") != "session_meta" or source not in ("cli", "vscode") or os.path.realpath(payload.get("cwd", "")) != root: continue
@@ -119,7 +133,7 @@ def recent_session(root, codex_home, thread_id=None):
             if not re.fullmatch(r"[a-fA-F0-9-]{36}", identity): continue
             if thread_id and identity != thread_id: continue
             state = "unknown"
-            for record in records:
+            for record in json_records(filename, history_window=True):
                 item = record.get("payload", {})
                 if record.get("type") == "event_msg":
                     event = item.get("type")
@@ -140,6 +154,7 @@ class CodexActivityReader:
         self.thread_id = thread_id
         self.filename, self.snapshot = None, None
         self.offset, self.buffer, self.skipping, self.next_discovery = 0, b"", False, 0
+        self.file_identity, self.file_size, self.history_pending = None, 0, True
 
     def discover(self):
         if time.monotonic() < self.next_discovery: return
@@ -166,7 +181,7 @@ class CodexActivityReader:
                 if os.path.realpath(meta.get("cwd", "")) != os.path.realpath(self.root) or not re.fullmatch(r"[a-fA-F0-9-]{36}", meta.get("id", "")): continue
                 if self.thread_id and meta.get("id") != self.thread_id: continue
                 self.filename = filename
-                self.offset, self.buffer, self.skipping = 0, b"", False
+                self.file_identity, self.history_pending = None, True
                 self.snapshot = {"threadId": meta["id"], "turnId": None, "state": "unknown", "updatedAt": 0}
                 return
             except (OSError, ValueError, TypeError): pass
@@ -187,12 +202,15 @@ class CodexActivityReader:
         if not self.filename or self.snapshot["state"] != "working": self.discover()
         if not self.filename: return None
         with open(self.filename, "rb") as source:
-            size = os.fstat(source.fileno()).st_size
-            if size < self.offset:
-                self.offset, self.buffer, self.skipping = 0, b"", False
+            stat = os.fstat(source.fileno())
+            size, identity = stat.st_size, (stat.st_dev, stat.st_ino)
+            if self.file_identity != identity or size < self.file_size:
+                self.offset, self.skipping = transcript_window(size)
+                self.buffer, self.history_pending = b"", True
                 self.snapshot.update(turnId=None, state="unknown", updatedAt=0)
+            self.file_identity, self.file_size = identity, size
             source.seek(self.offset)
-            end = min(size, self.offset + 4 * 1024 * 1024)
+            end = size if self.history_pending else min(size, self.offset + LIVE_READ_LIMIT)
             while self.offset < end:
                 chunk = source.read(min(65536, end - self.offset))
                 if not chunk: break
@@ -205,6 +223,7 @@ class CodexActivityReader:
                         except (ValueError, UnicodeError, TypeError): pass
                     self.skipping = False
                 if len(self.buffer) > 1024 * 1024: self.buffer, self.skipping = b"", True
+            if self.offset >= size: self.history_pending = False
             return dict(self.snapshot) if self.offset >= size else None
 
 class Worker:

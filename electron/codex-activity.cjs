@@ -3,6 +3,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { interactiveSession } = require('./session-restore.cjs');
 const { rolloutFiles, sessionMeta } = require('./session-files.cjs');
+const { transcriptWindow, LIVE_READ_LIMIT } = require('./transcript-window.cjs');
 
 // Only interactive rollout files can own a project card. A child agent can
 // inherit notify, but its completion does not end the interactive parent turn.
@@ -25,7 +26,7 @@ class CodexActivityReader {
         const meta = await sessionMeta(item.filename);
         if (interactiveSession(meta, this.cwd) && (!this.boundThread || meta.id === this.boundThread)) {
           this.filename = item.filename;
-          this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false;
+          this.fileIdentity = null;
           this.snapshot = { threadId: meta.id, turnId: null, state: 'unknown', updatedAt: 0 };
           this.historyPending = true; this.options.onHistory?.(false);
           return;
@@ -50,19 +51,24 @@ class CodexActivityReader {
   }
   async read() {
     const threadId = this.options.threadId?.() || null;
-    if (threadId !== this.boundThread) { this.boundThread = threadId; this.filename = null; this.snapshot = null; this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; this.nextDiscovery = 0; }
+    if (threadId !== this.boundThread) { this.boundThread = threadId; this.filename = null; this.snapshot = null; this.fileIdentity = null; this.nextDiscovery = 0; }
     if (this.options.requireBinding?.() && !threadId) return null;
     if (!this.filename || this.snapshot.state !== 'working') await this.discover();
     if (!this.filename) return null;
     const file = await fs.open(this.filename, 'r');
     try {
       const stat = await file.stat();
-      if (stat.size < this.offset) {
-        this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; this.snapshot = { ...this.snapshot, turnId: null, state: 'unknown', updatedAt: 0 };
-        this.historyPending = true; this.options.onHistory?.(false);
+      const identity = `${stat.dev}:${stat.ino}`;
+      if (this.fileIdentity !== identity || stat.size < this.fileSize) {
+        const rebinding = this.fileIdentity != null;
+        Object.assign(this, transcriptWindow(stat.size)); this.buffer = Buffer.alloc(0);
+        this.snapshot = { threadId: this.snapshot.threadId, turnId: null, state: 'unknown', updatedAt: 0 };
+        this.historyPending = true;
+        if (rebinding) this.options.onHistory?.(false);
       }
-      // Bound each poll; never rescan a growing transcript from its beginning.
-      const end = Math.min(stat.size, this.offset + 4 * 1024 * 1024);
+      this.fileIdentity = identity; this.fileSize = stat.size;
+      // Catch up the bounded history in one poll; live growth keeps its smaller budget.
+      const end = this.historyPending ? stat.size : Math.min(stat.size, this.offset + LIVE_READ_LIMIT);
       while (this.offset < end) {
         const chunk = Buffer.alloc(Math.min(65536, end - this.offset));
         const { bytesRead } = await file.read(chunk, 0, chunk.length, this.offset);
