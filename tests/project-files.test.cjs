@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { listDirectory, readProjectFile, TEXT_PAGE_BYTES } = require('../electron/project-files.cjs');
+const { findFiles, listDirectory, readProjectFile, TEXT_PAGE_BYTES } = require('../electron/project-files.cjs');
 
 async function fixture(t) {
   const prefix = path.join(os.tmpdir(), 'project-grid-files-');
@@ -17,6 +17,99 @@ async function fixture(t) {
   });
   return { directory, project: { path: projectPath } };
 }
+
+async function writeMentionFile(project, name) {
+  await fs.mkdir(path.dirname(path.join(project.path, name)), { recursive: true });
+  await fs.writeFile(path.join(project.path, name), '');
+}
+
+test('mentions walk plain folders, derive directories, skip generated trees and limit results', async t => {
+  const { project } = await fixture(t);
+  await writeMentionFile(project, 'src/deep/中文 file.ts');
+  await writeMentionFile(project, '.hidden');
+  for (const folder of ['.git', 'node_modules', 'dist', 'build', 'out', '.next', 'target', '.venv', '__pycache__']) await writeMentionFile(project, `${folder}/excluded.txt`);
+  await Promise.all(Array.from({ length: 60 }, (_, index) => writeMentionFile(project, `file-${String(index).padStart(2, '0')}.txt`)));
+  const empty = await findFiles(project, '');
+  assert.equal(empty.length, 50);
+  assert.deepEqual(empty.map(file => file.path), [...empty.map(file => file.path)].sort((a, b) => a.localeCompare(b)));
+  assert.deepEqual(await findFiles(project, 'excluded'), []);
+  assert.deepEqual(await findFiles(project, 'SRC'), [{ path: 'src', kind: 'dir' }, { path: 'src/deep', kind: 'dir' }, { path: 'src/deep/中文 file.ts', kind: 'file' }]);
+  assert.deepEqual(await findFiles(project, '中文 file'), [{ path: 'src/deep/中文 file.ts', kind: 'file' }]);
+  assert.ok(empty.some(file => file.path === '.hidden'));
+});
+
+test('mentions use git tracked and untracked paths, honor ignores and keep paths relative to the project', async t => {
+  const { project } = await fixture(t);
+  const exec = require('node:util').promisify(require('node:child_process').execFile);
+  const { gitEnvironment } = require('../electron/project-git.cjs');
+  const git = (...args) => exec('git', args, { cwd: project.path, windowsHide: true, timeout: 5000, env: gitEnvironment() });
+  await git('init');
+  await writeMentionFile(project, 'src/tracked 中文.ts');
+  await writeMentionFile(project, 'dist/tracked.ts');
+  await git('add', '.');
+  await fs.writeFile(path.join(project.path, '.gitignore'), 'ignored/\n*.log\ndist/\n');
+  await writeMentionFile(project, 'src/untracked [1].ts');
+  await writeMentionFile(project, 'ignored/private.ts');
+  await writeMentionFile(project, 'src/debug.log');
+  const files = await findFiles(project, '');
+  assert.ok(files.some(file => file.path === 'src/tracked 中文.ts'));
+  assert.ok(files.some(file => file.path === 'src/untracked [1].ts'));
+  assert.ok(files.some(file => file.path === 'dist/tracked.ts'), 'tracked generated files are included by git');
+  assert.ok(!files.some(file => /ignored|debug|\.git\//.test(file.path)));
+  assert.ok(files.every(file => !file.path.includes('\\')));
+  assert.deepEqual(await findFiles({ path: path.join(project.path, 'src') }, 'tracked 中文'), [{ path: 'tracked 中文.ts', kind: 'file' }]);
+  assert.deepEqual(await findFiles(project, '[1]'), [{ path: 'src/untracked [1].ts', kind: 'file' }]);
+});
+
+test('mentions rank basename prefix, basename contains, path contains and subsequences by shorter path', async t => {
+  const { project } = await fixture(t);
+  const names = ['deep/read-long.ts', 'bread-long.ts', 'read-context/other.ts', 'r/e/a/d.txt', 'read.ts', 'bread.ts', '🌸/notes.ts'];
+  await Promise.all(names.map(name => writeMentionFile(project, name)));
+  assert.deepEqual((await findFiles(project, 'ReAd')).filter(file => file.kind === 'file').map(file => file.path), ['read.ts', 'deep/read-long.ts', 'bread.ts', 'bread-long.ts', 'read-context/other.ts', 'r/e/a/d.txt']);
+  assert.deepEqual(await findFiles(project, 'nomatch'), []);
+  assert.deepEqual(await findFiles(project, '🌸nt'), [{ path: '🌸/notes.ts', kind: 'file' }]);
+  assert.deepEqual(await findFiles(project, 'r/e/a/'), [{ path: 'r/e/a/d.txt', kind: 'file' }]);
+});
+
+test('mentions share concurrent scans, cache for 20 seconds and invalidate a changed project root', async t => {
+  const { project, directory } = await fixture(t);
+  project.id = 'mentions-cache-test';
+  await writeMentionFile(project, 'old.ts');
+  let now = Date.now(), scans = 0;
+  t.mock.method(Date, 'now', () => now);
+  const read = fs.readdir.bind(fs);
+  t.mock.method(fs, 'readdir', async (...args) => { scans++; return read(...args); });
+  await Promise.all([findFiles(project, ''), findFiles(project, 'old')]);
+  assert.equal(scans, 1);
+  await writeMentionFile(project, 'new.ts');
+  now += 19_999;
+  assert.deepEqual(await findFiles(project, 'new'), []);
+  assert.equal(scans, 1);
+  now++;
+  assert.deepEqual(await findFiles(project, 'new'), [{ path: 'new.ts', kind: 'file' }]);
+  assert.equal(scans, 2);
+  const other = path.join(directory, 'other'); await fs.mkdir(other);
+  await fs.writeFile(path.join(other, 'other.ts'), '');
+  assert.deepEqual(await findFiles({ ...project, path: other }, ''), [{ path: 'other.ts', kind: 'file' }]);
+});
+
+test('mentions stop plain-folder enumeration at 20,000 entries', async t => {
+  const { project } = await fixture(t);
+  const entries = Array.from({ length: 20_010 }, (_, index) => ({ name: `file-${String(index).padStart(5, '0')}.ts`, isDirectory: () => false, isFile: () => true }));
+  t.mock.method(fs, 'readdir', async () => entries);
+  assert.deepEqual(await findFiles(project, 'file-19999'), [{ path: 'file-19999.ts', kind: 'file' }]);
+  assert.deepEqual(await findFiles(project, 'file-20000'), []);
+});
+
+test('mentions return no SSH entries and retry failed local scans', async t => {
+  assert.deepEqual(await findFiles({ kind: 'ssh', path: '/remote/unavailable' }, ''), []);
+  const { project } = await fixture(t);
+  const missing = { path: path.join(project.path, 'missing') };
+  await assert.rejects(findFiles(missing, ''), /ENOENT/);
+  await writeMentionFile(missing, 'recovered.ts');
+  assert.deepEqual(await findFiles(missing, ''), [{ path: 'recovered.ts', kind: 'file' }]);
+  await assert.rejects(findFiles(project, null), /无效的文件搜索/);
+});
 
 test('explorer reads real directories lazily, keeps dotfiles, and sorts folders first', async t => {
   const { project } = await fixture(t);

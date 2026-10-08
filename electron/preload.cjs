@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('projectGrid', {
   acknowledge: id => ipcRenderer.invoke('workspace:acknowledge', id),
   settings: patch => ipcRenderer.invoke('workspace:settings', patch),
   listDirectory: (id, relativePath = '', offset = 0) => ipcRenderer.invoke('project:directory', id, relativePath, offset),
+  findFiles: (projectId, query) => ipcRenderer.invoke('project:findFiles', projectId, query),
   gitStatus: id => ipcRenderer.invoke('project:git-status', id),
   gitHistory: (id, offset = 0) => ipcRenderer.invoke('project:git-history', id, offset),
   gitFiles: (id, hash) => ipcRenderer.invoke('project:git-files', id, hash),

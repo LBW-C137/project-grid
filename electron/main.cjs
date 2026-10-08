@@ -9,7 +9,7 @@ const { randomUUID } = require('node:crypto');
 const pty = require('node-pty');
 const { WorkspaceStore } = require('./state.cjs');
 const { createEventServer } = require('./events.cjs');
-const { listDirectory, readProjectFile, saveProjectFile, resolveProjectPath, VIDEO_TYPES } = require('./project-files.cjs');
+const { findFiles, listDirectory, readProjectFile, saveProjectFile, resolveProjectPath, VIDEO_TYPES } = require('./project-files.cjs');
 const { projectPaths } = require('./project-paths.cjs');
 const { ProjectGit } = require('./project-git.cjs');
 const { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, InputGate } = require('./terminal-input.cjs');
@@ -742,6 +742,7 @@ function registerIpc() {
     if (patch.restoreSessions === false) restorePlans.clear();
   });
   handle('project:directory', (id, relativePath = '', offset = 0) => findProject(id).kind === 'ssh' ? remoteFor(id).request('directory', { path: relativePath, offset }) : listDirectory(findProject(id), relativePath, offset));
+  handle('project:findFiles', (projectId, query) => findFiles(findProject(projectId), query));
   handle('project:git-status', async id => {
     const project = findProject(id), status = await projectGit.read(project, 'status');
     const branch = status.repository ? status.detached ? `HEAD ${status.head.slice(0, 8)}` : status.branch : '';

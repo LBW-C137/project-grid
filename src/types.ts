@@ -28,6 +28,7 @@ export type FileEntry = { name: string; path: string; kind: 'directory' | 'file'
 export type FileProgress = { projectId: string; text: string } | null;
 export type VoiceState = { phase: 'missing' | 'downloading' | 'ready' | 'transcribing' | 'error'; ready: boolean; percent: number; error: string | null; model: string; downloadBytes: number };
 export type DirectoryListing = { path: string; entries: FileEntry[]; total: number; nextOffset: number | null };
+export type MentionFile = { path: string; kind: 'file' | 'dir' };
 export type GitChange = { path: string; index: string; worktree: string; originalPath: string | null; submodule: boolean; conflict: boolean; untracked: boolean };
 export type GitStatus = { repository: boolean; branch: string; head: string; detached: boolean; unborn: boolean; upstream: string | null; ahead: number | null; behind: number | null; files: GitChange[]; total: number; staged: number; unstaged: number; conflicts: number; truncated: boolean };
 export type GitCommit = { hash: string; parents: string[]; author: string; date: string; refs: string; subject: string };
@@ -88,6 +89,7 @@ export type Bridge = {
   acknowledge(id: string): Promise<Result<void>>;
   settings(patch: Partial<Settings>): Promise<Result<void>>;
   listDirectory(id: string, relativePath?: string, offset?: number): Promise<Result<DirectoryListing>>;
+  findFiles(projectId: string, query: string): Promise<Result<MentionFile[]>>;
   gitStatus(id: string): Promise<Result<GitStatus>>;
   gitHistory(id: string, offset?: number): Promise<Result<GitHistory>>;
   gitFiles(id: string, hash: string): Promise<Result<GitCommitFiles>>;
