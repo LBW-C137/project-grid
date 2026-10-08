@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, Notification, clipboard, shell, protocol, safeStorage, net: electronNet } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, Notification, clipboard, shell, protocol, safeStorage, session: electronSession, net: electronNet } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -15,6 +15,7 @@ const { ProjectGit } = require('./project-git.cjs');
 const { isTerminalResponse, acceptShellEvent, SubmissionTracker, PromptMarkers, InputGate } = require('./terminal-input.cjs');
 const { PromptQueue } = require('./prompt-queue.cjs');
 const { createTerminalEnvironment } = require('./terminal-env.cjs');
+const { adoptSystemProxy } = require('./system-proxy.cjs');
 const { PreviewResources, resourceResponse } = require('./preview-resources.cjs');
 const { resolveTerminalLink } = require('./terminal-links.cjs');
 const { UpdateManager, isInstalledBuild } = require('./updates.cjs');
@@ -949,6 +950,8 @@ else {
   app.on('activate', () => showWindow());
   app.whenReady().then(async () => {
     fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    // Before any terminal or agent starts: they inherit the system proxy only through process.env.
+    await adoptSystemProxy({ session: electronSession.defaultSession }).catch(error => console.warn('System proxy:', error.message));
     let shellIcon = path.join(root, 'assets/icon.ico');
     if (process.platform === 'win32') shellIcon = materializeIcon(shellIcon, app.getPath('userData'));
     if (process.platform === 'win32' && installed && !process.env.PROJECT_GRID_DATA_DIR) {
