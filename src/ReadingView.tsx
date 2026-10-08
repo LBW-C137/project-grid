@@ -1,10 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
-import { CaretDown, CaretRight, CircleNotch, Image as ImageIcon, PaperPlaneRight, Stop, Terminal } from '@phosphor-icons/react';
+import { CaretDown, CaretRight, CircleNotch, Image as ImageIcon, PaperPlaneRight, Stop } from '@phosphor-icons/react';
 import type { AgentCommand, ConversationEntry, ProjectTerminal } from './types';
 import { actionText, stepVerb } from './ActivityPane';
 import { dictateInto } from './voice-input';
+import { useScreen } from './terminal-screen';
+import { parseAgentScreen } from './agent-screen';
+import { ReadingWelcome } from './ReadingWelcome';
+import { ReadingChoice } from './ReadingChoice';
+import { choiceIdentity } from './choice-keys';
+import { READING_HANDOFF_DELAY, setChoiceVisible } from './reading-mode';
 import './reading.css';
 import { t } from './i18n';
 
@@ -73,6 +79,12 @@ function ToolGroup({ entries, live }: { entries: ConversationEntry[]; live: bool
 // this is its terminal in use, so the message box takes the keyboard (never a small card's).
 export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOpenLink }: { terminal: ProjectTerminal; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
   const [entries, setEntries] = useState<ConversationEntry[]>([]);
+  const visibleScreen = useScreen(terminal.id);
+  const screen = useMemo(() => parseAgentScreen(terminal.agent === 'claude' ? 'claude' : 'codex', visibleScreen?.rows ?? []), [terminal.agent, visibleScreen]);
+  const choiceKey = screen.choice ? choiceIdentity(screen.choice) : null;
+  const hasChoice = screen.choice !== null, choiceVisible = useRef(hasChoice); choiceVisible.current = hasChoice;
+  const handoff = useRef<ReturnType<typeof setTimeout> | null>(null), mounted = useRef(true);
+  const choiceHost = useRef<HTMLDivElement>(null), restoreComposer = useRef(false), wasChoice = useRef(false);
   const [draft, setDraft] = useState('');
   const [commands, setCommands] = useState<AgentCommand[]>([]), [requested, setRequested] = useState(false);
   const [dismissed, setDismissed] = useState(false), [selection, setSelection] = useState(0);
@@ -81,7 +93,27 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
   const [images, setImages] = useState(0);
   const scroller = useRef<HTMLDivElement>(null), stick = useRef(true), input = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => { if (caret.current !== null) { input.current?.setSelectionRange(caret.current, caret.current); caret.current = null; } });
-  useEffect(() => { if (draft.startsWith('/')) setRequested(true); }, [draft]);
+  useEffect(() => { if (draft.startsWith('/') || !entries.length) setRequested(true); }, [draft, entries.length]);
+  // Capture composer ownership before disabling it; another card's focus must stay where it is.
+  if (hasChoice && !wasChoice.current) restoreComposer.current = document.activeElement === input.current;
+  useLayoutEffect(() => {
+    setChoiceVisible(terminal.id, hasChoice);
+    if (hasChoice) {
+      if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
+      if (restoreComposer.current && (!wasChoice.current || document.activeElement === document.body)) (choiceHost.current?.firstElementChild as HTMLElement | null)?.focus();
+    } else if (wasChoice.current) {
+      if (restoreComposer.current && document.activeElement === document.body) input.current?.focus();
+      restoreComposer.current = false;
+    }
+    wasChoice.current = hasChoice;
+  }, [terminal.id, hasChoice, choiceKey]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false; setChoiceVisible(terminal.id, false);
+      if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
+    };
+  }, [terminal.id]);
   useEffect(() => {
     setCommands([]); commandLoad.current = null;
     if (!requested) return;
@@ -97,7 +129,7 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
     const query = draft.slice(1).toLowerCase(), name = (command: AgentCommand) => command.name.slice(1).toLowerCase();
     return commands.filter(command => name(command).includes(query)).sort((a, b) => Number(!name(a).startsWith(query)) - Number(!name(b).startsWith(query)));
   }, [commands, draft]);
-  const palette = !dismissed && /^\/[^\s]*$/.test(draft), selected = matches[selection];
+  const palette = !hasChoice && !dismissed && /^\/[^\s]*$/.test(draft), selected = matches[selection];
   const listId = `reading-commands-${terminal.id}`, optionId = (index: number) => `${listId}-${index}`;
   useEffect(() => { setSelection(0); }, [draft, commands]);
   useEffect(() => { if (palette) document.getElementById(optionId(selection))?.scrollIntoView({ block: 'nearest' }); }, [palette, selection]);
@@ -121,15 +153,42 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
   }, [terminal.id, terminal.sessionId]);
   // Follow new output while the reader is at the bottom; leave them where they are when they scrolled up.
   useLayoutEffect(() => { if (stick.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; }, [entries]);
-  useEffect(() => { if (autoFocus) input.current?.focus(); }, [terminal.id, autoFocus]);
+  useEffect(() => {
+    if (!autoFocus) return;
+    if (choiceVisible.current) { restoreComposer.current = true; (choiceHost.current?.firstElementChild as HTMLElement | null)?.focus(); }
+    else input.current?.focus();
+  }, [terminal.id, autoFocus]);
   const working = terminal.codexActive && terminal.codexActivity === 'working';
   const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
   const grouped = useMemo(() => blocks(entries), [entries]);
+  const queueTerminalHandoff = (immediate = false) => {
+    if (handoff.current !== null) clearTimeout(handoff.current);
+    const showTerminal = () => {
+      handoff.current = null;
+      if (!mounted.current || choiceVisible.current) return;
+      onShowTerminal();
+      requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(`[data-terminal-id="${terminal.id}"] .xterm-helper-textarea`)?.focus());
+    };
+    if (immediate) showTerminal();
+    else handoff.current = setTimeout(showTerminal, READING_HANDOFF_DELAY);
+  };
+  // Footer actions preserve the prompt and attached images waiting in the composer.
+  const openModel = async () => {
+    if (choiceVisible.current || !terminal.sessionId) return;
+    if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
+    input.current?.focus();
+    window.projectGrid.writeTerminal(terminal.id, '/model');
+    await new Promise(resolve => setTimeout(resolve, 150));
+    if (!mounted.current || choiceVisible.current) return;
+    window.projectGrid.writeTerminal(terminal.id, '\r'); queueTerminalHandoff();
+  };
   // The CLI recognises slash commands and shell mode from typed keys, not bracketed paste.
   const send = async (text = draft.trim()) => {
-    if ((!text && !images) || !terminal.sessionId) return;
+    if (choiceVisible.current || (!text && !images) || !terminal.sessionId) return;
+    if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
     const typed = /^[\/!]/.test(text) && !/[\r\n]/.test(text);
     const available = typed && text.startsWith('/') ? await (commandLoad.current || window.projectGrid.terminalCommands(terminal.id).then(result => result.ok ? result.value : [])) : commands;
+    if (!mounted.current || choiceVisible.current) return;
     if (text) {
       if (typed) window.projectGrid.writeTerminal(terminal.id, text);
       else {
@@ -140,16 +199,17 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
     }
     edit(''); setImages(0); stick.current = true;
     if (text) await new Promise(resolve => setTimeout(resolve, typed ? 150 : 400));
+    if (!mounted.current || choiceVisible.current) return;
     window.projectGrid.writeTerminal(terminal.id, '\r');
     if (typed && (text.startsWith('!') || available.find(command => command.name.toLowerCase() === text.split(/\s/)[0].toLowerCase())?.view !== 'reading')) {
-      onShowTerminal();
-      requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(`[data-terminal-id="${terminal.id}"] .xterm-helper-textarea`)?.focus());
+      queueTerminalHandoff(text.startsWith('!'));
     }
   };
   const sendRef = useRef(send); sendRef.current = send;
   // Dictation into this terminal lands here while the reading view shows: the words appear at the cursor as
   // soon as they are recognised, and Enter (or the shortcut again) sends the whole message.
   useEffect(() => dictateInto(terminal.id, (text, submit) => {
+    if (choiceVisible.current) return;
     const node = input.current, value = node?.value ?? '', here = !!node && document.activeElement === node;
     const at = here ? node.selectionStart : value.length, end = here ? node.selectionEnd : value.length;
     const next = value.slice(0, at) + text + value.slice(end);
@@ -195,7 +255,7 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
   };
   let body: ReactNode;
-  if (!entries.length) body = <div className="reading-empty"><p>{terminal.codexActive ? t('{agent} 的对话会显示在这里。', { agent }) : t('在终端里启动 Codex 或 Claude Code 后，这里按文档排版显示对话：标题、列表、代码块和工具调用。')}</p><button type="button" className="button secondary small" onClick={onShowTerminal}><Terminal size={14} />{t('切换到终端')}</button></div>;
+  if (!entries.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={screen} commands={commands} complete={complete} disabled={hasChoice} />;
   else body = grouped.map((block, index) => block.kind === 'tools'
     ? <ToolGroup key={block.id} entries={block.entries} live={index === grouped.length - 1} />
     : block.entry.role === 'user'
@@ -209,17 +269,28 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
   }}>
     <div className="reading-scroll" ref={scroller} onScroll={event => { const node = event.currentTarget; stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 40; }}>{body}</div>
     <div className={`reading-status ${working ? 'is-working' : ''}`} role="status">
-      {terminal.needsInput !== null ? <><span>{t('等待你确认：{message}', { message: terminal.needsInput })}</span><button type="button" className="text-button" onClick={onShowTerminal}>{t('切换到终端')}</button></> : working ? <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })}</span></> : <span>{terminal.codexActive ? terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令') : t('终端就绪')}</span>}
+      <div className="reading-status-activity">
+        {terminal.needsInput !== null ? <span>{t('等待你确认：{message}', { message: terminal.needsInput })}</span> : working ? <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })}</span></> : <span>{terminal.codexActive ? terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令') : t('终端就绪')}</span>}
+      </div>
+      <div className="reading-status-chips">
+        {(screen.status.model || screen.banner?.model || screen.status.effort || screen.banner?.effort) && <button type="button" className="reading-status-chip" disabled={hasChoice} title={t('切换模型')} onClick={() => void openModel()}>{[screen.status.model ?? screen.banner?.model, screen.status.effort ?? screen.banner?.effort].filter(Boolean).join(' · ')}</button>}
+        {terminal.agent === 'claude' && screen.status.mode && <button type="button" className="reading-status-chip" disabled={hasChoice} title={t('Shift+Tab 切换模式')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b[Z')}>{screen.status.mode}</button>}
+        {screen.status.context && <span className="reading-status-chip" title={screen.status.context}>{screen.status.context}</span>}
+        {screen.status.notes.length > 0 && <span className="reading-status-chip is-muted" title={screen.status.notes.join(' · ')}>{screen.status.notes.join(' · ')}</span>}
+      </div>
     </div>
     {images > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: images })}</div>}
+    {screen.choice && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
+    }}><ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} /></div>}
     <div className="reading-composer">
       {palette && <div className="dropdown reading-commands" id={listId} role="listbox" aria-label={t('命令')}>{matches.map((command, index) => <div key={command.name} id={optionId(index)} role="option" aria-selected={selection === index} className="reading-command" onMouseDown={event => event.preventDefault()} onClick={() => complete(command)}>
         <code>{command.name}</code><span>{command.source === 'builtin' ? t(command.description) : command.description}</span>{command.source !== 'builtin' && <small>{command.source === 'project' ? t('项目') : command.source === 'user' ? t('用户') : t('技能')}</small>}
       </div>)}</div>}
-      <textarea ref={input} rows={1} onPaste={pasteImage} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette} aria-controls={palette ? listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
+      <textarea ref={input} rows={1} disabled={hasChoice} onPaste={pasteImage} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette} aria-controls={palette ? listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
         onFocus={() => window.projectGrid.terminalFocus(terminal.id, false)} />
-      {working && <button type="button" className="icon-button" title={t('中断（Esc）')} aria-label={t('中断（Esc）')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b')}><Stop size={15} weight="fill" /></button>}
-      <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={(!draft.trim() && !images) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
+      {working && <button type="button" className="icon-button" disabled={hasChoice} title={t('中断（Esc）')} aria-label={t('中断（Esc）')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b')}><Stop size={15} weight="fill" /></button>}
+      <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={hasChoice || (!draft.trim() && !images) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
     </div>
   </div>;
 }
