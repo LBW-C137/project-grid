@@ -1,0 +1,239 @@
+/* Daylight material and ink overrides. Keep every rule scoped so dark themes retain their styling. */
+:root[data-theme="daylight"] .app-shell::before { backdrop-filter: none; }
+:root[data-theme="daylight"] :is(.project-panel, .focus-sidebar, .file-preview, .settings-dialog, .dropdown) { backdrop-filter: blur(26px) saturate(160%); }
+:root[data-theme="daylight"] :is(.titlebar, .app-shell.titlebar-auto .titlebar) { background: var(--theme-chrome); backdrop-filter: blur(26px) saturate(160%); text-shadow: none; }
+:root[data-theme="daylight"] :is(.focus-sidebar, .tree-row, .panel-header, .button, .terminal-host .xterm-rows) { text-shadow: none; }
+:root[data-theme="daylight"] :is(input, textarea, select) { color: var(--theme-ink); caret-color: #163e75; }
+:root[data-theme="daylight"] :is(input, textarea)::placeholder { color: var(--theme-muted); opacity: 1; }
+:root[data-theme="daylight"] :is(.titlebar-brand, .panel-name, .explorer-title h2, .settings-main-head h3, .reading-welcome h2, .empty-workspace h2, .no-results h2) { color: var(--theme-heading); }
+:root[data-theme="daylight"] :is(.icon-button, .panel-header .icon-button, .window-actions .icon-button, .text-button, .dropdown button, .terminal-tab, .selected-file-tab, .preview-option, .terminal-empty p, .file-preview-message, .search-input input, .file-code pre) { color: var(--theme-ink); }
+:root[data-theme="daylight"] :is(.panel-name small, .panel-meta, .status-badge, .workspace-summary, .session-label, .eyebrow, .tree-placeholder, .file-preview-toolbar, .file-preview-footer, .preview-readonly, .line-numbers, .zoom-label, .settings-intro, .setting-row small, .settings-note, .empty-workspace p, .empty-hints, .no-results, .terminal-empty, .terminal-empty > span, .panel-menu .menu-shortcut, .terminal-context-menu button > span) { color: var(--theme-muted); }
+:root[data-theme="daylight"] :is(.icon-button:hover:not(.window-close), .panel-header .icon-button:hover, .text-button:hover, .dropdown button:hover, .preview-option:hover, .terminal-tab:hover) { color: var(--theme-heading); background: var(--theme-hover); }
+:root[data-theme="daylight"] .window-actions .window-close:hover { background: #bd3d49; color: #fff; }
+:root[data-theme="daylight"] :is(.search-input, .button.secondary, .shortcut-key, .announce-options input, .remote-project-fields input, .ssh-secret-input, .summary-fields input, .summary-fields select, .text-pagination input, .conflict-actions button, .project-kind-selector button) { background: var(--theme-control); border-color: var(--theme-line); color: var(--theme-ink); box-shadow: inset 0 1px 0 #ffffffb3; }
+:root[data-theme="daylight"] :is(.search-input:focus-within, .summary-fields input:focus, .reading-composer:focus-within) { background: var(--theme-control); border-color: var(--theme-accent); box-shadow: inset 0 0 0 1px #1b5fbf80, 0 0 0 3px #1b6fc21f; }
+:root[data-theme="daylight"] :is(.button.primary, .button.primary:hover) { background: var(--theme-button); color: var(--theme-button-ink); border-color: #ffffffb3; box-shadow: inset 0 1px 0 white, 0 3px 12px #10305014; }
+:root[data-theme="daylight"] :is(.button.secondary:hover, .project-kind-selector button[aria-pressed="true"], .conflict-actions button:hover) { background: #e5f1ffcc; color: var(--theme-ink); border-color: var(--theme-line); }
+:root[data-theme="daylight"] .brand-mark i { background: #1b5fbf; }
+:root[data-theme="daylight"] .brand-mark i:last-child { background: #af2535; }
+:root[data-theme="daylight"] :is(.project-panel.has-unread, .project-panel.round-complete) { background: var(--glass-sheen), var(--glass); }
+:root[data-theme="daylight"] .project-panel .panel-header { background: rgba(255, 255, 255, .42); border-color: var(--theme-line); }
+:root[data-theme="daylight"] .panel-name small { background: #ffffff45; box-shadow: inset 0 0 0 1px #10233c0a; }
+/* Preserve each project's colored number chip, including white ink on its saturated accent. */
+:root[data-theme="daylight"] :is(.project-panel .panel-index, .project-switch-index) { color: white; background: var(--project-accent); text-shadow: none; }
+:root[data-theme="daylight"] :is(.status-badge.blue, .split-status.working, .reading-status.is-working) { color: var(--theme-info); }
+:root[data-theme="daylight"] :is(.status-badge.green, .split-status.complete, .summary-status.is-ok) { color: var(--theme-success); }
+:root[data-theme="daylight"] :is(.status-badge.red, .panel-error, .error-toast, .form-error, .agents-error, .summary-status.is-error) { color: var(--theme-error); }
+:root[data-theme="daylight"] :is(.status-badge.amber, .preview-readonly.is-dirty, .workspace-warning) { color: var(--theme-warning); }
+:root[data-theme="daylight"] .status-button:hover { color: var(--theme-heading); }
+:root[data-theme="daylight"] .danger-text { color: var(--theme-error) !important; }
+:root[data-theme="daylight"] .project-panel.is-working .panel-glow { background: linear-gradient(180deg, #2f6fd01c, #2f6fd00a 28%, transparent 60%); }
+
+/* Inner screens stay white even when the enclosing card carries a task signal. */
+:root[data-theme="daylight"] .panel-terminal-area { background: var(--theme-pane); border-radius: 10px; box-shadow: inset 0 0 0 1px #10233c0f; }
+:root[data-theme="daylight"] .terminal-grid.has-splits { background: var(--theme-line); }
+:root[data-theme="daylight"] .has-splits .terminal-split { background: var(--theme-pane); }
+:root[data-theme="daylight"] :is(.terminal-split-header, .terminal-split-footer) { color: var(--theme-muted); background: #ffffff38; border-color: var(--theme-line); }
+:root[data-theme="daylight"] .has-splits .is-active-terminal > :is(.terminal-split-header, .terminal-split-footer) { background: #e4f0ff80; }
+:root[data-theme="daylight"] .split-status { color: var(--theme-muted); }
+:root[data-theme="daylight"] .terminal-host .xterm-rows .xterm-decoration-top.xterm-fg-257:not(.xterm-cursor-block) { color: var(--theme-ink); }
+:root[data-theme="daylight"] .reading-view { background: transparent; color: var(--theme-ink); }
+:root[data-theme="daylight"] :is(.reading-scroll, .reading-user > p, .reading-markdown strong, .reading-code pre, .reading-command, .reading-command code, .reading-choice, .reading-choice-option, .reading-composer textarea) { color: var(--theme-ink); }
+:root[data-theme="daylight"] :is(.reading-welcome, .reading-welcome h2 small, .reading-welcome-starting, .reading-welcome-directory, .reading-welcome h3, .reading-welcome-commands button, .reading-status, .reading-tools-head, .reading-tools li b, .reading-tools li small, .reading-code-bar, .reading-command > span, .reading-choice-context, .reading-choice-label small, .reading-choice-hint, .reading-sessions-empty, .reading-status-chip.is-muted) { color: var(--theme-muted); }
+:root[data-theme="daylight"] :is(.reading-user, .reading-tools, .reading-choice-context) { background: #e6f1ff80; }
+:root[data-theme="daylight"] :is(.reading-user > span, .reading-welcome-commands code, .reading-attachments, .reading-command small, .reading-tools.is-running .reading-tools-head, .reading-tools li.is-running b) { color: var(--theme-accent); }
+:root[data-theme="daylight"] .reading-markdown :is(h1, h2, h3, h4, h5, h6) { color: #90316e; border-left-color: #b02663; }
+:root[data-theme="daylight"] .reading-markdown ul > li::before { background: #b02663; box-shadow: none; }
+:root[data-theme="daylight"] .reading-markdown ul ul > li::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--theme-muted); }
+:root[data-theme="daylight"] :is(.reading-markdown a, .reading-markdown :not(pre) > code) { color: var(--theme-accent); }
+:root[data-theme="daylight"] .reading-markdown ol > li::marker { color: var(--theme-accent); }
+:root[data-theme="daylight"] .reading-markdown :not(pre) > code { background: #deecff99; box-shadow: inset 0 0 0 1px #1b5fbf14; }
+:root[data-theme="daylight"] .reading-markdown blockquote { color: var(--theme-muted); border-color: var(--theme-line); }
+:root[data-theme="daylight"] .reading-markdown :is(hr, th, td) { border-color: var(--theme-line); }
+:root[data-theme="daylight"] .reading-markdown th { background: var(--theme-hover); }
+:root[data-theme="daylight"] :is(.reading-code, .git-hunk) { background: var(--theme-code); border-color: var(--theme-line); box-shadow: inset 0 0 0 1px #10233c0f; }
+:root[data-theme="daylight"] :is(.reading-code-bar, .git-hunk-bar) { background: #ffffff40; color: var(--theme-muted); border-color: var(--theme-line); }
+:root[data-theme="daylight"] :is(.reading-code-bar button, .reading-status-chip, .reading-choice, .reading-composer, .reading-jump.icon-button, .reading-unseen) { color: var(--theme-ink); background: var(--theme-pane); box-shadow: inset 0 0 0 1px #10233c0f; }
+:root[data-theme="daylight"] .reading-choice.is-permission { --choice-accent: #90316e; }
+:root[data-theme="daylight"] :is(.reading-tools li code, .reading-tools-head:hover) { color: var(--theme-ink); }
+:root[data-theme="daylight"] :is(.reading-tools-head em, .reading-tools li.is-failed code) { color: var(--theme-error); }
+:root[data-theme="daylight"] .reading-tools li.reading-tool-edit b { color: var(--theme-warning); }
+:root[data-theme="daylight"] .reading-composer { border-radius: 10px; }
+:root[data-theme="daylight"] .reading-send:not(:disabled) { color: #163e75; background: #c9e1ff; }
+:root[data-theme="daylight"] .reading-send:disabled { color: var(--theme-muted); }
+:root[data-theme="daylight"] :is(.reading-command:hover, .reading-command[aria-selected="true"], .reading-choice-option[data-highlighted="true"], .reading-choice-option:hover:not(:disabled), button.reading-status-chip:hover:not(:disabled), .reading-jump.icon-button:hover, .reading-code-bar button:hover) { background: var(--theme-hover); color: var(--theme-ink); }
+:root[data-theme="daylight"] .reading-commands.dropdown { background: var(--glass-strong); border-color: var(--theme-line); }
+
+/* Activity, explorer and file surfaces use the same quiet ink hierarchy. */
+:root[data-theme="daylight"] .activity-pane { background: var(--theme-pane); border-color: var(--theme-line); }
+:root[data-theme="daylight"] .activity-overview { background: #ffffff38; border-color: var(--theme-line); }
+:root[data-theme="daylight"] :is(.activity-now, .activity-item, .activity-item code, .overview-task, .overview-prompts li p, .overview-stats b, .overview-named b) { color: var(--theme-ink); }
+:root[data-theme="daylight"] :is(.activity-header span, .activity-empty, .activity-item time, .activity-item p, .activity-title time, .activity-icon, .activity-section-title, .overview-task.is-quiet, .overview-prompts li span, .overview-stats span, .overview-group h5, .overview-group small, .overview-named p) { color: var(--theme-muted); }
+:root[data-theme="daylight"] :is(.activity-now.is-working, .activity-item.is-running .activity-step, .overview-prompts li.is-working span) { color: var(--theme-info); }
+:root[data-theme="daylight"] :is(.activity-now.is-editing, .activity-edit .activity-icon, .overview-group code) { color: var(--theme-warning); }
+:root[data-theme="daylight"] :is(.activity-item.is-failed .activity-step, .activity-item.is-failed code, .activity-step em, .activity-title em, .overview-stats .is-failed b) { color: var(--theme-error); }
+:root[data-theme="daylight"] .activity-skill .activity-icon { color: #8a3fc0; }
+:root[data-theme="daylight"] .activity-mcp .activity-icon { color: #0b7285; }
+:root[data-theme="daylight"] :is(.overview-prompts li, .overview-stats > div, .overview-group h5 span, .activity-now, .activity-item.is-running) { background: #ffffff45; border-color: var(--theme-line); }
+:root[data-theme="daylight"] :is(.activity-now.is-working, .overview-prompts li.is-working) { background: #1b6fc214; }
+:root[data-theme="daylight"] :is(.activity-item:hover, .tree-row:hover, .explorer-back:hover) { background: var(--theme-hover); }
+:root[data-theme="daylight"] :is(.explorer-tabs, .file-preview-toolbar .preview-mode) { background: #d7e7f580; box-shadow: inset 0 1px 1px #10233c0a; }
+:root[data-theme="daylight"] .explorer-tabs::before { background: #ffffffb3; box-shadow: 0 1px 3px #10233c14; }
+:root[data-theme="daylight"] .file-preview-toolbar .preview-mode .preview-option[aria-pressed="true"] { background: #ffffffb3; box-shadow: 0 1px 3px #10233c14; }
+:root[data-theme="daylight"] .tree-row.file-selected { background: #1b6fc218; box-shadow: none; }
+:root[data-theme="daylight"] :is(.tree-children, .file-tree:hover .tree-children) { --tree-guide: #10233c1f; }
+:root[data-theme="daylight"] .folder-icon { color: var(--theme-accent); }
+:root[data-theme="daylight"] :is(.file-tabs, .selected-file-tab, .file-preview-toolbar, .file-preview-footer, .text-pagination, .terminal-tab, .image-controls, .preview-mode) { border-color: var(--theme-line); }
+:root[data-theme="daylight"] .file-editor:focus-within { box-shadow: inset 0 0 0 1px #1b5fbf45; }
+:root[data-theme="daylight"] .line-numbers { background: #f1f7ff; color: var(--theme-muted); border-color: var(--theme-line); }
+:root[data-theme="daylight"] :is(.text-pagination, .overview-group h5 span) { color: var(--theme-muted); }
+:root[data-theme="daylight"] .image-viewport { background-color: #f5faff; background-image: repeating-conic-gradient(#dceafa 0% 25%, transparent 0% 50%); }
+:root[data-theme="daylight"] .video-viewport { background: #f5faff; }
+:root[data-theme="daylight"] .editor-message { background: #e5f8ef; color: var(--theme-success); }
+:root[data-theme="daylight"] .editor-error { background: #fff0ee; color: var(--theme-error); }
+
+/* Git keeps red/green meaning without pastel text on white. */
+:root[data-theme="daylight"] :is(.git-added, .tree-row[data-git-tone="added"] .tree-filename, .git-line-added > pre, .git-line-added > span:nth-child(3), .git-hunk-action.git-keep:hover:not(:disabled), .preview-option.git-keep:hover, .git-lane-3) { color: #0f7b4f; }
+:root[data-theme="daylight"] :is(.git-deleted, .git-conflict, .git-error, .git-commit-detail p.git-error, .tree-row[data-git-tone="deleted"] .tree-filename, .tree-row[data-git-tone="conflict"] .tree-filename, .git-line-removed > pre, .git-line-removed > span:nth-child(3), .git-hunk-action.git-revert:hover:not(:disabled), .preview-option.git-revert:hover) { color: var(--theme-error); }
+:root[data-theme="daylight"] :is(.git-modified, .tree-row[data-git-tone="modified"] .tree-filename, .git-diff-note) { color: var(--theme-warning); }
+:root[data-theme="daylight"] :is(.git-renamed, .tree-row[data-git-tone="renamed"] .tree-filename, .git-refs, .git-lane-0) { color: var(--theme-accent); }
+:root[data-theme="daylight"] .git-lane-1 { color: #8a3fc0; }
+:root[data-theme="daylight"] .git-lane-2 { color: #b02663; }
+:root[data-theme="daylight"] :is(.git-diff-summary, .git-line > span, .git-line > span:nth-child(3), .git-line-note > pre) { color: var(--theme-muted); }
+:root[data-theme="daylight"] :is(.git-hunk-action, .git-line > pre) { color: var(--theme-ink); }
+:root[data-theme="daylight"] .git-line-added { background: #0f7b4f12; }
+:root[data-theme="daylight"] .git-line-removed { background: #af253512; }
+:root[data-theme="daylight"] .git-line:hover { filter: none; }
+
+/* Dialogs, menus and notices have a stronger white backing. */
+:root[data-theme="daylight"] :is(.dropdown, .settings-dialog, .tour-bubble, .reorder-hint, .project-panel > .panel-nav-hud, .voice-overlay) { background: var(--glass-sheen), var(--glass-strong); color: var(--theme-ink); border-color: var(--theme-line); box-shadow: var(--glass-shadow); }
+:root[data-theme="daylight"] .settings-dialog::backdrop { background: #e5f2ff40; backdrop-filter: blur(8px); }
+:root[data-theme="daylight"] .tour-shade { background: #e5f2ff40; }
+:root[data-theme="daylight"] :is(.settings-sidebar, .settings-nav) { background: #f3f9ff80; border-color: var(--theme-line); }
+:root[data-theme="daylight"] :is(.settings-paned .settings-nav button, .settings-paned .settings-nav button svg, .settings-main-head p, .shortcut-note, .agents-intro, .agents-message, .agent-command, .update-heading > span, .update-section p, .guide-note, .tour-bubble p, .reorder-hint span, .panel-nav-hud small, .project-switch-position, .voice-overlay-keys, .summary-status.is-busy, .remote-project-fields label > span, .project-kind-selector small) { color: var(--theme-muted); }
+:root[data-theme="daylight"] :is(.settings-paned .settings-nav button:hover, .settings-paned .settings-nav button[aria-current="page"]) { color: var(--theme-heading); background: var(--theme-hover); box-shadow: none; }
+:root[data-theme="daylight"] :is(.guide-body, .startup-message, .startup-message p, .voice-overlay .voice-title) { color: var(--theme-ink); text-shadow: none; }
+:root[data-theme="daylight"] :is(.menu-divider, .guide-dots i) { background: var(--theme-line); }
+:root[data-theme="daylight"] .guide-dots i.is-current { background: var(--theme-accent); }
+:root[data-theme="daylight"] :is(.guide-icon, .theme-check) { background: #dcecff; color: #1b5fbf; }
+:root[data-theme="daylight"] .tour-bubble::before { background: #f5faff; border-color: var(--theme-line); }
+:root[data-theme="daylight"] :is(.error-toast, .panel-error) { background: #fff4f1ed; border-color: #af25352e; }
+:root[data-theme="daylight"] .workspace-warning { background: #fff8e9ed; }
+:root[data-theme="daylight"] .setting-row select { background: var(--theme-control); color: var(--theme-ink); border-color: var(--theme-line); }
+:root[data-theme="daylight"] option { background: #f5faff; color: var(--theme-ink); }
+:root[data-theme="daylight"] .setting-row input[type="checkbox"] { background: #d8e8f6; border-color: var(--theme-line); box-shadow: inset 0 1px 2px #1030500f; }
+:root[data-theme="daylight"] .setting-row input[type="checkbox"]:checked { background: #1b6fc2; border-color: #1b6fc2; }
+:root[data-theme="daylight"] .setting-row input[type="checkbox"]::before { background: white; box-shadow: 0 1px 3px #10305030; }
+:root[data-theme="daylight"] :is(.agent-command, .setting-group, .shortcut-settings) { border-color: var(--theme-line); }
+:root[data-theme="daylight"] .shortcut-key.is-recording { color: var(--theme-accent); border-color: var(--theme-accent); }
+:root[data-theme="daylight"] .summary-hint code { background: var(--theme-code); }
+:root[data-theme="daylight"] .voice-overlay::after { background: var(--glass-rim); }
+:root[data-theme="daylight"] .voice-orb svg { color: white; }
+:root[data-theme="daylight"] :is(kbd, .voice-overlay-keys kbd) { color: var(--theme-muted); background: #ffffff70; border-color: var(--theme-line); box-shadow: none; }
+:root[data-theme="daylight"] :is(button, select, input, textarea, [role="menuitem"], [role="treeitem"], .reading-choice):focus-visible { outline-color: #1b5fbf; }
+:root[data-theme="daylight"] ::selection { background: #c9def5; color: #0e1e33; }
+:root[data-theme="daylight"] ::-webkit-scrollbar-thumb { background: #17385844; }
+:root[data-theme="daylight"] ::-webkit-scrollbar-thumb:hover { background: #17385866; }
+/* Explicit state ink wins over the shared muted/control groups above. */
+:root[data-theme="daylight"] .project-panel .status-badge.red { color: var(--theme-error); }
+:root[data-theme="daylight"] .project-panel .status-badge.green { color: var(--theme-success); }
+:root[data-theme="daylight"] .project-panel .status-badge.blue { color: var(--theme-info); }
+:root[data-theme="daylight"] .reading-view .reading-status.is-working { color: var(--theme-info); }
+:root[data-theme="daylight"] :is(.recent-open small, .recent-open time) { color: var(--theme-muted); }
+:root[data-theme="daylight"] .explorer-context-menu button > span { color: var(--theme-muted); }
+:root[data-theme="daylight"][data-surface="solid"] .settings-dialog::backdrop { background: #e5f2ff80; backdrop-filter: none; }
+
+/* Solid/reduced-transparency mode must never fall back to dark status surfaces. */
+:root[data-theme="daylight"][data-surface="solid"] .app-shell { background: #edf6ff !important; }
+:root[data-theme="daylight"][data-surface="solid"] :is(.project-panel, .project-panel.has-unread, .project-panel.round-complete, .titlebar, .focus-sidebar, .file-preview, .settings-dialog, .dropdown, .voice-overlay, .tour-bubble, .reorder-hint) { background: var(--glass-solid); backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme="daylight"] :is(.project-panel, .project-panel.has-unread, .project-panel.round-complete, .titlebar, .focus-sidebar, .file-preview, .settings-dialog, .dropdown, .voice-overlay, .tour-bubble, .reorder-hint) { background: var(--glass-solid); backdrop-filter: none; }
+  :root[data-theme="daylight"] .settings-dialog::backdrop { background: #e5f2ff80; backdrop-filter: none; }
+}
+
+/* Liquid glass, after Apple's material: clear panes that bend the wallpaper at their rim, a bright specular
+   edge with a faint spectral fringe, and a soft lift. Text sits in a calm "well" whose backdrop is evened out
+   (softened, lifted, saturated) rather than covered with white, so the scenery keeps its colour. */
+:root[data-theme="daylight"] {
+  --glass: transparent;
+  --glass-sheen: linear-gradient(transparent, transparent);
+  --liquid-tint: linear-gradient(150deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .03) 45%, rgba(255, 255, 255, .07));
+  --liquid-lens: url("#project-grid-lens") blur(2px) saturate(165%) brightness(1.06);
+  --liquid-well: blur(20px) saturate(230%) contrast(.52) brightness(1.38);
+  --liquid-well-tint: linear-gradient(180deg, rgba(255, 255, 255, .24), rgba(255, 255, 255, .24));
+  --liquid-band: blur(14px) saturate(210%) brightness(1.26) contrast(.66);
+  --liquid-well-edge: inset 0 1px 1px rgba(255, 255, 255, .7), inset 0 -1px 0 rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, .16);
+  --liquid-rim: conic-gradient(from 210deg, rgba(255, 255, 255, .95), rgba(150, 210, 255, .75) 12%, rgba(255, 255, 255, .22) 25%, rgba(255, 255, 255, .08) 40%, rgba(255, 170, 225, .55) 52%, rgba(255, 255, 255, .7) 60%, rgba(255, 255, 255, .12) 75%, rgba(160, 190, 255, .6) 88%, rgba(255, 255, 255, .95));
+  --glass-rim: var(--liquid-rim);
+  --glass-lift: inset 0 0 22px rgba(255, 255, 255, .2), 0 18px 40px -14px rgba(5, 30, 65, .38), 0 3px 8px rgba(5, 30, 65, .12);
+  --liquid-halo: 0 0 1px #fff, 0 0 6px #fff, 0 0 14px rgba(255, 255, 255, .8);
+  --theme-pane: rgba(255, 255, 255, .34);
+  --theme-control: rgba(255, 255, 255, .4);
+  --theme-code: rgba(255, 255, 255, .42);
+  --glass-strong: rgba(255, 255, 255, .6);
+  /* Over clear glass the scenery shows through, so secondary and status ink sit a step darker than on white. */
+  --theme-muted: #33455b;
+  --theme-info: #0f4f9a;
+  --theme-accent: #154f9e;
+  --theme-success: #06663a;
+  --theme-warning: #6b4600;
+  --theme-error: #8c1529;
+}
+:root[data-theme="daylight"] :is(.panel-header, .titlebar, .terminal-empty, .reading-status, .file-preview-footer, .file-preview-toolbar, .explorer-path) svg { filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, .95)) drop-shadow(0 0 4px rgba(255, 255, 255, .7)); }
+:root[data-theme="daylight"] :is(.reading-status, .file-preview-footer, .file-preview-toolbar, .terminal-empty > span, .activity-pane) { text-shadow: 0 0 1px rgba(255, 255, 255, .9), 0 0 5px rgba(255, 255, 255, .7); }
+:root[data-theme="daylight"] :is(.project-panel, .project-panel.has-unread, .project-panel.round-complete, .focus-sidebar, .file-preview) { background: transparent; backdrop-filter: none; isolation: isolate; }
+:root[data-theme="daylight"] :is(.project-panel, .focus-sidebar, .file-preview)::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: var(--liquid-tint); backdrop-filter: var(--liquid-lens);
+}
+/* The rim brightens on hover and focus by opacity, so the dark themes' rim variables stay untouched. */
+:root[data-theme="daylight"] :is(.project-panel, .focus-sidebar, .file-preview)::after { background: var(--liquid-rim); padding: 1.5px; opacity: .8; transition: opacity .2s ease; }
+:root[data-theme="daylight"] .project-slot:hover > .project-panel::after, :root[data-theme="daylight"] .project-panel:is(:focus-within, .is-focused)::after { opacity: 1; }
+/* The header reads over any part of the wallpaper: its backdrop is evened out like a well, but it keeps no white fill. */
+:root[data-theme="daylight"] .project-panel .panel-header { background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .08)); backdrop-filter: var(--liquid-band); border-color: transparent; text-shadow: 0 0 1px rgba(255, 255, 255, .9), 0 0 5px rgba(255, 255, 255, .75); }
+:root[data-theme="daylight"] .project-panel .panel-name small { background: rgba(255, 255, 255, .3); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7); }
+:root[data-theme="daylight"] .project-panel .panel-header :is(.panel-name, .status-badge) { font-weight: 650; }
+/* Wells: where terminal output, the reading view and the activity log are read. */
+:root[data-theme="daylight"] :is(.panel-terminal-area, .project-panel .activity-pane) {
+  margin: 0 8px 8px; border-radius: 13px; background: var(--liquid-well-tint); backdrop-filter: var(--liquid-well); box-shadow: var(--liquid-well-edge);
+}
+:root[data-theme="daylight"] .project-panel.has-activity .panel-terminal-area { margin-right: 4px; }
+:root[data-theme="daylight"] .project-panel .activity-pane { margin-left: 4px; border: 0; }
+:root[data-theme="daylight"] :is(.has-splits .terminal-split, .terminal-grid:not(.has-splits) .terminal-split) { background: transparent; }
+:root[data-theme="daylight"] .terminal-grid.has-splits { background: transparent; gap: 6px; }
+:root[data-theme="daylight"] .has-splits .terminal-split { border-radius: 11px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22); }
+/* The sidebar and the file preview are read all over, so their whole pane is a well with a lens rim. */
+:root[data-theme="daylight"] :is(.focus-sidebar, .file-preview)::before { background: var(--liquid-well-tint); backdrop-filter: url("#project-grid-lens") var(--liquid-well); }
+:root[data-theme="daylight"] :is(.focus-sidebar, .file-preview) { box-shadow: var(--glass-lift); }
+:root[data-theme="daylight"] :is(.file-text-editor, .file-code-scroll, .file-editor, .line-numbers) { background: transparent; }
+/* The title bar is one clear strip; its text carries the same halo as card titles. */
+:root[data-theme="daylight"] :is(.titlebar, .app-shell.titlebar-auto .titlebar) {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .12)); backdrop-filter: blur(16px) saturate(200%) brightness(1.12) contrast(.8);
+  text-shadow: var(--liquid-halo); box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .45), 0 6px 18px -10px rgba(5, 30, 65, .3);
+}
+:root[data-theme="daylight"] .titlebar :is(.titlebar-brand, .workspace-summary) { font-weight: 650; }
+:root[data-theme="daylight"] :is(.search-input, .titlebar-tools > .icon-button) { background: rgba(255, 255, 255, .3); border-color: rgba(255, 255, 255, .55); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .85); }
+/* Inside a well, controls are small panes of brighter glass. */
+:root[data-theme="daylight"] .reading-composer { background: rgba(255, 255, 255, .36); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .9), inset 0 0 0 1px rgba(255, 255, 255, .35), 0 4px 14px -6px rgba(5, 30, 65, .18); }
+:root[data-theme="daylight"] :is(.reading-user, .reading-tools, .reading-choice-context) { background: rgba(255, 255, 255, .3); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7); }
+:root[data-theme="daylight"] :is(.reading-scroll, .terminal-empty) { text-shadow: 0 0 1px rgba(255, 255, 255, .9), 0 0 6px rgba(255, 255, 255, .7); }
+/* Menus and dialogs float above everything: thicker glass, still tinted by what lies beneath. */
+:root[data-theme="daylight"] :is(.dropdown, .settings-dialog, .tour-bubble, .reorder-hint, .voice-overlay) { backdrop-filter: blur(30px) saturate(200%) brightness(1.1); }
+:root[data-theme="daylight"][data-surface="solid"] :is(.project-panel, .focus-sidebar, .file-preview)::before { background: var(--glass-solid); backdrop-filter: none; }
+:root[data-theme="daylight"][data-surface="solid"] :is(.panel-terminal-area, .project-panel .activity-pane, .titlebar) { background: #ffffff; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme="daylight"] :is(.project-panel, .focus-sidebar, .file-preview)::before { background: var(--glass-solid); backdrop-filter: none; }
+  :root[data-theme="daylight"] :is(.panel-terminal-area, .project-panel .activity-pane) { background: #ffffff; backdrop-filter: none; }
+}
+:root[data-theme="daylight"] .reading-status { font-weight: 600; }
+/* A backdrop makes the header its own layer; lift it over the well so its menus open on top. The rim (::after,
+   also z-index 2) comes later in the card and still draws over the header's top edge. */
+:root[data-theme="daylight"] .project-panel .panel-header { position: relative; z-index: 2; }
+/* Solid surfaces (the setting or the system's reduced transparency) win over every liquid layer above. */
+:root[data-theme="daylight"][data-surface="solid"] :is(.project-panel, .project-panel.has-unread, .project-panel.round-complete, .focus-sidebar, .file-preview, .titlebar, .app-shell.titlebar-auto .titlebar) { background: var(--glass-solid); backdrop-filter: none; }
+:root[data-theme="daylight"][data-surface="solid"] .project-panel .panel-header { background: transparent; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme="daylight"] :is(.project-panel, .project-panel.has-unread, .project-panel.round-complete, .focus-sidebar, .file-preview, .titlebar, .app-shell.titlebar-auto .titlebar) { background: var(--glass-solid); backdrop-filter: none; }
+  :root[data-theme="daylight"] .project-panel .panel-header { background: transparent; backdrop-filter: none; }
+  :root[data-theme="daylight"] .titlebar { background: var(--glass-solid); }
+}

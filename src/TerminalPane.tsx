@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalPacket } from './types';
 import { createTerminalLinkProvider } from './terminal-links';
 import { styleTerminal } from './terminal-styling';
+import { terminalTheme } from './terminal-theme';
 import { gpuRenderer, terminalRenderer, useTerminalRenderer } from './terminal-renderer';
 import { registerScreen } from './terminal-screen';
 import '@xterm/xterm/css/xterm.css';
@@ -78,15 +79,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
       // that reflow too, or later output can overwrite old prompt characters.
       reflowCursorLine: !remote,
       linkHandler: { activate: activateLink, hover: hoverLink, leave: leaveLink, allowNonHttpProtocols: true },
-      theme: {
-        background: '#00000000', foreground: '#ffffff', cursor: '#ffffff',
-        selectionBackground: '#405770', black: '#252a34', red: '#ff969e',
-        green: '#a2ddb8', yellow: '#f2d596', blue: '#a1caff', magenta: '#d0b6f7',
-        cyan: '#a0e0e8', white: '#e7eff9', brightBlack: '#b2c2d5', brightRed: '#ffacb2',
-        brightGreen: '#a1d8b7', brightYellow: '#f0d297', brightBlue: '#a0caff',
-        brightMagenta: '#d0baf2', brightCyan: '#a2e1e7', brightWhite: '#f2f5fa',
-        scrollbarSliderBackground: '#46536455', scrollbarSliderHoverBackground: '#64768c88', scrollbarSliderActiveBackground: '#7b8ea599',
-      },
+      theme: terminalTheme(document.documentElement.dataset.theme),
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -97,6 +90,10 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     if (!remote && isWindows) terminal.options.windowsPty = { backend: 'conpty', buildNumber: 21376 };
     const links = terminal.registerLinkProvider(createTerminalLinkProvider(terminal, activateLink, hoverLink, leaveLink));
     const styling = styleTerminal(terminal);
+    const themeObserver = new MutationObserver(() => {
+      terminal.options.theme = terminalTheme(document.documentElement.dataset.theme);
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     term.current = terminal; fit.current = fitAddon;
     const unregister = registerScreen(id, terminal);
     let disposed = false;
@@ -181,7 +178,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const frame = requestAnimationFrame(resize);
     return () => {
       disposed = true; queued = [];
-      unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); styling.dispose(); observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(settle);
+      unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); styling.dispose(); themeObserver.disconnect(); observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(settle);
       terminal.textarea?.removeEventListener('focus', focusIn); terminal.textarea?.removeEventListener('blur', focusOut); focusOut();
       gpu.current?.dispose(); gpu.current = null; unregister();
       terminal.dispose(); term.current = null; fit.current = null;

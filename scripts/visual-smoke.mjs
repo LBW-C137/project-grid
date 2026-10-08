@@ -46,18 +46,19 @@ async function checkDaylightContrast() {
       const scaleX = image.width / innerWidth, scaleY = image.height / innerHeight;
       const linear = channel => { const value = channel / 255; return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4; };
       return areas.map(box => {
-        let brightest = 0;
+        let darkest = 1;
         // Exclude the status edge and rounded corners; this is the terminal reading surface.
         for (let y = Math.ceil((box.y + 12) * scaleY); y < Math.floor((box.y + box.height - 12) * scaleY); y++) {
           for (let x = Math.ceil((box.x + 12) * scaleX); x < Math.floor((box.x + box.width - 12) * scaleX); x++) {
             const p = (y * image.width + x) * 4;
-            brightest = Math.max(brightest, .2126 * linear(pixels[p]) + .7152 * linear(pixels[p + 1]) + .0722 * linear(pixels[p + 2]));
+            darkest = Math.min(darkest, .2126 * linear(pixels[p]) + .7152 * linear(pixels[p + 1]) + .0722 * linear(pixels[p + 2]));
           }
         }
-        return 1.05 / (brightest + .05);
+        const ink = .2126 * linear(14) + .7152 * linear(30) + .0722 * linear(51);
+        return (darkest + .05) / (ink + .05);
       });
     }, { png: screenshot.toString('base64'), areas });
-    for (const contrast of contrasts) assert.ok(contrast >= 4.5, `daylight white body text contrast is ${contrast.toFixed(2)}:1`);
+    for (const contrast of contrasts) assert.ok(contrast >= 4.5, `daylight dark body text contrast is ${contrast.toFixed(2)}:1`);
     await fs.writeFile(path.join(output, 'daylight-contrast.json'), JSON.stringify(contrasts, null, 2));
   } finally { await mask.evaluate(node => node.remove()); }
 }
@@ -107,7 +108,7 @@ try {
       assert.deepEqual(sample, samples[0], `${mode}: working lights and reading surface stay steady`);
       assert.equal(sample.edge, .95, `${mode}: vivid working edge stays steady`);
       assert.equal(sample.glow, 1, `${mode}: blue body wash stays steady`);
-      assert.ok(sample.edgeShadow.includes('24px') && /rgba\(35, 102, 195/.test(sample.tint) && sample.tint.includes('60%'), `${mode}: blue glow and fading wash ${JSON.stringify(sample)}`);
+      assert.ok(sample.edgeShadow.includes('24px') && /rgba\(47, 111, 208/.test(sample.tint) && sample.tint.includes('60%'), `${mode}: blue glow and fading wash ${JSON.stringify(sample)}`);
       assert.equal(sample.text.opacity, '1'); assert.equal(sample.text.animation, 'none');
     }
     liveSamples.push({ mode, samples });
@@ -117,6 +118,12 @@ try {
   assert.equal(await breathing(1), 0, 'old unread completion stays quiet');
   assert.equal(await breathing(2), 0, 'ready shell stays quiet');
   await page.screenshot({ path: path.join(output, 'daylight-working.png') });
+  assert.match(await panel(0).evaluate(node => getComputedStyle(node, '::before').backdropFilter), /url\("?#project-grid-lens"?\) blur\(2px\)/, 'Daylight is clear liquid glass with a lens rim');
+  const well = await panel(0).locator('.panel-terminal-area').evaluate(node => ({ backdrop: getComputedStyle(node).backdropFilter, fill: getComputedStyle(node).backgroundImage }));
+  assert.ok(/brightness\(/.test(well.backdrop) && /contrast\(/.test(well.backdrop) && !/rgba\(255, 255, 255, 0?\.[3-9]/.test(well.fill), `Daylight text sits in an evened well, not on white: ${JSON.stringify(well)}`);
+  // Measure the established SVG refraction on Forest; Daylight's lens is the same filter with a wider rim.
+  await page.evaluate(() => window.projectGrid.settings({ theme: 'forest' }));
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'forest');
   const surface = await panel(0).evaluate(node => {
     const box = node.getBoundingClientRect();
     return { x: box.x, y: box.y, width: box.width, height: box.height, viewport: innerWidth, backdrop: getComputedStyle(node).backdropFilter };
