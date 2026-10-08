@@ -144,6 +144,9 @@ jobs:
       - name: Verify transparent real Codex input and bright text without model requests
         run: node scripts/retry.mjs npm run test:composer -- --packaged
 
+      - name: Verify reading commands, CLI keys and permission handoff
+        run: node scripts/retry.mjs npm run test:reading -- --packaged
+
       - name: Create checksum and build notes
         run: |
           $version = '${{ steps.version.outputs.version }}'
@@ -210,6 +213,8 @@ jobs:
             .test-output/material-*/results.json
             .test-output/composer-*/*.png
             .test-output/composer-*/results.json
+            .test-output/reading-*/*.png
+            .test-output/reading-*/results.json
             .test-output/path-refresh-*/*.png
             .test-output/path-refresh-*/results.json
             .test-output/git-*/*.png

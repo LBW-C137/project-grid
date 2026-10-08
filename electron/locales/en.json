@@ -885,5 +885,10 @@
   "恢复对话": "Resume conversation",
   "退出 Codex": "Exit Codex",
   "生成 AGENTS.md": "Generate AGENTS.md",
-  "审查改动": "Review changes"
+  "审查改动": "Review changes",
+  "命令": "Commands",
+  "项目": "Project",
+  "用户": "User",
+  "等待你确认：{message}": "Waiting for your confirmation: {message}",
+  "给 {agent} 发消息，/ 查看命令，Enter 发送，Shift+Enter 换行": "Message {agent}, / for commands, Enter to send, Shift+Enter for a new line"
 }

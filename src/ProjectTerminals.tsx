@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowCounterClockwise, Play, Terminal as TerminalIcon, X } from '@phosphor-icons/react';
 import { TerminalPane } from './TerminalPane';
 import { ReadingView } from './ReadingView';
-import { agentExited, readingShown, setReading, useTerminalChoice } from './reading-mode';
+import { readingShown, setReading, syncReading, useTerminalChoice } from './reading-mode';
 import { VoiceButton } from './VoiceButton';
 import type { Project, ProjectTerminal, Result } from './types';
 import { t } from './i18n';
@@ -26,7 +26,7 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
   const rows = Math.ceil(terminals.length / columns);
   const selected = terminals.some(item => item.id === activeId) ? activeId : terminals[0]?.id;
   const raw = useTerminalChoice();
-  useEffect(() => { terminals.forEach(agentExited); }, [terminals]);
+  useEffect(() => { terminals.forEach(syncReading); }, [terminals, raw]);
   useEffect(() => {
     const node = area.current; if (!node) return;
     const observer = new ResizeObserver(() => setWidth(node.clientWidth));
