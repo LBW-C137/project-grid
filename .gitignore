@@ -9,3 +9,6 @@ test-results/
 integration/ssh-askpass.exe
 integration/file-clipboard.exe
 __pycache__/
+
+# Promotional video project (HyperFrames sources, captures, renders); kept out of the app repo.
+promo-video/
