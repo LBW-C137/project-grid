@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory=$true)][string]$PipeName,
     [Parameter(Mandatory=$true)][string]$ProjectId,
     [Parameter(Mandatory=$true)][string]$SessionKey,
-    [Parameter(Mandatory=$true)][ValidateSet('start', 'stop')][string]$Kind
+    [Parameter(Mandatory=$true)][ValidateSet('start', 'stop', 'notify')][string]$Kind
 )
 
 # Claude Code hook: UserPromptSubmit reports a working turn, Stop reports a finished one.
@@ -12,6 +12,8 @@ $ErrorActionPreference = 'Stop'
 try {
     [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
     $hook = [Console]::In.ReadToEnd() | ConvertFrom-Json
+    # Idle notifications must not turn a completed round back into a waiting one.
+    if ($Kind -eq 'notify' -and $hook.notification_type -notin @('permission_prompt', 'elicitation_dialog')) { exit 0 }
     $sessionId = [string]$hook.session_id
     if (-not $sessionId) { exit 0 }
     $eventData = @{
@@ -19,7 +21,8 @@ try {
         sessionKey = $SessionKey
         type = 'agent-activity'
         agent = 'claude'
-        state = $(if ($Kind -eq 'stop') { 'complete' } else { 'working' })
+        state = $(if ($Kind -eq 'notify') { 'attention' } elseif ($Kind -eq 'stop') { 'complete' } else { 'working' })
+        message = $(if ($Kind -eq 'notify') { ([string]$hook.message).Substring(0, [Math]::Min(300, ([string]$hook.message).Length)) } else { $null })
         sessionId = $sessionId
         # Where Claude writes this conversation; Project Grid reads the steps of the round from it.
         transcriptPath = [string]$hook.transcript_path

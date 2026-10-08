@@ -32,6 +32,7 @@ const { summarizeTask } = require('./task-summary.cjs');
 const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
 const { summarizeRound, claudeReply, codexReply } = require('./round-summary.cjs');
 const { ConversationLog, claudeConversation, codexConversation } = require('./conversation.cjs');
+const { listAgentCommands } = require('./agent-commands.cjs');
 const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARGETS } = require('./summary-models.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
@@ -91,7 +92,7 @@ function publicState() {
       const terminals = terminalIds(p).map((id, index) => {
         const s = sessions.get(id);
         return { id, title: t('终端 {n}', { n: index + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : store.settings.shell), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
-          codexActivity: s?.codexActivity || 'unknown', shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
+          codexActivity: s?.codexActivity || 'unknown', needsInput: s?.needsInput?.message || null, shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null,
           // The step a working agent is on, for the card's one-line status; the full list is sent separately.
           action: s?.codexActive && s.codexActivity === 'working' ? briefAction(s.actions.current()) : null,
@@ -315,9 +316,13 @@ function applyActivity(project, s, snapshot) {
 }
 
 // Claude Code hooks: UserPromptSubmit -> working, Stop -> complete (integration/claude-hook.ps1).
+// Notification -> attention while Claude waits for a permission answer in its own screen; that only
+// sets the waiting indicator and never changes the round's lifecycle.
 function claudeActivity(project, s, event) {
-  if (!s.codexActive || s.agent !== 'claude' || !['working', 'complete'].includes(event.state)) return;
+  if (!s.codexActive || s.agent !== 'claude' || !['working', 'complete', 'attention'].includes(event.state)) return;
   if (typeof event.sessionId !== 'string' || !/^[\w-]{1,100}$/.test(event.sessionId) || typeof event.eventId !== 'string' || event.eventId.length > 200) return;
+  if (event.state === 'attention') { s.needsInput = { message: typeof event.message === 'string' ? event.message.slice(0, 300) : '', since: Date.now() }; broadcast(); return; }
+  s.needsInput = null;
   const turnId = event.eventId.slice(event.sessionId.length + 1);
   // Remember the conversation and whether its turn is still open, so a restart can resume it and continue.
   store.setRestore(s.terminalId, { threadId: event.sessionId, interrupted: event.state === 'working' });
@@ -334,6 +339,7 @@ function onEvent(event) {
   if (event.type === 'agent-activity') { claudeActivity(project, s, event); return; }
   if (event.type !== 'turn-complete' && !acceptShellEvent(s, event)) return;
   if (event.type === 'shell-ready' || event.type === 'shell-prompt') {
+    s.needsInput = null;
     s.activityMonitor?.stop(); s.activityMonitor = null;
     s.codexActive = false; s.codexActivity = 'unknown'; s.reportedThreadId = null; s.promptQueue.reset();
     s.ready = event.type === 'shell-prompt';
@@ -379,6 +385,7 @@ function onEvent(event) {
     store.setRestore(s.terminalId, { terminal: true, codex: true, cwd: event.cwd });
     // Unread completion is independent of session activity. It survives new turns.
   } else if (event.type === 'codex-exited') {
+    s.needsInput = null;
     s.activityMonitor?.stop(); s.activityMonitor = null; s.codexActivity = 'unknown';
     s.ready = false;
     s.codexActive = false;
@@ -867,6 +874,11 @@ function registerIpc() {
   });
   handle('terminal:actions', id => { findProject(id); return sessions.get(id)?.actions.list || []; });
   handle('terminal:conversation', id => { findProject(id); return sessions.get(id)?.conversation.list || []; });
+  handle('terminal:commands', async id => {
+    const project = findProject(id), s = sessions.get(id);
+    const commands = await listAgentCommands({ agent: s?.agent || 'claude', projectPath: project.kind === 'ssh' ? undefined : project.path });
+    return commands.map(command => command.source === 'builtin' ? { ...command, description: t(command.description) } : command);
+  });
   handle('terminal:attach', id => {
     findProject(id);
     const s = sessions.get(id);

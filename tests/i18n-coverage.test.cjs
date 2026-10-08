@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { en } = require('../electron/i18n.cjs');
+const { listAgentCommands } = require('../electron/agent-commands.cjs');
 
 // Every literal t('…') phrase in the window and the main process has an English entry,
 // so switching to English never leaves a Chinese label behind.
@@ -26,4 +27,9 @@ test('shortcut action names, theme names and the guide release notes are transla
   const labels = [...shortcuts.matchAll(/label: '([^']+)'/g), ...themes.matchAll(/(?:name|description): '([^']+)'/g), ...guide.matchAll(/^\s*'([^']+)',$/gm)].map(match => match[1]);
   assert.ok(labels.length >= 15);
   assert.deepEqual(labels.filter(label => !Object.prototype.hasOwnProperty.call(en, label)), []);
+});
+
+test('built-in slash command descriptions have English translations', async () => {
+  const commands = [...await listAgentCommands({ agent: 'claude' }), ...await listAgentCommands({ agent: 'codex' })];
+  assert.deepEqual(commands.map(item => item.description).filter(description => !Object.prototype.hasOwnProperty.call(en, description)), []);
 });

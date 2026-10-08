@@ -69,6 +69,12 @@ test('Codex notify and Claude hook payloads become the events notify.ps1 and cla
   assert.match(working.eventId, /^s:\d+$/);
   const complete = claudeEvent(JSON.stringify({ session_id: 's', prompt: 'ignored' }), 'p', 'k', 'stop');
   assert.equal(complete.state, 'complete'); assert.equal(complete.prompt, null);
+  for (const notification_type of ['permission_prompt', 'elicitation_dialog']) {
+    const notice = claudeEvent(JSON.stringify({ session_id: 's', notification_type, message: '长'.repeat(400) }), 'p', 'k', 'notify');
+    assert.equal(notice.state, 'attention'); assert.equal(notice.message, '长'.repeat(300)); assert.equal(notice.prompt, null);
+  }
+  for (const notification_type of ['idle_prompt', 'auth_success', 'other', undefined]) assert.equal(claudeEvent(JSON.stringify({ session_id: 's', notification_type }), 'p', 'k', 'notify'), null);
+  assert.equal(claudeEvent(JSON.stringify({ session_id: 's', notification_type: 'permission_prompt', message: 42 }), 'p', 'k', 'notify').message, '42');
 });
 
 test('a real zsh terminal keeps the user start-up files and reports prompts, Codex and Claude Code', { skip: process.platform !== 'darwin' || !fs.existsSync(ZSH), timeout: 60000 }, async t => {
@@ -145,6 +151,11 @@ test('a real zsh terminal keeps the user start-up files and reports prompts, Cod
   assert.deepEqual(await runHook(hooks.UserPromptSubmit[0].hooks[0].command, input), { code: 0, output: '' }, 'a hook prints nothing');
   const working = await waitEvent(event => event.type === 'agent-activity' && event.state === 'working', 'the working hook');
   assert.equal(working.prompt, input.prompt); assert.equal(working.transcriptPath, input.transcript_path); assert.equal(working.sessionKey, 'key');
+  assert.deepEqual(await runHook(hooks.Notification[0].hooks[0].command, { ...input, notification_type: 'permission_prompt', message: 'Approve tool' }), { code: 0, output: '' });
+  await waitEvent(event => event.type === 'agent-activity' && event.state === 'attention' && event.message === 'Approve tool', 'the permission hook');
+  const noticeCount = events.filter(event => event.state === 'attention').length;
+  assert.deepEqual(await runHook(hooks.Notification[0].hooks[0].command, { ...input, notification_type: 'idle_prompt' }), { code: 0, output: '' });
+  assert.equal(events.filter(event => event.state === 'attention').length, noticeCount);
   await runHook(hooks.Stop[0].hooks[0].command, input);
   await waitEvent(event => event.type === 'agent-activity' && event.state === 'complete', 'the stop hook');
 

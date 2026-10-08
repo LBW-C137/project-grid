@@ -1,7 +1,7 @@
 // Codex notify and Claude Code hooks for macOS terminals (zsh-integration.zsh), run by Project Grid's own
 // executable as Node (ELECTRON_RUN_AS_NODE=1). It sends the same events as notify.ps1 and claude-hook.ps1.
 // Usage: agent-event.cjs codex-notify <socket> <projectId> <sessionKey> <payload>
-//        agent-event.cjs claude-hook <socket> <projectId> <sessionKey> start|stop   (the hook's JSON on stdin)
+//        agent-event.cjs claude-hook <socket> <projectId> <sessionKey> start|stop|notify   (the hook's JSON on stdin)
 // Claude adds anything a hook prints to the conversation, so this writes nothing, and a closed Project Grid
 // never delays or fails a turn.
 const net = require('node:net');
@@ -40,13 +40,16 @@ function codexEvent(payload, projectId, sessionKey) {
 
 // Claude Code hook: UserPromptSubmit reports a working turn, Stop reports a finished one.
 function claudeEvent(input, projectId, sessionKey, kind) {
-  if (!['start', 'stop'].includes(kind)) return null;
+  if (!['start', 'stop', 'notify'].includes(kind)) return null;
   const hook = JSON.parse(input);
+  // Idle notifications must not turn a completed round back into a waiting one.
+  if (kind === 'notify' && !['permission_prompt', 'elicitation_dialog'].includes(hook?.notification_type)) return null;
   const sessionId = String(hook?.session_id ?? '');
   if (!sessionId) return null;
   const prompt = kind === 'start' && hook.prompt ? String(hook.prompt).slice(0, 2000) : null;
   return {
-    projectId, sessionKey, type: 'agent-activity', agent: 'claude', state: kind === 'stop' ? 'complete' : 'working', sessionId,
+    projectId, sessionKey, type: 'agent-activity', agent: 'claude', state: kind === 'notify' ? 'attention' : kind === 'stop' ? 'complete' : 'working', sessionId,
+    message: kind === 'notify' ? String(hook.message ?? '').slice(0, 300) : null,
     // Where Claude writes this conversation; Project Grid reads the steps of the round from it.
     transcriptPath: String(hook.transcript_path ?? ''),
     eventId: `${sessionId}:${Date.now()}${String(process.hrtime.bigint() % 10000n).padStart(4, '0')}`,
