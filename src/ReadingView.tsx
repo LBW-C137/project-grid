@@ -18,6 +18,9 @@ import './reading.css';
 import { t } from './i18n';
 import { useMentions } from './useMentions';
 import { MentionPalette } from './MentionPalette';
+import { isTypedCommand } from './pending-prompts';
+import { usePendingPrompts } from './usePendingPrompts';
+import { PendingPromptEntries } from './PendingPromptEntries';
 
 const purifier = createDOMPurify(window);
 // Switching to the CLI unmounts the composer; sent messages still belong to that terminal.
@@ -72,6 +75,9 @@ function ToolGroup({ entries, live }: { entries: ConversationEntry[]; live: bool
 // this is its terminal in use, so the message box takes the keyboard (never a small card's).
 export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, onError, onOpenLink }: { projectId: string; terminal: ProjectTerminal; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
   const entries = useReadingConversation(terminal.id, terminal.sessionId);
+  const { pending, echo, cancelEcho } = usePendingPrompts(terminal.id, terminal.sessionId, entries);
+  const visibleEntries = useMemo(() => [...entries, ...pending], [entries, pending]);
+  const sendSession = useRef(terminal.sessionId); sendSession.current = terminal.sessionId;
   const visibleScreen = useScreen(terminal.id);
   const screen = useMemo(() => parseAgentScreen(terminal.agent === 'claude' ? 'claude' : 'codex', visibleScreen?.rows ?? []), [terminal.agent, visibleScreen]);
   const choiceKey = screen.choice ? choiceIdentity(screen.choice) : null;
@@ -86,7 +92,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const [images, setImages] = useState(0);
   const scroller = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null);
   const conversation = conversationKey(terminal.id, terminal.sessionId);
-  const { stuck, unseen, toBottom, ready, holdPosition } = useStickToBottom(scroller, content, entries, conversation);
+  const { stuck, unseen, toBottom, ready, holdPosition } = useStickToBottom(scroller, content, visibleEntries, conversation);
   useLayoutEffect(() => { if (caret.current !== null) { input.current?.setSelectionRange(caret.current, caret.current); caret.current = null; } });
   useEffect(() => { if (draft.startsWith('/') || !entries.length) setRequested(true); }, [draft, entries.length]);
   // Capture composer ownership before disabling it; another card's focus must stay where it is.
@@ -167,20 +173,23 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const send = async (text = draft.trim()) => {
     if (choiceVisible.current || (!text && !images) || !terminal.sessionId) return;
     if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
-    const typed = /^[\/!]/.test(text) && !/[\r\n]/.test(text);
+    const typed = isTypedCommand(text), sessionId = terminal.sessionId;
     const available = typed && text.startsWith('/') ? await (commandLoad.current || window.projectGrid.terminalCommands(terminal.id).then(result => result.ok ? result.value : [])) : commands;
-    if (!mounted.current || choiceVisible.current) return;
+    if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
+    const pendingId = text && !typed ? echo(text) : null;
+    if (pendingId) toBottom();
     if (text) {
       if (typed) window.projectGrid.writeTerminal(terminal.id, text);
       else {
         const pasted = await window.projectGrid.pasteTerminal(terminal.id, text, terminal.sessionId);
-        if (!pasted.ok) { onError(pasted.error); return; }
+        if (!pasted.ok) { if (pendingId) cancelEcho(pendingId); onError(pasted.error); return; }
+        if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
       }
       history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50));
     }
     edit(''); setImages(0); toBottom();
     if (text) await new Promise(resolve => setTimeout(resolve, typed ? 150 : 400));
-    if (!mounted.current || choiceVisible.current) return;
+    if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
     window.projectGrid.writeTerminal(terminal.id, '\r');
     if (typed && (text.startsWith('!') || available.find(command => command.name.toLowerCase() === text.split(/\s/)[0].toLowerCase())?.view !== 'reading')) {
       queueTerminalHandoff(text.startsWith('!'));
@@ -237,7 +246,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
   };
   let body: ReactNode;
-  if (!entries.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={screen} commands={commands} complete={complete} disabled={hasChoice} />;
+  if (!entries.length && !pending.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={screen} commands={commands} complete={complete} disabled={hasChoice} />;
   else body = <>
     {tail.earlier > 0 && <button type="button" className="text-button reading-earlier" onClick={tail.showEarlier}>{t('显示更早的对话（{count}）', { count: tail.earlier })}</button>}
     {tail.visible.map((block, index) => block.kind === 'tools'
@@ -253,7 +262,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (link) { event.preventDefault(); const href = link.getAttribute('href') || ''; if (href) onOpenLink(href); }
   }}>
     <div className="reading-scroll-area">
-      <div className="reading-scroll" ref={scroller} tabIndex={0}><div className="reading-content" ref={content} style={{ visibility: entries.length && !ready ? 'hidden' : undefined }}>{body}</div></div>
+      <div className="reading-scroll" ref={scroller} tabIndex={0}><div className="reading-content" ref={content} style={{ visibility: entries.length && !ready ? 'hidden' : undefined }}>{body}<PendingPromptEntries prompts={pending} /></div></div>
       {!stuck && <div className="reading-latest">
         {unseen > 0 && <span className="reading-unseen" role="status">{t('{count} 条新消息', { count: unseen })}</span>}
         <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={() => toBottom('smooth')}><ArrowDown size={18} /></button>
