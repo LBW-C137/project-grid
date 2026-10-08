@@ -66,7 +66,7 @@ try {
   await checkEdges('overview');
   await checkGaps('overview');
   const geometry = await page.locator('.project-grid').evaluate(grid => ({ gap: getComputedStyle(grid).gap, radius: getComputedStyle(grid.querySelector('.project-panel')).borderTopLeftRadius, header: getComputedStyle(grid.querySelector('.panel-header')).borderTopLeftRadius }));
-  assert.deepEqual(geometry, { gap: `${layoutGap}px`, radius: '7px', header: '6px' });
+  assert.deepEqual(geometry, { gap: `${layoutGap}px`, radius: '12px', header: '11px' });
   for (const project of projects.slice(0, 6)) await page.evaluate(id => window.projectGrid.startTerminal(id), project.id);
   await waitFor(async () => (await state()).projects.slice(0, 6).every(project => project.shellReady), 'six real shells ready');
   const lens = await page.locator('.app-shell').evaluate(node => node.style.getPropertyValue('--liquid-backdrop'));
@@ -103,7 +103,7 @@ try {
   for (const terminal of (await state()).projects[0].terminals) await page.evaluate(({ id, encoded }) => window.projectGrid.writeTerminal(id, `Clear-Host; [Console]::Write([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')))\r`), { id: terminal.id, encoded });
   await waitFor(async () => first.locator('.xterm-rows').first().innerText().then(value => value.includes('DIM_INVERSE')), 'readability sample rendered');
   const sessions = (await state()).projects[0].terminals.map(terminal => terminal.sessionId);
-  for (const theme of ['forest', 'mountain-blue', 'wild-red']) {
+  for (const theme of ['daylight', 'forest', 'mountain-blue', 'wild-red']) {
     await page.evaluate(theme => window.projectGrid.settings({ theme }), theme);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
     const cells = await readCells(first.locator('.xterm-rows').first());
@@ -145,7 +145,7 @@ try {
   }
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
-  for (const theme of ['forest', 'mountain-blue', 'wild-red']) {
+  for (const theme of ['daylight', 'forest', 'mountain-blue', 'wild-red']) {
     await page.evaluate(theme => window.projectGrid.settings({ theme }), theme);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
     const surfaces = await page.locator('.titlebar, .focus-sidebar, .project-panel:visible').evaluateAll(nodes => nodes.map(node => {
@@ -159,6 +159,6 @@ try {
   await cdp.send('Emulation.setEmulatedMedia', { features: [] }); await cdp.detach();
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, performanceSamples, materials, typography, edges, errors }, null, 2));
-  console.log(`PASS: 6/16 glass cards with six streaming PTYs, split ANSI/selection/cursor, opaque reduced-transparency fallback in three themes. Evidence: ${output}`);
+  console.log(`PASS: 6/16 glass cards with six streaming PTYs, split ANSI/selection/cursor, opaque reduced-transparency fallback in four themes. Evidence: ${output}`);
 } catch (error) { if (page) await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {}); throw error; }
 finally { if (app) await app.close(); }

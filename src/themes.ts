@@ -1,4 +1,5 @@
 export const themes = [
+  { id: 'daylight', name: '晴空', description: 'Glacier National Park · 蓝天、雪山与林海' },
   { id: 'forest', name: '林间光影', description: 'High Sierra · 山湖与秋日林光' },
   { id: 'mountain-blue', name: '山青蓝', description: 'Big Sur · 青山与蔚蓝海岸' },
   { id: 'wild-red', name: '西野红', description: 'Sierra · 暮色云霞与暖红山峰' },
@@ -7,12 +8,12 @@ export const themes = [
 export type ThemeId = typeof themes[number]['id'];
 
 export function applyTheme(value: string) {
-  const theme = themes.some(item => item.id === value) ? value : 'forest';
+  const theme = themes.some(item => item.id === value) ? value : 'daylight';
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem('project-grid-theme', theme); } catch {}
 }
 
 export function restoreTheme() {
-  try { applyTheme(localStorage.getItem('project-grid-theme') || 'forest'); }
-  catch { applyTheme('forest'); }
+  try { applyTheme(localStorage.getItem('project-grid-theme') || 'daylight'); }
+  catch { applyTheme('daylight'); }
 }

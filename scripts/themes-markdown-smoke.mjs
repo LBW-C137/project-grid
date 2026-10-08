@@ -60,6 +60,8 @@ async function chooseTheme(id, name) {
 }
 try {
   await launch();
+  assert.equal((await state()).settings.theme, 'daylight');
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'daylight');
   const first = page.locator(`[data-project-id="${projects[0].id}"]`);
   await first.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await state()).projects[0].shellReady, 'shell ready');
@@ -71,7 +73,7 @@ try {
   await first.locator('.terminal-host').evaluate(node => { globalThis.originalThemeTerminal = node; });
   await page.evaluate(id => window.projectGrid.writeTerminal(id, "Write-Output 'PENDING_THEME_DRAFT'"), projects[0].id);
   await page.context().setOffline(true);
-  for (const [id, name] of [['mountain-blue', '山青蓝'], ['wild-red', '西野红'], ['forest', '林间光影']]) {
+  for (const [id, name] of [['daylight', '晴空'], ['mountain-blue', '山青蓝'], ['wild-red', '西野红'], ['forest', '林间光影']]) {
     await chooseTheme(id, name);
     assert.equal((await state()).projects[0].sessionId, sessionId);
     assert.ok(await first.locator('.terminal-host').evaluate(node => node === globalThis.originalThemeTerminal));
@@ -145,7 +147,7 @@ try {
   assert.equal((await state()).settings.theme, 'wild-red');
   await waitFor(async () => page.evaluate(() => document.documentElement.dataset.theme === 'wild-red'), 'theme survives restart');
   await fs.writeFile(path.join(output, 'wallpapers.json'), JSON.stringify(wallpaperChecks, null, 2));
-  console.log('PASS: three persistent themes preserve ANSI colors, task colors, terminal identity and drafts');
+  console.log('PASS: four persistent themes preserve ANSI colors, task colors, terminal identity and drafts');
   console.log('PASS: automatic editing, local/SSH Markdown render and save, GFM, relative resources and links, and sanitized HTML');
   console.log(`Screenshots: ${output}`);
 } catch (error) { if (page) await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {}); throw error; }

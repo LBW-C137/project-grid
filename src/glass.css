@@ -10,14 +10,14 @@
   /* One soft light from the upper left; no second glare band at the opposite corner. */
   --glass-sheen: linear-gradient(160deg, rgba(255, 255, 255, .15) 0%, rgba(255, 255, 255, .04) 28%, rgba(255, 255, 255, 0) 58%, rgba(255, 255, 255, .03) 100%);
   /* A crisp specular top edge, faint rim light on the other sides, a whisper of inner glow,
-     and a tight cast shadow that lifts the pane without muddying the gap between panes. */
+     and a wide, soft cast shadow that lifts the pane without muddying the gap between panes. */
   --glass-hairline: transparent;
   /* Edge light for large panes: a soft highlight along the top that fades out down the sides,
      like light catching the upper edge of a sheet of glass. There is deliberately no outline. */
   --glass-rim: linear-gradient(150deg, rgba(255, 255, 255, .26) 0%, rgba(255, 255, 255, .1) 24%, rgba(255, 255, 255, .045) 52%, rgba(255, 255, 255, .07) 80%, rgba(255, 255, 255, .13) 100%);
-  --glass-lift: inset 0 0 24px rgba(255, 255, 255, .03), 0 18px 40px -24px rgba(2, 14, 26, .35);
+  --glass-lift: inset 0 0 32px rgba(255, 255, 255, .025), 0 20px 56px -24px rgba(2, 14, 26, .24);
   --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .62), inset 1px 0 0 rgba(255, 255, 255, .22), inset -1px 0 0 rgba(255, 255, 255, .1), inset 0 -1px 0 rgba(255, 255, 255, .16), inset 0 0 26px rgba(255, 255, 255, .045), 0 8px 24px -8px rgba(2, 14, 26, .34), 0 1px 3px rgba(2, 14, 26, .14);
-  --glass-radius: 7px;
+  --glass-radius: 12px;
   /* A card header is a step below the window title: shorter, and its name smaller than "Project Grid". */
   --panel-header-height: 36px;
   --layout-gap: 6px;
@@ -56,7 +56,7 @@
 .search-input:focus-within { border-color: #e4f5ffb8; background: var(--glass-sheen), #122c4040; box-shadow: inset 0 1px 0 #ffffff70, 0 0 0 3px #c5e6ff12; }
 .titlebar-tools .search-input { width: clamp(180px, 24vw, 320px); height: 28px; }
 .titlebar-tools .button { height: 28px; padding: 0 11px; gap: 6px; font-size: 12px; }
-.titlebar-tools > .icon-button { width: 28px; height: 28px; background: var(--glass-sheen), #19384b20; border: 1px solid #ffffff54; box-shadow: inset 0 1px 0 #ffffff7a; }
+.titlebar-tools > .icon-button { width: 28px; height: 28px; border-radius: 7px; background: var(--glass-sheen), var(--theme-control, #19384b20); border: 1px solid #ffffff54; box-shadow: inset 0 1px 0 #ffffff7a; }
 kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .button { border-radius: 999px; transition: background .18s ease, border-color .18s ease, box-shadow .18s ease, transform .2s cubic-bezier(.2,.8,.2,1); }
 .button:active:not(:disabled) { transform: scale(.97); }
@@ -72,7 +72,8 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-slot:has(> .focus-motion-panel) { z-index: 50; }
 .project-slot > .project-panel.focus-motion-panel { position: fixed; left: 0; top: 0; width: var(--focus-width); height: var(--focus-height); margin: 0; transform-origin: 0 0; will-change: transform; animation: none; transition: none; }
 .project-slot.drag-placeholder::before { content: ''; position: absolute; inset: 0; border: 1px dashed #d3ecff85; border-radius: var(--glass-radius); background: #b6ddff12; box-shadow: inset 0 0 24px #b6ddff0c; pointer-events: none; }
-.project-panel { background: var(--glass-sheen), var(--glass); border-color: var(--glass-hairline); border-radius: var(--glass-radius); box-shadow: var(--glass-lift); isolation: isolate; }
+.project-panel, .focus-mode .project-panel { background: var(--glass-sheen), var(--glass); border-color: var(--glass-hairline); border-radius: var(--glass-radius); box-shadow: var(--glass-lift); isolation: isolate; }
+.project-panel:not(.is-working, .attention-active, .has-unread, .round-complete, .has-error) { --project-rest-glow: 0 0 18px color-mix(in srgb, var(--project-accent) 18%, transparent); box-shadow: var(--glass-lift), var(--project-rest-glow); }
 .project-panel:hover { border-color: transparent; }
 /* Shortcut navigation has its own blue ring above the pink/green status edges. */
 .project-panel.is-nav-target > .panel-nav-ring { position: absolute; inset: 0; z-index: 4; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 2px #8fcbff, 0 0 0 1px #4ea1ffb0, 0 0 26px #4ea1ff90, inset 0 0 22px #4ea1ff30; animation: project-nav-glow 1.2s ease-out both; }
@@ -80,7 +81,8 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-panel > .panel-nav-hud { position: absolute; left: 50%; top: 50%; z-index: 5; display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); padding: 11px 18px; border: 1px solid #8fcbffa0; border-radius: 14px; transform: translate(-50%, -50%); pointer-events: none; color: #ffffff; background: linear-gradient(180deg, #ffffff1c, #ffffff08), rgba(10, 28, 46, .94); backdrop-filter: blur(18px) saturate(150%); box-shadow: inset 0 1px 0 #ffffff30, 0 10px 34px #020c2190, 0 0 0 1px #4ea1ff40; font-size: 15px; animation: project-nav-hud 1.2s ease-out both; }
 .panel-nav-hud b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; font-size: 17px; }
 .panel-nav-hud small { flex: none; color: #b9d3ea; font-size: 13px; font-variant-numeric: tabular-nums; }
-.project-switch-index { flex: none; padding: 2px 5px; border-radius: 4px; color: #b6d9ff; background: #4ea1ff28; font-variant-numeric: tabular-nums; }
+.project-switch-index { flex: none; padding: 2px 5px; border-radius: 5px; font-variant-numeric: tabular-nums; }
+.project-panel .panel-index, .project-switch-index { color: #ffffff; font-weight: 700; background: var(--project-accent, #3b82f6); box-shadow: inset 0 1px 0 #ffffff40, 0 3px 8px #06172a30; }
 .project-switch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .project-switch-position { flex: none; color: #b6cce2; white-space: nowrap; font-variant-numeric: tabular-nums; }
 @keyframes project-nav-glow { 0% { opacity: 0; } 10%, 70% { opacity: 1; } 100% { opacity: 0; } }
@@ -122,8 +124,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-panel:focus-within { --glass-rim: linear-gradient(150deg, rgba(255, 255, 255, .42) 0%, rgba(255, 255, 255, .18) 24%, rgba(255, 255, 255, .09) 52%, rgba(255, 255, 255, .12) 80%, rgba(255, 255, 255, .22) 100%); }
 .panel-header { background: transparent; border-radius: calc(var(--glass-radius) - 1px) calc(var(--glass-radius) - 1px) 0 0; border-color: transparent; height: var(--panel-header-height); flex-basis: var(--panel-header-height); text-shadow: var(--text-shadow); }
 .panel-name { color: #f1f6fc; }.panel-name small { color: #c3d3e2; }
-.panel-index { display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 5px; border-radius: 3.5px; color: #e4eef8; background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
-.project-panel:is(.is-working, .has-unread, .round-complete, .has-error) .panel-index { background: rgba(var(--signal-rgb), .2); box-shadow: inset 0 0 0 1px rgba(var(--signal-rgb), .45); color: #ffffff; }
+.panel-index { display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 5px; border-radius: 5px; }
 .status-badge { color: #a1b2c7; }.status-badge.blue { color: #a3cbed; }.status-badge.green { color: #a2d8b8; }.status-badge.red { color: #ffb1bb; }
 .panel-header .icon-button { color: #a5b7cb; }
 .panel-meta { color: #c3d3e2; }.text-button { color: #c2d5ec; }.session-label { color: #aac7e7; }
@@ -147,13 +148,13 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
    terminal text never inherits a filter, scale or animated shadow. */
 .project-panel { --signal-rgb: 135, 175, 200; --edge-gradient: linear-gradient(135deg, #d7edffb3, #829ca54d 45%, #d7edff70); }
 .project-panel.has-unread { --signal-rgb: 255, 134, 212; }
-.project-panel.is-working { --signal-rgb: 73, 191, 255; }
+.project-panel.is-working { --signal-rgb: 78, 161, 255; }
 .project-panel.round-complete { --signal-rgb: 75, 237, 164; }
 .project-panel.has-error:not(.is-working):not(.has-unread):not(.round-complete) { --signal-rgb: 245, 158, 11; }
 .project-panel:is(.is-working, .round-complete, .has-unread, .has-error) { --edge-gradient: linear-gradient(120deg, rgba(var(--signal-rgb), .95), rgba(var(--signal-rgb), .35) 50%, rgba(var(--signal-rgb), .8)); border-color: transparent; }
 /* One edge per card: a card with a status shows its coloured ring alone, without the rim of light inside it. */
-.project-panel:is(.attention-active, .round-complete, .has-unread, .has-error)::after { opacity: 0; }
-.project-panel:is(.is-working, .attention-active) {
+.project-panel:is(.is-working, .attention-active, .round-complete, .has-unread, .has-error)::after { opacity: 0; }
+.project-panel.attention-active {
   --edge-gradient: radial-gradient(ellipse 48px 32px at top left, #d8f9ff, transparent), radial-gradient(ellipse 48px 32px at top right, #ffd3ed, transparent), radial-gradient(ellipse 48px 32px at bottom left, #c5c9ff, transparent), radial-gradient(ellipse 48px 32px at bottom right, #ffe7b3, transparent), linear-gradient(112deg, #3882f6 0%, #8b5cf6 40%, #ec4899 76%, #f59e0b 100%);
 }
 .project-panel.round-complete { background: var(--glass-sheen), rgba(12, 40, 33, .46); }
@@ -165,7 +166,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-panel:is(.is-working, .round-complete, .has-unread, .has-error) .status-dot { background: rgb(var(--signal-rgb)); box-shadow: inset 0 1px 1px #ffffffa3, 0 0 5px rgba(var(--signal-rgb), .65), 0 0 12px rgba(var(--signal-rgb), .35); }
 .panel-signal { position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; z-index: 3; opacity: .28; --light-low: .12; --light-peak: .95; }
 .panel-signal::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 2px; background: var(--edge-gradient); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; }
-.project-panel:is(.is-working, .attention-active) .panel-signal { filter: drop-shadow(-2px 0 6px #3882f67a) drop-shadow(2px 0 6px #ec48996b); }
+.project-panel.attention-active .panel-signal { filter: drop-shadow(-2px 0 6px #3882f67a) drop-shadow(2px 0 6px #ec48996b); }
 .project-panel:is(.round-complete, .has-unread, .has-error) .panel-signal { opacity: .5; }
 .project-panel:hover .panel-signal { opacity: .7; --light-low: .15; --light-peak: 1; }
 .project-panel:is(:focus-within, .is-focused) .panel-signal { opacity: .85; --light-low: .18; --light-peak: 1; }
@@ -174,7 +175,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-panel:not(.is-working, .attention-active, .round-complete, .has-unread, .has-error) .panel-signal { opacity: 0; }
 /* Working is shown by a steady ring; only a finished turn breathes. For its first nine seconds the ring, the dot and
    a glow spreading in from the edge slowly breathe together, three times (dark, bright, dark over three seconds). */
-.project-panel.is-working .panel-signal { opacity: .6; }
 .attention-active:not(.is-focused) :is(.status-dot, .panel-signal, .panel-glow) { animation: signal-breathe 3s ease-in-out 3; }
 /* The glow lies under the terminal content (z-index -1 inside the card), so it lights the translucent
    terminal surface from the edges inward while the text itself is never tinted or animated. */
@@ -186,8 +186,8 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-panel:is(.focus-motion-panel, .drag-source) .panel-signal { filter: none; }
 .project-panel .session-dot { background: rgb(var(--signal-rgb)); box-shadow: 0 0 5px rgba(var(--signal-rgb), .3); }
 @keyframes signal-breathe { 0%, 100% { opacity: var(--light-low); } 50% { opacity: var(--light-peak); } }
-.dropdown { background: var(--glass-sheen), var(--glass-strong); border-color: #e8f5ff80; border-radius: 7px; box-shadow: inset 0 1px 0 #ffffff96, inset 0 -1px 0 #0b1a2855, 0 12px 28px #07131e40; backdrop-filter: blur(6px) saturate(135%); animation: glass-appear .16s cubic-bezier(.2,.8,.2,1); transform-origin: top center; }
-.dropdown button { color: #e5f0fa; border-radius: 4.5px; }
+.dropdown { background: var(--glass-sheen), var(--glass-strong); border-color: #e8f5ff80; border-radius: 10px; box-shadow: inset 0 1px 0 #ffffff96, inset 0 -1px 0 #0b1a2855, 0 16px 40px #07131e30; backdrop-filter: blur(6px) saturate(135%); animation: glass-appear .16s cubic-bezier(.2,.8,.2,1); transform-origin: top center; }
+.dropdown button { color: #e5f0fa; border-radius: 6px; }
 .panel-menu { width: 224px; }
 /* Usage guide: one page at a time, an icon badge, a few lines of text and page dots. */
 .guide-dialog { width: 560px; }
@@ -276,7 +276,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .terminal-context-menu button { display: flex; justify-content: space-between; align-items: center; gap: 10px; }.terminal-context-menu button > span { color: #a9bfd4; font-size: 11px; }.terminal-context-menu button:disabled { cursor: default; }
 .settings-dialog::backdrop { background: #07111f59; backdrop-filter: blur(8px) saturate(115%); }
 .settings-intro, .setting-row small, .settings-note { color: #a4b6ce; }.setting-row { border-color: #dcedff19; }.setting-row svg { color: #b1c4dc; }
-.setting-row select { background: #1b2c41; color: #dfebf9; border-color: #e4f1ff32; border-radius: 5px; }
+.setting-row select { background: #1b2c41; color: #dfebf9; border-color: #e4f1ff32; border-radius: 7px; }
 .setting-row input[type="checkbox"] { appearance: none; width: 38px; height: 23px; flex: 0 0 38px; position: relative; border: 1px solid #e0f1ff40; border-radius: 999px; background: #081e337a; box-shadow: inset 0 1px 3px #030c1930, 0 1px 0 #ffffff10; cursor: pointer; transition: background .18s ease, border-color .18s ease; }
 .setting-row input[type="checkbox"]::before { content: ''; position: absolute; left: 2px; top: 2px; width: 17px; height: 17px; border-radius: 50%; background: linear-gradient(160deg, #ffffff, #c9dce9); box-shadow: 0 1px 4px #07121e55, inset 0 1px 0 #ffffff; transition: transform .2s cubic-bezier(.2,.8,.2,1); }
 .setting-row input[type="checkbox"]:checked { background: #8ddfbcc4; border-color: #d1ffe49c; }
@@ -290,7 +290,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .explorer-navigation { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 10px 10px 0; }
 .explorer-back { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px 0 7px; border: 0; border-radius: 4px; background: transparent; color: var(--sidebar-ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .explorer-back:hover { background: rgba(255, 255, 255, .1); }
-.sidebar-toggle { width: 28px; height: 28px; border-radius: 4px; }
+.sidebar-toggle { width: 28px; height: 28px; border-radius: 6px; }
 .explorer-content { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .explorer-content[hidden] { display: none; }
 .explorer-title { padding: 10px 16px 12px; min-width: 0; }
@@ -438,7 +438,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 /* Brighter copy stays legible against both clouds and dark foliage. */
 .panel-name, .file-code pre, .selected-file-tab, .search-input input, .titlebar-brand { color: #ffffff; }
 .icon-button, .panel-header .icon-button, .window-actions .icon-button, .text-button, .terminal-tab { color: #f4f9ff; }
-.panel-name small, .panel-index, .panel-meta, .status-badge, .workspace-summary, .session-label,
+.panel-name small, .panel-meta, .status-badge, .workspace-summary, .session-label,
 .eyebrow, .tree-placeholder, .file-preview-toolbar,
 .file-preview-footer, .preview-readonly, .line-numbers, .zoom-label, .settings-intro, .setting-row small,
 .settings-note, .empty-workspace p, .empty-hints, .no-results, .terminal-empty > span, kbd { color: #e7f1fa; }
@@ -550,7 +550,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .panel-header { padding: 0 6px 0 10px; gap: 7px; }
 .panel-name { gap: 7px; font-size: clamp(11.5px, calc(9.5px + .75cqh), 12.5px); font-weight: 600; }
 .panel-name small { font-size: 11px; line-height: 15px; padding: 0 6px; }
-.panel-index { min-width: 22px; height: clamp(15px, calc(9px + 2.25cqh), 18px); padding: 0 4px; border-radius: 3px; font-size: clamp(10px, calc(8px + .75cqh), 11px); }
+.panel-index { min-width: 22px; height: clamp(15px, calc(9px + 2.25cqh), 18px); padding: 0 4px; border-radius: 5px; font-size: clamp(10px, calc(8px + .75cqh), 11px); }
 .status-badge, .status-button { font-size: clamp(11px, calc(8.5px + .75cqh), 11.5px); }.status-badge { gap: 6px; }
 .status-dot { width: clamp(6px, calc(4px + .75cqh), 7px); height: clamp(6px, calc(4px + .75cqh), 7px); flex-basis: clamp(6px, calc(4px + .75cqh), 7px); }
 .panel-header .icon-button, .panel-header .voice-button { width: clamp(20px, calc(12px + 3cqh), 24px); height: clamp(20px, calc(12px + 3cqh), 24px); }
@@ -584,12 +584,8 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .overview-group small { font-size: 11px; color: #9fb5ce; }
 .overview-named b { display: block; font-size: 12px; font-weight: 600; color: #f1f7ff; }.overview-named p { margin: 1px 0 0; font-size: 11px; line-height: 1.5; color: #a9bfd6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* Working: the whole pane of glass turns blue, steadily, with a soft light from within; no ring is drawn
-   round it. Its edge is its own thin rim, tinted to match. Nothing flashes until the round finishes. */
-:root .app-shell .project-panel.is-working {
-  --glass-rim: linear-gradient(150deg, rgba(180, 222, 255, .48) 0%, rgba(120, 190, 255, .18) 26%, rgba(110, 180, 255, .08) 55%, rgba(130, 195, 255, .12) 80%, rgba(170, 215, 255, .26) 100%);
-  background: var(--glass-sheen), radial-gradient(120% 80% at 50% 0%, rgba(90, 170, 255, .2), transparent 70%), linear-gradient(180deg, rgba(28, 82, 156, .38), rgba(16, 54, 116, .44));
-  box-shadow: var(--glass-lift), inset 0 0 70px rgba(70, 160, 255, .16);
-}
-.project-panel.is-working:not(.attention-active) .panel-signal { opacity: 0 !important; }
-:root[data-surface="solid"] .app-shell .project-panel.is-working { background: #173a5c; }
+/* Working has one vivid blue edge above the masked rim and a wash below the text.
+   Both stay steady through hover and focus; only a finished round breathes. */
+.project-panel.is-working { --edge-gradient: linear-gradient(120deg, #a2d4ff, #4ea1ff 36%, #3987f5 68%, #81c4ff); }
+.project-panel.is-working .panel-signal { opacity: .95; filter: drop-shadow(0 0 8px #4ea1ff99); box-shadow: 0 0 24px #4ea1ff70; animation: none; }
+.project-panel.is-working .panel-glow { opacity: 1; background: linear-gradient(180deg, rgba(35, 102, 195, .32), rgba(43, 117, 214, .14) 28%, transparent 60%); box-shadow: none; animation: none; }

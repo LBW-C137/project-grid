@@ -80,7 +80,7 @@ try {
   assert.deepEqual(await cellBackgrounds(), original, 'another shell in the same project keeps all ANSI backgrounds');
   const sessions = (await state()).projects[0].terminals.map(terminal => terminal.sessionId);
   await terminal.locator('.terminal-host').evaluate(node => { globalThis.composerTerminal = node; });
-  for (const theme of ['forest', 'mountain-blue', 'wild-red']) {
+  for (const theme of ['daylight', 'forest', 'mountain-blue', 'wild-red']) {
     await page.evaluate(theme => window.projectGrid.settings({ theme }), theme);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
     await composerSample(terminal, theme);

@@ -25,6 +25,41 @@ const state = async () => (await page.evaluate(() => window.projectGrid.getState
 const panel = index => page.locator(`[data-project-id="${projects[index].id}"]`);
 const write = (index, data) => page.evaluate(({ id, data }) => window.projectGrid.writeTerminal(id, data), { id: projects[index].id, data });
 const breathing = index => panel(index).evaluate(node => node.getAnimations({ subtree: true }).filter(animation => animation.animationName === 'signal-breathe').length);
+async function checkDaylightContrast() {
+  // Hide only body content in this isolated profile so the screenshot measures the actual
+  // composited wallpaper, blur, glass and working wash without glyphs or the cursor.
+  const selector = '.project-panel:not(.has-unread, .round-complete, .has-error) .panel-terminal-area';
+  const mask = await page.addStyleTag({ content: `${selector} > * { visibility: hidden !important; }` });
+  try {
+    const areas = await page.locator(selector).evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }));
+    assert.ok(areas.length >= 2, 'contrast covers working and resting cards');
+    const screenshot = await page.screenshot({ path: path.join(output, 'daylight-body-contrast.png') });
+    const contrasts = await page.evaluate(async ({ png, areas }) => {
+      const image = new Image(); image.src = `data:image/png;base64,${png}`; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+      const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, image.width, image.height).data;
+      const scaleX = image.width / innerWidth, scaleY = image.height / innerHeight;
+      const linear = channel => { const value = channel / 255; return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4; };
+      return areas.map(box => {
+        let brightest = 0;
+        // Exclude the status edge and rounded corners; this is the terminal reading surface.
+        for (let y = Math.ceil((box.y + 12) * scaleY); y < Math.floor((box.y + box.height - 12) * scaleY); y++) {
+          for (let x = Math.ceil((box.x + 12) * scaleX); x < Math.floor((box.x + box.width - 12) * scaleX); x++) {
+            const p = (y * image.width + x) * 4;
+            brightest = Math.max(brightest, .2126 * linear(pixels[p]) + .7152 * linear(pixels[p + 1]) + .0722 * linear(pixels[p + 2]));
+          }
+        }
+        return 1.05 / (brightest + .05);
+      });
+    }, { png: screenshot.toString('base64'), areas });
+    for (const contrast of contrasts) assert.ok(contrast >= 4.5, `daylight white body text contrast is ${contrast.toFixed(2)}:1`);
+    await fs.writeFile(path.join(output, 'daylight-contrast.json'), JSON.stringify(contrasts, null, 2));
+  } finally { await mask.evaluate(node => node.remove()); }
+}
 const pauseBreath = (time, play = false) => panel(0).evaluate((node, { time, play }) => { for (const animation of node.getAnimations({ subtree: true })) if (animation.animationName === 'signal-breathe') { animation.pause(); animation.currentTime = time; if (play) animation.play(); } }, { time, play });
 const errors = [];
 try {
@@ -33,6 +68,8 @@ try {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 900));
   await page.waitForSelector('.project-panel');
+  assert.equal((await state()).settings.theme, 'daylight');
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'daylight');
   for (let index = 0; index < 4; index++) {
     await panel(index).getByRole('button', { name: '启动终端', exact: true }).click();
     await waitFor(async () => (await state()).projects[index].shellReady, 'native terminal ready');
@@ -51,7 +88,7 @@ try {
   await page.evaluate(() => document.activeElement?.blur()); await page.mouse.move(2, 2);
   assert.equal(await page.locator('.panel-edge-light').count(), 0, 'old decorative strips are removed');
   assert.equal(await panel(0).evaluate(node => getComputedStyle(node).animationName), 'none', 'the text surface is not animated');
-  // A working turn turns the whole pane of glass blue, steadily, with no ring. Nothing flashes until the turn finishes.
+  // A working turn has a steady blue edge and a wash fading out by 60% height. Nothing flashes until completion.
   const liveSamples = [];
   for (const mode of ['normal', 'hover', 'input-focus']) {
     if (mode === 'hover') await panel(0).locator('.panel-header').hover();
@@ -60,14 +97,16 @@ try {
       const edge = node.querySelector('.panel-signal'), glow = node.querySelector('.panel-glow'), text = node.querySelector('.xterm-rows');
       const values = [];
       for (let index = 0; index < 12; index++) {
-        values.push({ edge: Number(getComputedStyle(edge).opacity), glow: Number(getComputedStyle(glow).opacity), tint: getComputedStyle(node).backgroundImage, text: { opacity: getComputedStyle(text).opacity, color: getComputedStyle(text).color, animation: getComputedStyle(text).animationName } });
+        values.push({ edge: Number(getComputedStyle(edge).opacity), edgeShadow: getComputedStyle(edge).boxShadow, glow: Number(getComputedStyle(glow).opacity), tint: getComputedStyle(glow).backgroundImage, text: { opacity: getComputedStyle(text).opacity, color: getComputedStyle(text).color, animation: getComputedStyle(text).animationName } });
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       return values;
     });
     for (const sample of samples) {
       assert.deepEqual(sample, samples[0], `${mode}: working lights and reading surface stay steady`);
-      assert.ok(sample.edge === 0 && sample.glow === 0 && /rgba\(28, 82, 156/.test(sample.tint), `${mode}: a steady blue pane, no ring and no glow ${JSON.stringify({ ...sample, tint: sample.tint.slice(0, 80) })}`);
+      assert.equal(sample.edge, .95, `${mode}: vivid working edge stays steady`);
+      assert.equal(sample.glow, 1, `${mode}: blue body wash stays steady`);
+      assert.ok(sample.edgeShadow.includes('24px') && /rgba\(35, 102, 195/.test(sample.tint) && sample.tint.includes('60%'), `${mode}: blue glow and fading wash ${JSON.stringify(sample)}`);
       assert.equal(sample.text.opacity, '1'); assert.equal(sample.text.animation, 'none');
     }
     liveSamples.push({ mode, samples });
@@ -76,7 +115,7 @@ try {
   await page.evaluate(() => document.activeElement?.blur()); await page.mouse.move(2, 2);
   assert.equal(await breathing(1), 0, 'old unread completion stays quiet');
   assert.equal(await breathing(2), 0, 'ready shell stays quiet');
-  await page.screenshot({ path: path.join(output, 'forest-working.png') });
+  await page.screenshot({ path: path.join(output, 'daylight-working.png') });
   const surface = await panel(0).evaluate(node => {
     const box = node.getBoundingClientRect();
     return { x: box.x, y: box.y, width: box.width, height: box.height, viewport: innerWidth, backdrop: getComputedStyle(node).backdropFilter };
@@ -98,12 +137,17 @@ try {
     return { changed, peak, backdrop: surface.backdrop };
   }, { before: refracted.toString('base64'), after: flat.toString('base64'), surface });
   assert.ok(lens.changed > 10 && lens.peak > 3, `SVG must actually refract the backdrop: ${JSON.stringify(lens)}`);
-  for (const [theme, name] of [['mountain-blue', '山青蓝'], ['wild-red', '西野红']]) {
+  for (const [theme, name] of [['daylight', '晴空'], ['forest', '林间光影'], ['mountain-blue', '山青蓝'], ['wild-red', '西野红']]) {
     await page.evaluate(theme => window.projectGrid.settings({ theme }), theme);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
     await page.screenshot({ path: path.join(output, `${theme}.png`) });
     assert.equal(await panel(0).locator('.status-badge').innerText(), '正在处理');
+    assert.equal(await panel(0).locator('.panel-signal').evaluate(node => Number(getComputedStyle(node).opacity)), .95, `${name}: working edge remains visible`);
+    const chips = await page.locator('.panel-index').evaluateAll(nodes => nodes.map(node => ({ background: getComputedStyle(node).backgroundColor, color: getComputedStyle(node).color, weight: getComputedStyle(node).fontWeight })));
+    assert.deepEqual(chips.map(chip => chip.background), ['rgb(59, 130, 246)', 'rgb(100, 116, 139)', 'rgb(139, 92, 246)', 'rgb(245, 158, 11)', 'rgb(244, 63, 94)', 'rgb(14, 165, 233)'], `${name}: project colors survive working and unread states`);
+    assert.ok(chips.every(chip => chip.color === 'rgb(255, 255, 255)' && chip.weight === '700'), `${name}: white bold digits`);
     assert.equal(await breathing(2), 0, `${name}: ready shell stays quiet`);
+    if (theme === 'daylight') await checkDaylightContrast();
   }
   await page.evaluate(() => window.projectGrid.settings({ theme: 'forest' }));
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'forest');
@@ -207,7 +251,7 @@ try {
   await waitFor(async () => await breathing(0) > 0, 'turning animation back on resumes breathing');
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, timings, glowReach, lens, liveSamples, compact, compactEdges, errors }, null, 2));
-  console.log(`PASS: steady blue working pane, a slow diffuse breathing glow on completion, quiet unviewed glow, quiet idle, all themes, high DPI, compact controls, explorer and preserved small-card input. Screenshots: ${output}`);
+  console.log(`PASS: steady blue working edge and wash, daylight body contrast, a slow diffuse breathing glow on completion, quiet unviewed glow, quiet idle, all themes, high DPI, compact controls, explorer and preserved small-card input. Screenshots: ${output}`);
 } catch (error) {
   console.error(error);
   if (page) {

@@ -8,6 +8,7 @@ import {
 import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
 import { ProjectTerminals } from './ProjectTerminals';
 import { ProjectSwitchHud } from './ProjectSwitchHud';
+import { projectAccent } from './project-colors';
 import { ProjectExplorer } from './ProjectExplorer';
 import { ActivityPane } from './ActivityPane';
 import { readingShown, setReading, useTerminalChoice } from './reading-mode';
@@ -128,7 +129,7 @@ function ProjectPanel({ project, index, hidden, focused, navTarget, navPosition,
     className={`project-panel ${showActivity ? 'has-activity' : ''} ${project.unread && !working ? 'has-unread' : ''} ${freshCompletion ? 'attention-active' : ''} ${working ? 'is-working' : ''} ${roundComplete ? 'round-complete' : ''} ${focused ? 'is-focused' : ''} ${navTarget ? 'is-nav-target' : ''} ${project.error ? 'has-error' : ''} ${dragging ? 'drag-source' : ''} ${dropTarget ? 'drop-target' : ''}`}
     data-project-id={project.id} data-status={working ? 'working' : project.unread ? 'unread' : project.status}
     tabIndex={-1}
-    style={{ display: hidden ? 'none' : undefined }}
+    style={{ display: hidden ? 'none' : undefined, '--project-accent': projectAccent(index) } as CSSProperties}
   >
     <span key={signalKey} className="panel-signal" aria-hidden="true" />
     <span key={`glow:${signalKey}`} className="panel-glow" aria-hidden="true" />

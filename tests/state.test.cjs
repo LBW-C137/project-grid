@@ -158,8 +158,30 @@ test('corrupt workspace is copied aside before a new workspace can be saved', t 
   assert.equal(fs.readFileSync(path.join(directory, backups[0]), 'utf8'), '{ invalid');
 });
 
+test('daylight is the default for new workspaces and settings without a saved theme', t => {
+  const { store, file } = fixture(t);
+  assert.equal(store.settings.theme, 'daylight');
+  assert.equal(cleanSettings().theme, 'daylight');
+  assert.equal(cleanSettings({ theme: 'unknown' }).theme, 'daylight');
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete saved.settings.theme;
+  fs.writeFileSync(file, JSON.stringify(saved));
+  assert.equal(new WorkspaceStore(file).settings.theme, 'daylight');
+});
+
+test('saved forest and other theme choices survive loading and unrelated settings updates', t => {
+  const { store, file } = fixture(t);
+  for (const theme of ['forest', 'mountain-blue', 'wild-red', 'daylight']) {
+    store.updateSettings({ theme });
+    const restored = new WorkspaceStore(file);
+    assert.equal(restored.settings.theme, theme);
+    restored.updateSettings({ fontSize: 14 });
+    assert.equal(new WorkspaceStore(file).settings.theme, theme);
+  }
+});
+
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'forest', language: 'zh', surface: 'glass', terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true,
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'daylight', language: 'zh', surface: 'glass', terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true,
     summary: { mode: 'fast', cloud: { provider: 'openai', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }, local: { provider: 'ollama', protocol: 'openai', baseUrl: 'http://localhost:11434/v1', model: 'qwen2.5:1.5b' } } });
   const summary = cleanSettings({ summary: { mode: 'local', local: { provider: 'vllm', baseUrl: ' http://10.0.0.5:8000/v1 ', model: 'Qwen/Qwen2.5-1.5B-Instruct' }, cloud: { provider: 'custom', protocol: 'anthropic', baseUrl: 'https://gateway.example/api', model: '' } } }).summary;
   assert.deepEqual(summary, { mode: 'local', cloud: { provider: 'custom', protocol: 'anthropic', baseUrl: 'https://gateway.example/api', model: '' }, local: { provider: 'vllm', protocol: 'openai', baseUrl: 'http://10.0.0.5:8000/v1', model: 'Qwen/Qwen2.5-1.5B-Instruct' } });
