@@ -93,7 +93,7 @@ macOS 首次使用语音输入时会请求麦克风权限，可以在「系统�
 
 ### Windows 安装
 
-从 [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 下载 `Project-Grid-Setup-版本号-x64.exe`（也有免安装的便携版）。
+从 [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 下载 `Project-Grid-Setup-版本号-x64.exe`。
 
 选择 PowerShell 或命令提示符、Windows PATH 刷新、开始菜单快捷方式、NSIS 安装程序和自动更新仅适用于 Windows。
 
@@ -229,7 +229,7 @@ npm ci
 npm start              # 开发运行
 npm test               # 单元测试
 npm run test:desktop   # 真实桌面交互测试
-npm run dist           # 构建安装版与便携版
+npm run dist           # 构建安装版
 npm run dist:linux     # 在 Linux 上构建本机架构的 AppImage 与 tar.gz
 ```
 

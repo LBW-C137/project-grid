@@ -19,7 +19,6 @@
     "build": "node scripts/build-ssh-askpass.cjs && tsc --noEmit && vite build",
     "test": "node scripts/build-ssh-askpass.cjs && node --test tests/*.test.cjs",
     "test:desktop": "node scripts/smoke.mjs",
-    "test:portable": "node scripts/portable-smoke.mjs",
     "test:sessions": "node scripts/session-smoke.mjs",
     "test:restore-slow": "node scripts/restore-slow-smoke.mjs",
     "test:workspace": "node scripts/workspace-smoke.mjs",
@@ -116,9 +115,6 @@
         "repo": "project-grid"
       }
     ],
-    "portable": {
-      "unpackDirName": true
-    },
     "nsis": {
       "artifactName": "Project-Grid-Setup-${version}-x64.${ext}",
       "oneClick": false,
@@ -137,12 +133,6 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
           "arch": [
             "x64"
           ]

@@ -8,7 +8,7 @@ Windows 多项目终端工作台。每个目录对应一个真实终端，Codex 
 
 从 [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 下载 Windows `.exe` 即可使用。正式版本在 Releases 中长期保留，普通 CI 构建仍可从 Actions 的 Artifacts 下载。
 
-打包后的应用位于 `release/`。推荐运行 `Project-Grid-Setup-<版本>-x64.exe` 安装，获得自动更新功能；`Project-Grid-<版本>-win-x64.exe` 为便携版。迁移旧版时，先等任务结束，从设置或托盘退出旧版，再运行安装包。项目列表与会话历史会保留，旧人工完成项目保持停止。
+打包后的应用位于 `release/`。运行 `Project-Grid-Setup-<版本>-x64.exe` 安装，获得自动更新功能。从 0.6.12 起不再发布便携版。迁移旧版时，先等任务结束，从设置或托盘退出旧版，再运行安装包。项目列表与会话历史会保留，旧人工完成项目保持停止。
 
 安装版使用独立的 Windows 应用标识，开始菜单登记为 **Project Grid**，可在 Windows 搜索中查找。桌面、任务栏和搜索使用多尺寸的项目矩阵图标。启动时会修复本应用的快捷方式，并把早期与正式版标识冲突的开发版 Electron 快捷方式备份到应用数据目录；开发和测试窗口不再复用正式版标识。
 
@@ -21,7 +21,7 @@ Windows 多项目终端工作台。每个目录对应一个真实终端，Codex 
 - 安装版启动约 20 秒后自动检查 GitHub Releases，之后每 4 小时检查一次；也可以在设置中手动检查。
 - 有新版本时在后台下载，设置中显示当前版本与下载进度；下载完成后，顶部设置图标出现提示点。
 - 点击「重启并安装更新」才会退出安装。仍有终端打开时会先确认，取消后可以继续工作，不会强制重启。
-- 便携版和未安装的解包目录不执行自动更新，设置中提供安装版下载入口。
+- 早期便携版和未安装的解包目录不执行自动更新，设置中提供安装版下载入口。
 - 更新使用 Release 中的安装程序、`latest.yml` 和 `.blockmap`，下载后由 electron-updater 校验文件摘要。更新失败可在设置中重试。
 
 ## 日常操作
@@ -234,7 +234,7 @@ npm run dist
 - `build`：TypeScript 检查和前端构建。
 - `test`：状态持久化、事件传输、终端环境、目录与大文本分页、Unicode 边界、图片识别、视频字节范围、链接解析及预览访问边界测试。
 - `test:desktop`：真实终端和按钮交互、通知、目录、PNG 显示/缩放/刷新、HTML/CSS/脚本加载与隔离、视频播放/暂停/跳转/全屏、大文本翻页、Ctrl 单击普通与 OSC 8 链接，以及窄窗口检查。不会向模型提交编码任务，不会修改日常工作区设置。截图在 `.test-output/desktop-*/`。添加 `-- --packaged` 可检查打包后的应用。
-- `dist`：生成 Windows x64 NSIS 安装程序、便携版、`latest.yml`、`.blockmap` 和 `win-unpacked`。
+- `dist`：生成 Windows x64 NSIS 安装程序、`latest.yml`、`.blockmap` 和 `win-unpacked`。
 - `test:sessions`：用离线 Codex 替身验证两次启动恢复；检查输入框粘贴、终端复制/粘贴、SSH 认证弹窗和远程媒体预览。SSH 服务只监听本机随机端口，不连接日常远程主机。添加 `-- --packaged` 可检查打包版。
 - `test:workspace`：实际文件新建/重命名/删除、Windows 文件剪贴板与资源管理器粘贴，并用模拟麦克风测试检测、录音、编辑和插入。默认仅替换识别后端以便 CI 离线运行；传入 `-- --voice-assets 路径` 可使用真实 Whisper 引擎和模型测试全流程。资源目录需包含 `runtime/Release/whisper-cli.exe` 及 `ggml-base-q5_1.bin`。测试不使用真实麦克风，不向模型提交编码任务。
 - `test:motion`：检查真实卡片展开、缩回的中间尺寸、快速反向切换、窗口尺寸变化和减少动态效果，并验证同一终端及未发送输入得以保留。截图在 `.test-output/focus-motion-*/`，支持 `-- --packaged`。
@@ -253,7 +253,7 @@ npm run dist
 [Windows 构建工作流](https://github.com/noeigenstate/project-grid/actions/workflows/build-windows.yml) 使用 GitHub 托管的 `windows-latest` runner，无需配置单独的 webhook 服务。
 
 - 推送到 `main`、推送 `v*` 标签、提交面向 `main` 的 PR，或在 Actions 页面点击 **Run workflow** 都会触发。
-- 流程：`npm ci` → 单元测试 → 生成 Windows 安装版与便携版 → 校验自动更新文件 → 打包版桌面测试 → 上传可执行文件和 SHA-256 校验信息。
+- 流程：`npm ci` → 单元测试 → 生成 Windows 安装版 → 校验自动更新文件 → 打包版桌面测试 → 上传可执行文件和 SHA-256 校验信息。
 - 独立的 Ubuntu job 使用真实 OpenSSH 连接测试服务，运行 Linux Python worker、Bash PTY、文件读取与 Codex 通知测试；发布前必须同时通过 Windows 和 Linux 检查。
 - Linux 桌面版在 `ubuntu-24.04`（x64）和 `ubuntu-24.04-arm`（arm64）上构建：单元测试（含真实 Bash 和 zsh 终端）→ 生成 AppImage 与 tar.gz → 检查包内容 → 在虚拟显示器中用打包版分别验证 Bash 与 zsh 终端和 Codex 状态 → 检查 AppImage 的终端环境，产物为 **Project-Grid-linux-x64** 和 **Project-Grid-linux-arm64**。
 - 桌面回归测试会实际点击「启动终端」，覆盖网格和全屏，确认按键不被遮挡，再检查真实 PowerShell 与 Codex CLI 启动。

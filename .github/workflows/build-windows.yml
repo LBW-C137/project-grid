@@ -42,7 +42,6 @@ jobs:
     timeout-minutes: 35
     outputs:
       version: ${{ steps.version.outputs.version }}
-      binary: ${{ steps.version.outputs.binary }}
       installer: ${{ steps.version.outputs.installer }}
     defaults:
       run:
@@ -74,7 +73,6 @@ jobs:
             throw 'The version tag must match package.json.'
           }
           "version=$version" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
-          "binary=Project-Grid-$version-win-x64.exe" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
           "installer=Project-Grid-Setup-$version-x64.exe" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
 
       - name: Install locked dependencies
@@ -86,14 +84,11 @@ jobs:
       - name: Run unit and integration tests
         run: npm test
 
-      - name: Build Windows installer and portable executable
+      - name: Build Windows installer
         run: npm run dist
 
       - name: Verify installer and automatic update metadata
         run: node scripts/verify-update-artifacts.cjs
-
-      - name: Verify repeated portable launches preserve running terminals
-        run: node scripts/retry.mjs npm run test:portable
 
       - name: Verify desktop with actual terminal button clicks
         run: node scripts/retry.mjs npm run test:desktop -- --packaged
@@ -156,9 +151,8 @@ jobs:
       - name: Create checksum and build notes
         run: |
           $version = '${{ steps.version.outputs.version }}'
-          $portable = "Project-Grid-$version-win-x64.exe"
           $installer = "Project-Grid-Setup-$version-x64.exe"
-          $files = @($portable, $installer, "$installer.blockmap", 'latest.yml')
+          $files = @($installer, "$installer.blockmap", 'latest.yml')
           $checksums = foreach ($name in $files) {
             $file = Join-Path release $name
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing release file: $name" }
@@ -167,17 +161,15 @@ jobs:
           }
           $checksums | Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding utf8
           @(
-            'Project Grid — Windows x64 installer and portable build'
+            'Project Grid — Windows x64 installer'
             "Commit: $env:GITHUB_SHA"
             "Installer with automatic updates: $installer"
-            "Portable edition: $portable"
             'Install the Setup executable to enable background update checks and downloads.'
             'Codex CLI must be installed separately on the target computer.'
           ) | Set-Content -LiteralPath release/BUILD-INFO.txt -Encoding utf8
           @(
             '## Windows build is ready'
             "- Installer: **$installer**"
-            "- Portable: **$portable**"
             "- Commit: $env:GITHUB_SHA"
             '- Unit tests and packaged desktop tests passed, including actual Start terminal clicks.'
             '- Download **Project-Grid-windows-x64** from the Artifacts section of this run.'
@@ -189,8 +181,8 @@ jobs:
         with:
           name: Project-Grid-windows-x64
           path: |
-            release/Project-Grid-*.exe
-            release/Project-Grid-*.exe.blockmap
+            release/Project-Grid-Setup-*.exe
+            release/Project-Grid-Setup-*.exe.blockmap
             release/latest.yml
             release/SHA256SUMS.txt
             release/BUILD-INFO.txt
@@ -204,9 +196,6 @@ jobs:
         with:
           name: desktop-test-screenshots
           path: |
-            .test-output/portable-*/*.png
-            .test-output/portable-*/results.json
-            .test-output/portable-*/*.log
             .test-output/desktop-*/*.png
             .test-output/sessions-*/*.png
             .test-output/workspace-*/*.png
@@ -489,7 +478,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_VERSION: ${{ needs.windows.outputs.version }}
-          RELEASE_BINARY: ${{ needs.windows.outputs.binary }}
           RELEASE_INSTALLER: ${{ needs.windows.outputs.installer }}
           MAC_ARCHIVE: ${{ needs.macos.outputs.archive }}
           MAC_IMAGE: ${{ needs.macos.outputs.image }}
@@ -497,7 +485,6 @@ jobs:
           set -euo pipefail
           test "$RELEASE_TAG" = "v$RELEASE_VERSION"
           cd release-assets
-          test -f "$RELEASE_BINARY"
           test -f "$RELEASE_INSTALLER"
           test -f latest.yml
           test -f "$MAC_ARCHIVE"
@@ -507,13 +494,12 @@ jobs:
           linux=("Project-Grid-$RELEASE_VERSION-linux-x86_64.AppImage" "Project-Grid-$RELEASE_VERSION-linux-x64.tar.gz" "Project-Grid-$RELEASE_VERSION-linux-arm64.AppImage" "Project-Grid-$RELEASE_VERSION-linux-arm64.tar.gz")
           for file in "${linux[@]}"; do test -f "$file"; done
           sha256sum --check SHA256SUMS-linux-x64.txt SHA256SUMS-linux-arm64.txt
-          assets=("$RELEASE_BINARY" "$RELEASE_INSTALLER" "$RELEASE_INSTALLER.blockmap" latest.yml SHA256SUMS.txt BUILD-INFO.txt "$MAC_IMAGE" "$MAC_ARCHIVE" SHA256SUMS-mac.txt "${linux[@]}" SHA256SUMS-linux-x64.txt SHA256SUMS-linux-arm64.txt)
+          assets=("$RELEASE_INSTALLER" "$RELEASE_INSTALLER.blockmap" latest.yml SHA256SUMS.txt BUILD-INFO.txt "$MAC_IMAGE" "$MAC_ARCHIVE" SHA256SUMS-mac.txt "${linux[@]}" SHA256SUMS-linux-x64.txt SHA256SUMS-linux-arm64.txt)
 
           cat > release-notes.md <<EOF
-          Windows x64 installer and portable editions of Project Grid, a macOS edition for Apple silicon, and Linux editions for x64 and arm64.
+          The Windows x64 installer of Project Grid, a macOS edition for Apple silicon, and Linux editions for x64 and arm64.
 
           **Windows — recommended:** install **$RELEASE_INSTALLER** to enable automatic update checks and background downloads.
-          For a portable copy, download **$RELEASE_BINARY**.
 
           **macOS (Apple silicon, macOS 12 or later):** install or update with one command; the app opens directly, without the "cannot verify the developer" prompt:
 
@@ -543,10 +529,10 @@ jobs:
           if [[ "$RELEASE_VERSION" == *-* ]]; then flags=(--prerelease --latest=false); fi
 
           if gh release view "$RELEASE_TAG" --json isDraft,targetCommitish,assets > existing-release.json 2>/dev/null; then
-            # A rerun may finish its own draft, but must never replace a published binary.
+            # A rerun may finish its own draft, but must never replace a published installer.
             jq -e --arg commit "$GITHUB_SHA" '.targetCommitish == $commit' existing-release.json
             if [[ "$(jq -r '.isDraft' existing-release.json)" == 'false' ]]; then
-              jq -e --arg binary "$RELEASE_BINARY" --arg installer "$RELEASE_INSTALLER" 'any(.assets[]; .name == $binary) and any(.assets[]; .name == $installer) and any(.assets[]; .name == "latest.yml")' existing-release.json
+              jq -e --arg installer "$RELEASE_INSTALLER" 'any(.assets[]; .name == $installer) and any(.assets[]; .name == "latest.yml")' existing-release.json
               echo "Release $RELEASE_TAG is already published."
               exit 0
             fi

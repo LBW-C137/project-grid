@@ -95,7 +95,7 @@ Switch the interface to English under Settings › Appearance › Language.
 
 ### Windows installation
 
-Download `Project-Grid-Setup-<version>-x64.exe` from [Releases](https://github.com/noeigenstate/project-grid/releases/latest) (a portable build is there too).
+Download `Project-Grid-Setup-<version>-x64.exe` from [Releases](https://github.com/noeigenstate/project-grid/releases/latest).
 
 Choosing PowerShell or Command Prompt, Windows PATH refresh, Start-menu shortcuts, the NSIS installer and automatic updates apply only to Windows.
 
@@ -231,7 +231,7 @@ npm ci
 npm start              # run in development
 npm test               # unit tests
 npm run test:desktop   # real desktop interaction tests
-npm run dist           # build the installer and portable editions
+npm run dist           # build the installer
 npm run dist:linux     # on Linux, build the AppImage and tar.gz for this machine's architecture
 ```
 
