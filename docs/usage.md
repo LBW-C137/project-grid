@@ -12,6 +12,10 @@ Windows 多项目终端工作台。每个目录对应一个真实终端，Codex 
 
 安装版使用独立的 Windows 应用标识，开始菜单登记为 **Project Grid**，可在 Windows 搜索中查找。桌面、任务栏和搜索使用多尺寸的项目矩阵图标。启动时会修复本应用的快捷方式，并把早期与正式版标识冲突的开发版 Electron 快捷方式备份到应用数据目录；开发和测试窗口不再复用正式版标识。
 
+## 代理
+
+从 0.6.10 起，从桌面图标启动应用时，若进程没有代理环境变量，会读取当前机器的系统代理，并传给本地终端和编码助手。代理地址和端口来自系统设置；已有的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 和 `NO_PROXY`（及其小写形式）会保留。系统没有代理或读取失败时不添加代理变量，读取最多等待 3 秒。终端自己的启动文件仍可设置代理；SSH 远程终端使用远程机器的配置。
+
 ## 自动更新
 
 - 安装版启动约 20 秒后自动检查 GitHub Releases，之后每 4 小时检查一次；也可以在设置中手动检查。
@@ -239,6 +243,7 @@ npm run dist
 - `test:themes-markdown`：实际切换并重启验证主题保存，检查终端颜色、会话与草稿不变；验证自动编辑及本地/SSH Markdown 的渲染、保存、相对资源、链接和脚本过滤。
 - `test:git`：在隔离配置与 Git 仓库中验证目录标记、已暂存／工作区更改、提交合并关系、提交文件、自动刷新和失败退避、目录收起、未保存保护及本地／SSH 切换。支持 `-- --packaged`，截图与结果在 `.test-output/git-*/`。
 - `node scripts/verify-update-artifacts.cjs`：校验安装包、SHA-512、更新清单和应用内置更新源。
+- `node scripts/linux-smoke.mjs [--packaged] [--shell zsh]`：在 Linux 上以隔离配置和独立 HOME 启动应用，验证 Bash 或 zsh 终端、Codex 开始与结束状态、`Ctrl+Shift+C` 复制和 `Ctrl+C` 中断；`node scripts/appimage-smoke.mjs <AppImage>` 启动 AppImage，确认终端环境不含 AppImage 的目录和变量。
 - `node scripts/verify-installer-payload.cjs`：从实际 NSIS 安装包提取程序，核对可执行文件与应用资源；动画检查可用 `node scripts/focus-motion-smoke.mjs --executable 路径` 直接验证提取出的程序，不添加专用渲染开关，并清除测试工具默认的动态效果模拟，使用真实 Windows 偏好。
 
 终端依赖锁定为 `node-pty@1.2.0-beta.15`，使用其随包提供的 ConPTY 1.25，修复旧版在窗口缩放后光标坐标不同步的问题。相关上游说明见 [microsoft/terminal#18725](https://github.com/microsoft/terminal/issues/18725)。渲染端同步启用光标所在行的重排，并在预览期间保持终端布局。
@@ -250,10 +255,11 @@ npm run dist
 - 推送到 `main`、推送 `v*` 标签、提交面向 `main` 的 PR，或在 Actions 页面点击 **Run workflow** 都会触发。
 - 流程：`npm ci` → 单元测试 → 生成 Windows 安装版与便携版 → 校验自动更新文件 → 打包版桌面测试 → 上传可执行文件和 SHA-256 校验信息。
 - 独立的 Ubuntu job 使用真实 OpenSSH 连接测试服务，运行 Linux Python worker、Bash PTY、文件读取与 Codex 通知测试；发布前必须同时通过 Windows 和 Linux 检查。
+- Linux 桌面版在 `ubuntu-24.04`（x64）和 `ubuntu-24.04-arm`（arm64）上构建：单元测试（含真实 Bash 和 zsh 终端）→ 生成 AppImage 与 tar.gz → 检查包内容 → 在虚拟显示器中用打包版分别验证 Bash 与 zsh 终端和 Codex 状态 → 检查 AppImage 的终端环境，产物为 **Project-Grid-linux-x64** 和 **Project-Grid-linux-arm64**。
 - 桌面回归测试会实际点击「启动终端」，覆盖网格和全屏，确认按键不被遮挡，再检查真实 PowerShell 与 Codex CLI 启动。
 - Codex 检查只运行版本和配置命令，不调用模型，不需要 API 密钥或 ChatGPT 登录。
 - 构建通过后，在对应运行的 **Artifacts** 中下载 **Project-Grid-windows-x64**，解压后双击 `.exe`。产物保留 30 天；测试截图保留 7 天。
-- 推送与 `package.json` 一致的版本标签（如 `v0.3.0`）时，构建与测试通过后会自动创建 GitHub Release，附上两个 `.exe`、`latest.yml`、`.blockmap`、SHA-256 校验文件和构建信息；普通 `main` 推送只生成 Artifacts。
+- 推送与 `package.json` 一致的版本标签（如 `v0.3.0`）时，构建与测试通过后会自动创建 GitHub Release，附上两个 `.exe`、`latest.yml`、`.blockmap`、macOS 的 DMG 与 ZIP、Linux 两种架构的 AppImage 与 tar.gz、SHA-256 校验文件和构建信息；普通 `main` 推送只生成 Artifacts。
 - 发布任务会重新校验下载产物，只为发布阶段申请仓库写权限。已发布的版本不会被重跑任务覆盖；预发布版本会标为 prerelease。
 - GitHub Packages 面向 npm、NuGet、容器等软件包；本项目以 Windows 可执行文件交付，下载入口是 Releases。
 

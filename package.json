@@ -1,7 +1,7 @@
 {
   "name": "project-grid",
   "productName": "Project Grid",
-  "version": "0.6.8",
+  "version": "0.6.10",
   "description": "多个项目、多个真实终端，Codex 完成后一眼可见。",
   "author": "Project Grid",
   "license": "MIT",
@@ -12,6 +12,7 @@
   },
   "type": "module",
   "main": "electron/main.cjs",
+  "desktopName": "project-grid.desktop",
   "scripts": {
     "start": "node scripts/start.mjs",
     "dev": "node scripts/start.mjs --dev",
@@ -37,7 +38,9 @@
     "dist": "node -e \"require('electron')\" && npm run build && electron-builder --win --x64 --publish never",
     "pack": "node -e \"require('electron')\" && npm run build && electron-builder --win --dir --x64",
     "dist:mac": "node -e \"require('electron')\" && npm run build && electron-builder --mac --arm64 --publish never",
-    "pack:mac": "node -e \"require('electron')\" && npm run build && electron-builder --mac dir --arm64"
+    "pack:mac": "node -e \"require('electron')\" && npm run build && electron-builder --mac dir --arm64",
+    "dist:linux": "node -e \"require('electron')\" && npm run build && electron-builder --linux --publish never",
+    "pack:linux": "node -e \"require('electron')\" && npm run build && electron-builder --linux dir"
   },
   "dependencies": {
     "electron-updater": "6.8.9",
@@ -99,7 +102,9 @@
       "node_modules/node-pty/**/*",
       "node_modules/sherpa-onnx-node/**/*",
       "node_modules/sherpa-onnx-win-x64/**/*",
-      "node_modules/sherpa-onnx-darwin-arm64/**/*"
+      "node_modules/sherpa-onnx-darwin-arm64/**/*",
+      "node_modules/sherpa-onnx-linux-x64/**/*",
+      "node_modules/sherpa-onnx-linux-arm64/**/*"
     ],
     "npmRebuild": false,
     "publish": [
@@ -181,6 +186,41 @@
     "dmg": {
       "title": "Project Grid ${version}",
       "artifactName": "Project-Grid-${version}-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "category": "Development",
+      "executableName": "project-grid",
+      "syncDesktopName": true,
+      "synopsis": "Many projects, many real terminals, Codex completion at a glance",
+      "target": [
+        {
+          "target": "AppImage"
+        },
+        {
+          "target": "tar.gz"
+        }
+      ],
+      "files": [
+        "dist/**/*",
+        "electron/**/*",
+        "assets/**/*",
+        "package.json",
+        "!**/*.map",
+        "!node_modules/node-pty/{src,third_party,scripts,typings}/**/*",
+        "!node_modules/node-pty/lib/*.test.js",
+        "!node_modules/node-pty/binding.gyp",
+        "!node_modules/node-addon-api/**/*",
+        "!node_modules/node-pty/prebuilds/{win32-*,darwin-*}/**/*"
+      ],
+      "electronLanguages": [
+        "zh-CN",
+        "en-US"
+      ],
+      "artifactName": "Project-Grid-${version}-linux-${arch}.${ext}"
+    },
+    "toolsets": {
+      "appimage": "1.0.3"
     },
     "compression": "maximum",
     "afterPack": "scripts/after-pack.cjs"

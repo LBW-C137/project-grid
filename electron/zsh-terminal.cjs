@@ -4,8 +4,16 @@ const { execFile } = require('node:child_process');
 
 // Local terminals on macOS run zsh with the user's own start-up files and Project Grid's integration
 // (integration/zsh-integration.zsh). zsh reads its start-up files from ZDOTDIR, so that names a folder of
-// stubs, and each stub sources the integration with its phase.
-const ZSH = '/bin/zsh';
+// stubs, and each stub sources the integration with its phase. On Linux the user chooses zsh or Bash
+// (integration/bash-integration.bash, started with --rcfile).
+
+// The program for a shell name: the usual system places first, then PATH; null when it is not installed.
+function findShell(name, { platform = process.platform, env = process.env, exists = isExecutable } = {}) {
+  const places = platform === 'darwin' ? [`/bin/${name}`] : [`/bin/${name}`, `/usr/bin/${name}`, ...String(env.PATH || '').split(':').filter(folder => folder.startsWith('/')).map(folder => path.posix.join(folder, name))];
+  return places.find(file => exists(file)) || null;
+}
+function isExecutable(file) { try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; } }
+const ZSH = findShell('zsh') || '/bin/zsh';
 const shellQuote = value => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
 // Writes the stubs into folder (they name the integration by its path, which moves with the application).
@@ -22,14 +30,41 @@ function prepareZshStartup(folder, integrationDir) {
 
 // The environment of one terminal: what the integration needs, plus a UTF-8 locale. Programs started from
 // the Dock have no LANG, and zsh, git and Codex would then treat Chinese text as unknown bytes.
-function zshEnvironment(env, { folder, socket, projectId, sessionKey, node, helper, startDir, locale }) {
+function shellEnvironment(env, { socket, projectId, sessionKey, node, helper, startDir, locale }) {
   return {
     ...env,
     ...(!env.LANG && !env.LC_ALL && !env.LC_CTYPE ? { LANG: locale || 'en_US.UTF-8' } : {}),
-    ZDOTDIR: folder, PROJECT_GRID_USER_ZDOTDIR: env.ZDOTDIR || '',
     PROJECT_GRID_SOCKET: socket, PROJECT_GRID_PROJECT_ID: projectId, PROJECT_GRID_SESSION_KEY: sessionKey,
     PROJECT_GRID_NODE: node, PROJECT_GRID_EVENT_HELPER: helper, PROJECT_GRID_START_DIR: startDir,
   };
+}
+function zshEnvironment(env, options) {
+  return { ...shellEnvironment(env, options), ZDOTDIR: options.folder, PROJECT_GRID_USER_ZDOTDIR: env.ZDOTDIR || '' };
+}
+// Bash reads /etc/bash.bashrc (where the system has one) and then the --rcfile, which sources ~/.bashrc.
+function bashArguments(integrationDir) { return ['--rcfile', path.posix.join(integrationDir, 'bash-integration.bash'), '-i']; }
+
+// The local shell on Linux: the one chosen in Settings when it is installed, else the login shell's kind
+// (zsh when $SHELL is zsh and zsh is installed), else Bash.
+function linuxShell(choice, { env = process.env, find = findShell } = {}) {
+  const zsh = find('zsh', { platform: 'linux', env }), bash = find('bash', { platform: 'linux', env }) || '/bin/bash';
+  const kind = choice === 'zsh' || choice === 'bash' ? choice : path.posix.basename(String(env.SHELL || '')) === 'zsh' ? 'zsh' : 'bash';
+  return { ...(kind === 'zsh' && zsh ? { kind: 'zsh', file: zsh } : { kind: 'bash', file: bash }), zsh: !!zsh };
+}
+
+// Programs started from an AppImage get its folders in PATH, LD_LIBRARY_PATH and the XDG and GSettings
+// lists (AppRun adds them). A terminal leaves them out, so the user's programs load their own libraries.
+function withoutAppImage(env) {
+  const appDir = env.APPIMAGE && env.APPDIR;
+  if (!appDir) return env;
+  const result = { ...env };
+  for (const name of ['PATH', 'LD_LIBRARY_PATH', 'XDG_DATA_DIRS', 'GSETTINGS_SCHEMA_DIR']) {
+    if (typeof result[name] !== 'string') continue;
+    const kept = result[name].split(':').filter(folder => folder && folder !== appDir && !folder.startsWith(appDir + '/'));
+    if (kept.length) result[name] = kept.join(':'); else delete result[name];
+  }
+  for (const name of ['APPDIR', 'APPIMAGE', 'ARGV0', 'OWD']) delete result[name];
+  return result;
 }
 
 // zh-Hans-CN -> zh_CN.UTF-8, the way Terminal sets LANG from the system language and region; a locale the
@@ -64,4 +99,4 @@ function mergePath(login, current) {
   return [...new Set(folders)].join(':');
 }
 
-module.exports = { ZSH, prepareZshStartup, zshEnvironment, terminalLocale, loginShellPath, mergePath, shellQuote };
+module.exports = { ZSH, findShell, linuxShell, prepareZshStartup, shellEnvironment, zshEnvironment, bashArguments, withoutAppImage, terminalLocale, loginShellPath, mergePath, shellQuote };

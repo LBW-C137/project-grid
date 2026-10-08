@@ -68,7 +68,7 @@ test('terminal commands IPC selects the session agent, defaults to Claude and ex
 test('public state exposes waiting messages and null for terminals without a notice', () => {
   const context = vm.createContext({
     store: { projects: [{ id: 'p' }], settings: { language: 'zh' } }, sessions: new Map([['waiting', { needsInput: { message: 'Approve tool' } }]]),
-    terminalIds: () => ['waiting', 'stopped'], branches: new Map(), startupErrors: new Map(), t: text => text,
+    terminalIds: () => ['waiting', 'stopped'], branches: new Map(), startupErrors: new Map(), t: text => text, localShell: () => ({ kind: 'powershell' }),
     process: { platform: 'win32', env: { PROJECT_GRID_DATA_DIR: 'isolated' } }, app: { getVersion: () => '1' },
   });
   vm.runInContext(main.slice(main.indexOf('function publicState('), main.indexOf('function terminalIds(')), context);

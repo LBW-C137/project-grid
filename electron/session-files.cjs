@@ -31,6 +31,9 @@ class SessionFiles {
   constructor(directory) { this.directory = directory; this.files = new Map(); this.changed = new Set(); this.namesAt = 0; this.walkedAt = 0; this.missed = false; }
   watch() {
     if (this.watcher) return;
+    // Node 24 watches a missing folder without an error and never reports anything from it. Until the folder
+    // exists, every listing walks it; the first listing after it appears starts the watcher.
+    if (!fs.existsSync(this.directory)) return;
     try {
       this.watcher = fs.watch(this.directory, { recursive: true, persistent: false }, (_type, name) => {
         // When the watched folder itself is deleted, Windows reports its own absolute path without end.
@@ -38,7 +41,9 @@ class SessionFiles {
         // macOS reports only the folder's own name, once, and nothing for the files that went with it.
         if (name && (path.isAbsolute(String(name)) || String(name) === path.basename(this.directory) && !fs.existsSync(this.directory))) { this.unwatch(); this.missed = true; }
         else if (name) this.changed.add(path.join(this.directory, String(name)));
-        else this.missed = true;
+        // Linux reports an empty name once when the watched folder itself is deleted, and the watcher then
+        // stays open on a folder that no longer exists.
+        else { this.missed = true; if (!fs.existsSync(this.directory)) this.unwatch(); }
       });
       this.watcher.on('error', () => this.unwatch());
       // Changes made before the watcher started are unknown.

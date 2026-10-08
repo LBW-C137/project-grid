@@ -170,7 +170,8 @@ test('settings reject invalid layout and font values', () => {
   assert.equal(cleanSettings({ terminalRenderer: 'dom' }).terminalRenderer, 'dom'); assert.equal(cleanSettings({ terminalRenderer: 'canvas' }).terminalRenderer, 'gpu');
   assert.equal(cleanSettings({ language: 'fr' }).language, 'zh');
   assert.equal(cleanSettings({ shell: 'cmd' }).shell, 'cmd');
-  assert.equal(cleanSettings({ shell: 'bash -c evil' }).shell, 'powershell', 'only PowerShell or Command Prompt');
+  assert.equal(cleanSettings({ shell: 'zsh' }).shell, 'zsh'); assert.equal(cleanSettings({ shell: 'bash' }).shell, 'bash');
+  assert.equal(cleanSettings({ shell: 'bash -c evil' }).shell, 'powershell', 'only a known shell name');
   assert.equal(cleanSettings({ guideVersion: '0.5.16' }).guideVersion, '0.5.16');
   assert.equal(cleanSettings({ guideVersion: '<script>' }).guideVersion, '', 'only a version number marks the guide as seen');
   assert.deepEqual(cleanSettings({ shortcuts: { search: 'Ctrl+Shift+K', addProject: 'A', voice: 'Alt+V', overview: 'F6', settings: 'Ctrl+rm', nextProject: 'Ctrl+Tab', unknown: 'Ctrl+Q' } }).shortcuts, { search: 'Ctrl+Shift+K', voice: 'Alt+V', overview: 'F6', nextProject: 'Ctrl+Tab' }, 'only valid combinations for known actions are kept');

@@ -5,18 +5,19 @@
 <h1 align="center">Project Grid · 项目矩阵</h1>
 
 <p align="center"><strong>同时让 Codex 和 Claude Code 跑六个项目，你只在它们需要你的时候回来。</strong></p>
-<p align="center">为并行使用 AI 编码助手而生的 Windows / macOS 工作台：一屏看全所有项目，谁在干活、谁做完了、谁在等你，一眼就知道。</p>
+<p align="center">为并行使用 AI 编码助手而生的 Windows / macOS / Linux 工作台：一屏看全所有项目，谁在干活、谁做完了、谁在等你，一眼就知道。</p>
 
 <p align="center">
   <a href="https://github.com/noeigenstate/project-grid/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/project-grid?style=flat-square&color=78bfa1&label=release" alt="Latest release" /></a>
   <a href="https://github.com/noeigenstate/project-grid/releases"><img src="https://img.shields.io/github/downloads/noeigenstate/project-grid/total?style=flat-square&color=8ebce5&label=downloads" alt="Downloads" /></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-8ebce5?style=flat-square" alt="Windows 10 / 11 x64" />
   <img src="https://img.shields.io/badge/macOS-12%2B%20Apple%20silicon-8ebce5?style=flat-square" alt="macOS 12+ Apple silicon" />
+  <img src="https://img.shields.io/badge/Linux-x64%20%2F%20arm64-8ebce5?style=flat-square" alt="Linux x64 / arm64" />
   <img src="https://img.shields.io/badge/Codex%20%2B%20Claude%20Code-supported-d8a6e8?style=flat-square" alt="Codex and Claude Code" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ 下载 Windows / macOS 版</strong></a> ·
+  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ 下载 Windows / macOS / Linux 版</strong></a> ·
   <a href="#它解决什么问题">为什么</a> ·
   <a href="#亮点">亮点</a> ·
   <a href="#三步开始">开始使用</a> ·
@@ -78,13 +79,13 @@ macOS 首次使用语音输入时会请求麦克风权限，可以在「系统�
 
 - **重开即续上**：启动时恢复上次的终端和 Codex / Claude Code 会话，被打断的任务自动发送「继续」。
 - **SSH 远程项目**：沿用 VS Code Remote-SSH 的主机配置，终端、文件、Git、预览全部走 SSH，不用把项目下载下来。
-- **文件就在手边**：目录树、自动保存的编辑器，图片、网页、视频、Markdown 直接预览；Windows 用 `Ctrl+点击`、macOS 用 `⌘+点击`直接打开终端里的路径。
+- **文件就在手边**：目录树、自动保存的编辑器，图片、网页、视频、Markdown 直接预览；Windows 和 Linux 用 `Ctrl+点击`、macOS 用 `⌘+点击`直接打开终端里的路径。
 - **好看，也清楚**：液态玻璃界面配三套自然壁纸主题；想要最锐利的文字，切换到「实色」材质即可。
 - **中英双语、快捷键可改、Windows 自动更新**；第一次打开时在界面上一步步带你上手。
 
 ## 三步开始
 
-**需要：** Windows 10 / 11（x64），或搭载 Apple 芯片（M1 或更新型号）、运行 macOS 12 或更高版本的 Mac；不支持 Intel Mac。还需要 [Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://docs.anthropic.com/claude-code) 至少一个——没装也没关系，「设置 › 编码助手」里可以一键安装。
+**需要：** Windows 10 / 11（x64），或搭载 Apple 芯片（M1 或更新型号）、运行 macOS 12 或更高版本的 Mac（不支持 Intel Mac），或 64 位 Linux 桌面（x64 或 arm64，例如 Ubuntu 22.04 或更新版本）。还需要 [Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://docs.anthropic.com/claude-code) 至少一个——没装也没关系，「设置 › 编码助手」里可以一键安装。
 
 1. **下载安装**：按下面对应平台的说明安装。
 2. **添加项目**：按 `Ctrl+Shift+N` 选择项目文件夹，可以一次选多个，也可以添加 SSH 远程项目。
@@ -110,20 +111,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scri
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `PROJECT_GRID_VERSION=0.6.8`：安装指定版本。
+- `PROJECT_GRID_VERSION=0.6.10`：安装指定版本。
 - `PROJECT_GRID_INSTALL_DIR=~/Applications`：指定安装目录。
 - `PROJECT_GRID_OPEN=0`：安装后不打开应用。
 
-例如，安装 0.6.8：
+例如，安装 0.6.10：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | PROJECT_GRID_VERSION=0.6.8 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/project-grid/main/scripts/install-macos.sh | PROJECT_GRID_VERSION=0.6.10 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Project-Grid-0.6.8-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Project-Grid-0.6.10-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：
@@ -139,6 +140,25 @@ xattr -dr com.apple.quarantine "/Applications/Project Grid.app"
 终端中用 `⌘C` / `⌘V` / `⌘A` 复制、粘贴和全选，`Control+C` 中断命令，`⌘+点击`打开链接。`⌘Q` 退出（终端仍在运行时会先询问），`⌘H` 隐藏，`⌘M` 最小化。设置里的项目快捷键仍默认使用 Control，例如 `Control+Shift+N` 添加项目。
 
 放大项目只会在当前窗口内展开，不会切换到全屏空间（Space）。需要全屏时，使用窗口的绿色按钮或全屏快捷键。
+
+### Linux 安装
+
+**0.6.9 新增 Linux 版**，支持 x64 和 arm64。GitHub [Releases](https://github.com/noeigenstate/project-grid/releases/latest) 提供 `Project-Grid-<version>-linux-x86_64.AppImage`、`Project-Grid-<version>-linux-arm64.AppImage`、同内容的 `.tar.gz` 压缩包，以及校验文件 `SHA256SUMS-linux-x64.txt` / `SHA256SUMS-linux-arm64.txt`。
+
+推荐用 AppImage，下载后无需安装：
+
+```bash
+chmod +x Project-Grid-*-linux-*.AppImage
+./Project-Grid-*-linux-*.AppImage
+```
+
+也可以解压 `.tar.gz`，运行其中的 `./project-grid`。Ubuntu 23.10 及更新版本默认禁止未登记的程序使用 Chromium 沙箱所需的用户命名空间，这时运行压缩包里的程序要加上 `--no-sandbox`；AppImage 会自动检测并处理。**Linux 版不会自动更新**，下载新版本替换即可。
+
+### Linux 终端与快捷键
+
+本地终端可在「设置 › 终端与编辑 › 终端」中选择 Bash 或 zsh，默认跟随你的登录 shell（`$SHELL`）。没装 zsh 时只能选 Bash。Bash 与普通终端一样读取 `/etc/bash.bashrc`（如有）和你自己的 `~/.bashrc`；zsh 照常加载 `~/.zshenv`、`~/.zprofile`、`~/.zshrc` 和 `~/.zlogin`。Project Grid 在此基础上加入提示符状态报告和 `codex` / `claude` 包装层，支持轮次状态、Claude Code hooks、完成提醒和会话恢复，不修改任何用户文件；你为 `codex` 或 `claude` 定义的别名仍然有效。SSH 项目的用法与 Windows 相同。
+
+快捷键与 Windows 一致：终端里选中文字后 `Ctrl+C` 复制（或 `Ctrl+Shift+C`），`Ctrl+V` 粘贴，`Ctrl+Shift+A` 全选，没有选中时 `Ctrl+C` 中断命令，`Ctrl+点击`打开链接。目录栏的文件可以和系统文件管理器（Files、Dolphin、Thunar 等）互相复制粘贴；读取剪贴板时优先使用已安装的 `wl-paste` 或 `xclip`。
 
 <details>
 <summary><strong>常用快捷键</strong>（都可以在设置里改）</summary>
@@ -177,7 +197,7 @@ Project Grid 本身**不收集任何数据，没有统计上报**。它只会访
 <details>
 <summary><strong>支持 macOS / Linux 吗？</strong></summary>
 
-支持 Windows 10 / 11 x64；从 0.6.8 起也支持 Apple 芯片 Mac（M1 或更新型号），需要 macOS 12 或更高版本，不支持 Intel Mac。远程项目可以是任意装有 Python 3.6+ 和 Bash 的 Linux 服务器。Linux 桌面版仍在规划中，欢迎在 [Issues](https://github.com/noeigenstate/project-grid/issues) 里告诉我们你的需求。
+支持 Windows 10 / 11 x64；从 0.6.8 起也支持 Apple 芯片 Mac（M1 或更新型号），需要 macOS 12 或更高版本，不支持 Intel Mac；从 0.6.9 起支持 x64 和 arm64 的 Linux 桌面，本地终端可选 Bash 或 zsh，见 [Linux 安装](#linux-安装)。远程项目可以是任意装有 Python 3.6+ 和 Bash 的 Linux 服务器。
 
 </details>
 
@@ -195,7 +215,8 @@ Project Grid 本身**不收集任何数据，没有统计上报**。它只会访
 - [ ] 项目分组与快捷切换
 - [ ] 更多命令行编码助手接入统一提醒
 - [ ] 每一轮的结果与产物记录，方便回看
-- [ ] Linux 桌面版，WSL 工作区
+- [x] Linux 桌面版（0.6.9）
+- [ ] WSL 工作区
 
 有想法？欢迎提 [Issue](https://github.com/noeigenstate/project-grid/issues)。觉得有用的话，点个 ⭐ Star 让更多人看到。
 
@@ -209,6 +230,7 @@ npm start              # 开发运行
 npm test               # 单元测试
 npm run test:desktop   # 真实桌面交互测试
 npm run dist           # 构建安装版与便携版
+npm run dist:linux     # 在 Linux 上构建本机架构的 AppImage 与 tar.gz
 ```
 
 Electron · React · TypeScript · xterm.js · node-pty。每个版本都要通过单元测试、打包版桌面测试和 Linux SSH 集成测试后才会发布。README 里的截图和演示由 `scripts/readme-shots.mjs` 从演示项目自动生成。

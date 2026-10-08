@@ -7,7 +7,7 @@ const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { createEventServer, socketAddress } = require('../electron/events.cjs');
 const { createTerminalEnvironment } = require('../electron/terminal-env.cjs');
-const { ZSH, prepareZshStartup, zshEnvironment, terminalLocale, loginShellPath, mergePath } = require('../electron/zsh-terminal.cjs');
+const { ZSH, findShell, prepareZshStartup, zshEnvironment, terminalLocale, loginShellPath, mergePath } = require('../electron/zsh-terminal.cjs');
 const { codexEvent, claudeEvent } = require('../integration/agent-event.cjs');
 
 const integrationDir = path.resolve(__dirname, '../integration');
@@ -18,7 +18,8 @@ async function eventually(check, what, deadline = 15000) {
   for (;;) {
     const value = check();
     if (value) return value;
-    if (Date.now() - started > deadline) throw new Error(`Timed out waiting for ${what}`);
+    // what may be a function, so the message shows the terminal output at the time it gave up.
+    if (Date.now() - started > deadline) throw new Error(`Timed out waiting for ${typeof what === 'function' ? what() : what}`);
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 }
@@ -77,7 +78,9 @@ test('Codex notify and Claude hook payloads become the events notify.ps1 and cla
   assert.equal(claudeEvent(JSON.stringify({ session_id: 's', notification_type: 'permission_prompt', message: 42 }), 'p', 'k', 'notify').message, '42');
 });
 
-test('a real zsh terminal keeps the user start-up files and reports prompts, Codex and Claude Code', { skip: process.platform !== 'darwin' || !fs.existsSync(ZSH), timeout: 60000 }, async t => {
+// macOS, and Linux where zsh is installed.
+const zsh = process.platform === 'darwin' ? fs.existsSync(ZSH) && ZSH : process.platform === 'linux' ? findShell('zsh') : null;
+test('a real zsh terminal keeps the user start-up files and reports prompts, Codex and Claude Code', { skip: !zsh, timeout: 60000 }, async t => {
   const pty = require('node-pty');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pg-zsh-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -86,7 +89,9 @@ test('a real zsh terminal keeps the user start-up files and reports prompts, Cod
   for (const folder of [bin, log, project]) fs.mkdirSync(folder, { recursive: true });
   // The user's own start-up files: each leaves a mark, .zprofile puts codex and claude on PATH, .zshrc aliases
   // claude and moves elsewhere.
-  fs.writeFileSync(path.join(home, '.zshenv'), 'export PG_TEST_ZSHENV=1\n');
+  // Debian and Ubuntu's /etc/zsh/zshrc runs compinit, which stops to ask when a completion folder is writable by
+  // others (as /usr/local is on CI runners); the documented switch turns that off for this user.
+  fs.writeFileSync(path.join(home, '.zshenv'), 'export PG_TEST_ZSHENV=1\nskip_global_compinit=1\n');
   fs.writeFileSync(path.join(home, '.zprofile'), 'path=("$HOME/bin" $path)\n');
   fs.writeFileSync(path.join(home, '.zshrc'), "alias claude='claude --model opus'\nPG_TEST_ZSHRC=1\ncd /\n");
   fs.writeFileSync(path.join(home, '.zlogin'), 'PG_TEST_ZLOGIN=1\n');
@@ -102,12 +107,12 @@ test('a real zsh terminal keeps the user start-up files and reports prompts, Cod
   const source = { ...process.env, HOME: home, PATH: '/usr/bin:/bin:/usr/sbin:/sbin', PG_TEST_NODE: process.execPath, PG_TEST_RECORDER: recorder, PG_TEST_LOG: log };
   delete source.ZDOTDIR; delete source.LANG; delete source.LC_ALL; delete source.LC_CTYPE; delete source.CODEX_HOME;
   const env = zshEnvironment(createTerminalEnvironment(source, ''), { folder, socket: server.address, projectId: 'project', sessionKey: 'key', node: process.execPath, helper, startDir: project, locale: 'en_US.UTF-8' });
-  const terminal = pty.spawn(ZSH, ['-l', '-i'], { name: 'xterm-256color', cols: 120, rows: 30, cwd: project, env });
+  const terminal = pty.spawn(zsh, ['-l', '-i'], { name: 'xterm-256color', cols: 120, rows: 30, cwd: project, env });
   let output = '';
   terminal.onData(data => { output += data; });
   t.after(() => { try { terminal.kill(); } catch { } });
   const type = text => terminal.write(text + '\r');
-  const waitEvent = (predicate, what) => eventually(() => events.find(predicate), `${what}\n--- terminal output ---\n${output}`);
+  const waitEvent = (predicate, what) => eventually(() => events.find(predicate), () => `${what}\n--- terminal output ---\n${output}`);
 
   const ready = await waitEvent(event => event.type === 'shell-ready', 'shell-ready');
   const prompt = await waitEvent(event => event.type === 'shell-prompt', 'the first prompt');
@@ -123,7 +128,8 @@ test('a real zsh terminal keeps the user start-up files and reports prompts, Cod
   // The shell itself: the user's files all ran, nothing of Project Grid leaks into programs started here.
   type('print -r -- "${ZDOTDIR-unset}|$HISTFILE|${+PROJECT_GRID_SESSION_KEY}${+PROJECT_GRID_SOCKET}|$PG_TEST_ZSHENV$PG_TEST_ZSHRC$PG_TEST_ZLOGIN|$LANG|$TERM_PROGRAM" > "$PG_TEST_LOG/state"');
   const state = await eventually(() => { try { return fs.readFileSync(path.join(log, 'state'), 'utf8').trim(); } catch { return null; } }, 'the shell state');
-  assert.equal(state, `unset|${path.join(home, '.zsh_history')}|00|111|en_US.UTF-8|project-grid`);
+  // macOS's /etc/zshrc names a history file; Linux leaves that to the user's own files.
+  assert.equal(state, `unset|${process.platform === 'darwin' ? path.join(home, '.zsh_history') : ''}|00|111|en_US.UTF-8|project-grid`);
 
   // codex: started and exited around the real program, which gets notify and the title setting first.
   type('codex resume --last');

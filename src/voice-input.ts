@@ -3,7 +3,7 @@ import { MicrophoneCapture } from './voice-audio';
 import type { VoiceState } from './types';
 import { t } from './i18n';
 import { shortcut } from './shortcuts';
-import { isMac } from './platform';
+import { isMac, isLinux } from './platform';
 
 // One shared dictation controller: a single microphone, one recording at a time,
 // and every terminal's microphone button reflecting the same device and model state.
@@ -60,7 +60,7 @@ export function useVoice() { return useSyncExternalStore(subscribe, () => snapsh
 
 export function microphoneMessage(error: unknown) {
   const name = (error as DOMException)?.name;
-  if (name === 'NotAllowedError') return isMac ? t('麦克风访问被拒绝，请在“系统设置 › 隐私与安全性 › 麦克风”中允许 Project Grid。') : t('麦克风访问被拒绝，请在 Windows 设置中允许桌面应用使用麦克风。');
+  if (name === 'NotAllowedError') return isMac ? t('麦克风访问被拒绝，请在“系统设置 › 隐私与安全性 › 麦克风”中允许 Project Grid。') : isLinux ? t('麦克风访问被拒绝，请在系统的隐私或声音设置中允许 Project Grid 使用麦克风。') : t('麦克风访问被拒绝，请在 Windows 设置中允许桌面应用使用麦克风。');
   if (name === 'NotFoundError' || name === 'OverconstrainedError') return t('未检测到麦克风，请连接后重试。');
   if (name === 'NotReadableError') return t('麦克风无法使用，可能正被其他程序占用。');
   // Messages thrown in Chinese by the capture code (voice-audio.ts) are looked up here.

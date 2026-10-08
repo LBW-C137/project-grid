@@ -7,3 +7,4 @@
 *.ico binary
 *.sh text eol=lf
 *.zsh text eol=lf
+*.bash text eol=lf

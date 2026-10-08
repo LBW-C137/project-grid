@@ -1,4 +1,6 @@
-// macOS uses Command where Windows uses Ctrl for copy, paste and links, and draws its own window buttons over
-// the title bar. The root element carries the platform for the styles (data-platform="darwin").
+// macOS uses Command where Windows and Linux use Ctrl for copy, paste and links, and draws its own window buttons
+// over the title bar. The root element carries the platform for the styles (data-platform="darwin").
 export const isMac = navigator.userAgent.includes('Macintosh');
-document.documentElement.dataset.platform = isMac ? 'darwin' : 'win32';
+export const isLinux = !isMac && navigator.userAgent.includes('Linux');
+export const isWindows = !isMac && !isLinux;
+document.documentElement.dataset.platform = isMac ? 'darwin' : isLinux ? 'linux' : 'win32';
