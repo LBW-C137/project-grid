@@ -31,6 +31,9 @@ class SessionFiles {
   constructor(directory) { this.directory = directory; this.files = new Map(); this.changed = new Set(); this.namesAt = 0; this.walkedAt = 0; this.missed = false; }
   watch() {
     if (this.watcher) return;
+    // Node 24 watches a missing folder without an error and never reports anything from it. Until the folder
+    // exists, every listing walks it; the first listing after it appears starts the watcher.
+    if (!fs.existsSync(this.directory)) return;
     try {
       this.watcher = fs.watch(this.directory, { recursive: true, persistent: false }, (_type, name) => {
         // When the watched folder itself is deleted, Windows reports its own absolute path without end.

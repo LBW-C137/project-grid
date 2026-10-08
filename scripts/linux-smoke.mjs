@@ -23,6 +23,9 @@ for (const folder of [dataDir, bin, project.path]) await fs.mkdir(folder, { recu
 // The user's own start-up files put the stand-in codex on PATH.
 await fs.writeFile(path.join(home, '.bashrc'), 'export PATH="$HOME/bin:$PATH"\n');
 await fs.writeFile(path.join(home, '.zshrc'), 'path=("$HOME/bin" $path)\n');
+// Debian and Ubuntu's /etc/zsh/zshrc runs compinit, which stops to ask when a completion folder is writable by
+// others (as /usr/local is on CI runners); the documented switch turns that off for this user.
+await fs.writeFile(path.join(home, '.zshenv'), 'skip_global_compinit=1\n');
 // A stand-in for Codex: it stays a moment, then runs its notify command for one finished turn, as Codex does.
 await fs.writeFile(path.join(bin, 'codex'), `#!${process.execPath}
 const args = process.argv.slice(2), index = args.findIndex((value, i) => value === '-c' && args[i + 1]?.startsWith('notify='));

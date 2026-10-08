@@ -19,7 +19,8 @@ async function eventually(check, what, deadline = 15000) {
   for (;;) {
     const value = check();
     if (value) return value;
-    if (Date.now() - started > deadline) throw new Error(`Timed out waiting for ${what}`);
+    // what may be a function, so the message shows the terminal output at the time it gave up.
+    if (Date.now() - started > deadline) throw new Error(`Timed out waiting for ${typeof what === 'function' ? what() : what}`);
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 }
@@ -134,7 +135,7 @@ test('a real Bash terminal keeps the user start-up files and reports prompts, Co
   terminal.onData(data => { output += data; });
   t.after(() => { try { terminal.kill(); } catch { } });
   const type = text => terminal.write(text + '\r');
-  const waitEvent = (predicate, what) => eventually(() => events.find(predicate), `${what}\n--- terminal output ---\n${output}`);
+  const waitEvent = (predicate, what) => eventually(() => events.find(predicate), () => `${what}\n--- terminal output ---\n${output}`);
   const readLog = name => eventually(() => { try { return fs.readFileSync(path.join(log, name), 'utf8').trim(); } catch { return null; } }, name);
 
   const ready = await waitEvent(event => event.type === 'shell-ready', 'shell-ready');

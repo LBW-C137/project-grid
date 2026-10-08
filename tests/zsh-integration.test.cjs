@@ -18,7 +18,8 @@ async function eventually(check, what, deadline = 15000) {
   for (;;) {
     const value = check();
     if (value) return value;
-    if (Date.now() - started > deadline) throw new Error(`Timed out waiting for ${what}`);
+    // what may be a function, so the message shows the terminal output at the time it gave up.
+    if (Date.now() - started > deadline) throw new Error(`Timed out waiting for ${typeof what === 'function' ? what() : what}`);
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 }
@@ -82,7 +83,9 @@ test('a real zsh terminal keeps the user start-up files and reports prompts, Cod
   for (const folder of [bin, log, project]) fs.mkdirSync(folder, { recursive: true });
   // The user's own start-up files: each leaves a mark, .zprofile puts codex and claude on PATH, .zshrc aliases
   // claude and moves elsewhere.
-  fs.writeFileSync(path.join(home, '.zshenv'), 'export PG_TEST_ZSHENV=1\n');
+  // Debian and Ubuntu's /etc/zsh/zshrc runs compinit, which stops to ask when a completion folder is writable by
+  // others (as /usr/local is on CI runners); the documented switch turns that off for this user.
+  fs.writeFileSync(path.join(home, '.zshenv'), 'export PG_TEST_ZSHENV=1\nskip_global_compinit=1\n');
   fs.writeFileSync(path.join(home, '.zprofile'), 'path=("$HOME/bin" $path)\n');
   fs.writeFileSync(path.join(home, '.zshrc'), "alias claude='claude --model opus'\nPG_TEST_ZSHRC=1\ncd /\n");
   fs.writeFileSync(path.join(home, '.zlogin'), 'PG_TEST_ZLOGIN=1\n');
@@ -103,7 +106,7 @@ test('a real zsh terminal keeps the user start-up files and reports prompts, Cod
   terminal.onData(data => { output += data; });
   t.after(() => { try { terminal.kill(); } catch { } });
   const type = text => terminal.write(text + '\r');
-  const waitEvent = (predicate, what) => eventually(() => events.find(predicate), `${what}\n--- terminal output ---\n${output}`);
+  const waitEvent = (predicate, what) => eventually(() => events.find(predicate), () => `${what}\n--- terminal output ---\n${output}`);
 
   const ready = await waitEvent(event => event.type === 'shell-ready', 'shell-ready');
   const prompt = await waitEvent(event => event.type === 'shell-prompt', 'the first prompt');
