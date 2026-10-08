@@ -916,5 +916,16 @@
   "上一个、下一个项目快捷键（Ctrl+Tab、Ctrl+Shift+Tab）也能切到阅读视图中的项目，并在目标卡片上显示项目名和位置。": "Next and previous project (Ctrl+Tab, Ctrl+Shift+Tab) also reach projects shown in the reading view, and the target card shows its name and position.",
   "重新打开应用恢复会话时，命令不再丢掉第一个字母（例如 laude）；卡片变小时，标题栏也随之变窄。": "Sessions restored when the app reopens no longer lose the first letter of their command (such as \"laude\"), and card headers get shorter as cards get smaller.",
   "显示更早的对话（{count}）": "Show earlier conversation ({count})",
-  "发送中": "Sending"
+  "发送中": "Sending",
+  "恢复会话": "Resume session",
+  "{count} 分钟前": "{count} minute(s) ago",
+  "{count} 小时前": "{count} hour(s) ago",
+  "{count} 天前": "{count} day(s) ago",
+  "约 {count} 条消息": "About {count} message(s)",
+  "正在加载会话…": "Loading sessions…",
+  "这个项目还没有其他 Claude 会话": "This project has no other Claude sessions yet",
+  "未命名会话": "Untitled session",
+  "↑/↓ 选择 · Enter 恢复 · Esc 取消": "↑/↓ to select · Enter to resume · Esc to cancel",
+  "无法读取这个 Claude 会话的历史。": "Could not read the history of this Claude session.",
+  "无法加载 Claude 会话。": "Could not load Claude sessions."
 }

@@ -116,4 +116,5 @@ button.reading-status-chip:hover:not(:disabled) { background: rgba(26, 52, 74, .
 .reading-choice-option kbd { flex: none; padding: 1px 5px; border: 1px solid rgba(219, 238, 255, .15); border-radius: 3px; font-size: 10px; }
 .reading-choice-option svg { flex: none; align-self: center; color: var(--choice-accent); }
 .reading-choice-hint { display: block; margin-top: 8px; font-size: 10.5px; color: #8ea6c1; white-space: pre-wrap; }
+.reading-sessions-empty { display: flex; align-items: center; gap: 7px; margin: 10px 8px; color: #9fb5ce; }
 

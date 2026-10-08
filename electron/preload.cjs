@@ -97,6 +97,8 @@ contextBridge.exposeInMainWorld('projectGrid', {
   onTerminalAction: callback => listen('terminal:action', callback),
   terminalConversation: id => ipcRenderer.invoke('terminal:conversation', id),
   terminalCommands: id => ipcRenderer.invoke('terminal:commands', id),
+  agentSessions: id => ipcRenderer.invoke('terminal:agentSessions', id),
+  followAgentSession: (id, sessionId) => ipcRenderer.invoke('terminal:followAgentSession', id, sessionId),
   onTerminalConversation: callback => listen('terminal:conversation', callback),
   close: () => ipcRenderer.send('window:close'),
   focusMode: enabled => ipcRenderer.send('window:focus-mode', enabled),
