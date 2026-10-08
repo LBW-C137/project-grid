@@ -2,7 +2,8 @@
    left, violet at the upper right, warm along the right edge, a blue glow along the bottom. In its middle a
    glossy blue sphere holds a white microphone inside two halo rings; sound-wave bars run out from it on both
    sides, tapering to dots, and rise and fall with the voice; a few sparks twinkle around it. */
-.voice-overlay { position: relative; width: 350px; max-width: calc(100% - 32px); display: flex; flex-direction: column; align-items: center; padding: 22px 20px 26px; border-radius: 15px; color: #ffffff; isolation: isolate; pointer-events: none;
+/* Drawn at full size below and scaled as a whole, so every proportion of the design holds. */
+.voice-overlay { zoom: .65; position: relative; width: 350px; max-width: calc(100% - 32px); display: flex; flex-direction: column; align-items: center; padding: 22px 20px 26px; border-radius: 15px; color: #ffffff; isolation: isolate; pointer-events: none;
   background: radial-gradient(90% 70% at 14% 0%, rgba(150, 175, 205, .22), transparent 60%), radial-gradient(70% 60% at 100% 85%, rgba(150, 70, 40, .2), transparent 70%), linear-gradient(180deg, rgba(34, 44, 62, .72), rgba(16, 22, 36, .78));
   backdrop-filter: blur(22px) saturate(140%);
   box-shadow: inset 0 0 30px rgba(255, 255, 255, .04), 0 18px 40px -10px rgba(0, 0, 0, .55), 0 10px 34px -10px rgba(40, 140, 255, .55);
