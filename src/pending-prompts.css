@@ -1,0 +1,2 @@
+.reading-pending.is-sending { opacity: .75; }
+.reading-pending > small { grid-column: 2; font-size: 11px; color: var(--theme-accent, #8fcbff); }

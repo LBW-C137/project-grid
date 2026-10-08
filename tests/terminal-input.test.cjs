@@ -9,7 +9,7 @@ const vm = require('node:vm');
 // Exercise the IPC handler with an isolated session, without loading Electron.
 const main = fs.readFileSync(path.join(__dirname, '../electron/main.cjs'), 'utf8');
 function terminalWriter(agent, activity = 'idle') {
-  const calls = { prompts: [], completion: [], forwarded: [], state: 0, speech: 0 };
+  const calls = { prompts: [], completion: [], forwarded: [], state: 0, speech: 0, polls: 0 };
   const promptQueue = new PromptQueue();
   const submit = promptQueue.submit.bind(promptQueue);
   promptQueue.submit = (text, working) => { calls.prompts.push([text, working]); submit(text, working); };
@@ -23,6 +23,7 @@ function terminalWriter(agent, activity = 'idle') {
     listen: (_channel, handler) => { write = handler; }, sessions: new Map([['terminal', session]]),
     store: { projects: [{ id: 'project', unread: false }], expectCompletion: id => calls.completion.push(id) },
     scheduleState: () => { calls.state++; }, warmSpeech: () => { calls.speech++; },
+    pollAfterSubmission: (target, isCurrent) => { assert.equal(target, session); assert.equal(isCurrent(), true); calls.polls++; },
     isTerminalResponse, isLocalCommand, Date: { now: () => 1234 },
   });
   vm.runInContext(main.slice(main.indexOf("  listen('terminal:write'"), main.indexOf("  listen('terminal:resize'")), context);
@@ -32,6 +33,19 @@ function terminalWriter(agent, activity = 'idle') {
 test('local commands are classified by the submitted prefix, with history retaining prompt behavior', () => {
   for (const text of ['/model', '/status', '/custom-prompt', '/', '!ls', '!']) assert.equal(isLocalCommand(text), true, text);
   for (const text of ['', 'fix /model handling', 'explain !ls', '#remember this']) assert.equal(isLocalCommand(text), false, text);
+});
+
+test('only submissions in active agent sessions request faster transcript pickup', () => {
+  for (const agent of ['codex', 'claude']) {
+    const { session, calls, write } = terminalWriter(agent);
+    for (const data of ['\x1b[I', '\x1b[1;1R', '\r', '\x1b[200~hello\nworld\x1b[201~']) write(data);
+    assert.equal(calls.polls, 0, 'typing and bracketed paste do not submit');
+    write('\r'); assert.equal(calls.polls, 1);
+    write('/model\r'); assert.equal(calls.polls, 2, 'commands may update the transcript too');
+    session.codexActive = false;
+    write('echo hello\r'); assert.equal(calls.polls, 2);
+    session.promptQueue.reset();
+  }
 });
 
 test('local submissions never queue prompts or change activity and completion for either agent', () => {

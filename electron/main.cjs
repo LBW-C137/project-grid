@@ -33,6 +33,7 @@ const { summarizeTask } = require('./task-summary.cjs');
 const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
 const { summarizeRound, claudeReply, codexReply } = require('./round-summary.cjs');
 const { ConversationLog, claudeConversation, codexConversation } = require('./conversation.cjs');
+const { conversationBatchDelay, pollAfterSubmission } = require('./conversation-timing.cjs');
 const { listAgentCommands } = require('./agent-commands.cjs');
 const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARGETS } = require('./summary-models.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
@@ -267,11 +268,14 @@ function publishAction(s, change) {
 function publishConversation(s, change) {
   if (sessions.get(s.terminalId) !== s) return;
   (s.conversationChanges ||= []).push(change);
-  s.conversationTimer ||= setTimeout(() => {
-    const changes = s.conversationChanges; s.conversationChanges = []; s.conversationTimer = null;
+  const delay = conversationBatchDelay(s.conversationChanges);
+  if (s.conversationTimer && s.conversationDelay === delay) return;
+  clearTimeout(s.conversationTimer); s.conversationDelay = delay;
+  s.conversationTimer = setTimeout(() => {
+    const changes = s.conversationChanges; s.conversationChanges = []; s.conversationTimer = null; s.conversationDelay = null;
     if (sessions.get(s.terminalId) !== s) return;
     send('terminal:conversation', changes.length > 40 || changes.some(item => item.reset) ? { id: s.terminalId, list: s.conversation.list } : { id: s.terminalId, changes: changes.map(item => item.entry) });
-  }, 120);
+  }, delay);
 }
 // A skill step names the skill; what the skill is for comes from its SKILL.md, a moment later.
 function describeActions(s, cwd, actions) {
@@ -602,6 +606,7 @@ function disposeTerminal(id) {
   if (!s) return;
   sessions.delete(id);
   clearTimeout(s.flushTimer); clearTimeout(s.actionTimer); clearTimeout(s.conversationTimer);
+  for (const timer of s.submissionPolls || []) clearTimeout(timer);
   s.activityMonitor?.stop(); s.gate.dispose(); s.promptQueue.reset();
   try { s.terminal.kill(); } catch { }
   if (s.bootstrapFile) fs.rmSync(s.bootstrapFile, { force: true });
@@ -927,6 +932,7 @@ function registerIpc() {
         if (wasReady) scheduleState();
       }
       s.gate.input(data);
+      if (submitted && s.codexActive) pollAfterSubmission(s, () => sessions.get(id) === s);
     }
   });
   listen('terminal:resize', (id, cols, rows) => {
