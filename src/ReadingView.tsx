@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
-import { CaretDown, CaretRight, CircleNotch, Image as ImageIcon, PaperPlaneRight, Stop, Terminal } from '@phosphor-icons/react';
+import { ArrowDown, CaretDown, CaretRight, CircleNotch, Image as ImageIcon, PaperPlaneRight, Stop, Terminal } from '@phosphor-icons/react';
 import type { AgentCommand, ConversationEntry, ProjectTerminal } from './types';
 import { actionText, stepVerb } from './ActivityPane';
 import { dictateInto } from './voice-input';
+import { useStickToBottom } from './useStickToBottom';
 import './reading.css';
 import { t } from './i18n';
 
@@ -79,7 +80,8 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
   const commandLoad = useRef<Promise<AgentCommand[]> | null>(null), historyAt = useRef<number | null>(null), unsent = useRef(''), caret = useRef<number | null>(null);
   // Images pasted for the next message. The agent holds them itself; this only counts them.
   const [images, setImages] = useState(0);
-  const scroller = useRef<HTMLDivElement>(null), stick = useRef(true), input = useRef<HTMLTextAreaElement>(null);
+  const scroller = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null);
+  const { stuck, unseen, toBottom } = useStickToBottom(scroller, content, entries, terminal.sessionId);
   useLayoutEffect(() => { if (caret.current !== null) { input.current?.setSelectionRange(caret.current, caret.current); caret.current = null; } });
   useEffect(() => { if (draft.startsWith('/')) setRequested(true); }, [draft]);
   useEffect(() => {
@@ -119,8 +121,6 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
     });
     return () => { active = false; off(); };
   }, [terminal.id, terminal.sessionId]);
-  // Follow new output while the reader is at the bottom; leave them where they are when they scrolled up.
-  useLayoutEffect(() => { if (stick.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; }, [entries]);
   useEffect(() => { if (autoFocus) input.current?.focus(); }, [terminal.id, autoFocus]);
   const working = terminal.codexActive && terminal.codexActivity === 'working';
   const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
@@ -138,7 +138,7 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
       }
       history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50));
     }
-    edit(''); setImages(0); stick.current = true;
+    edit(''); setImages(0); toBottom();
     if (text) await new Promise(resolve => setTimeout(resolve, typed ? 150 : 400));
     window.projectGrid.writeTerminal(terminal.id, '\r');
     if (typed && (text.startsWith('!') || available.find(command => command.name.toLowerCase() === text.split(/\s/)[0].toLowerCase())?.view !== 'reading')) {
@@ -207,7 +207,13 @@ export function ReadingView({ terminal, autoFocus, onShowTerminal, onError, onOp
     const link = (event.target as Element).closest<HTMLAnchorElement>('.reading-markdown a');
     if (link) { event.preventDefault(); const href = link.getAttribute('href') || ''; if (href) onOpenLink(href); }
   }}>
-    <div className="reading-scroll" ref={scroller} onScroll={event => { const node = event.currentTarget; stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 40; }}>{body}</div>
+    <div className="reading-scroll-area">
+      <div className="reading-scroll" ref={scroller} tabIndex={0}><div className="reading-content" ref={content}>{body}</div></div>
+      {!stuck && <div className="reading-latest">
+        {unseen > 0 && <span className="reading-unseen" role="status">{t('{count} 条新消息', { count: unseen })}</span>}
+        <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={toBottom}><ArrowDown size={18} /></button>
+      </div>}
+    </div>
     <div className={`reading-status ${working ? 'is-working' : ''}`} role="status">
       {terminal.needsInput !== null ? <><span>{t('等待你确认：{message}', { message: terminal.needsInput })}</span><button type="button" className="text-button" onClick={onShowTerminal}>{t('切换到终端')}</button></> : working ? <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })}</span></> : <span>{terminal.codexActive ? terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令') : t('终端就绪')}</span>}
     </div>
