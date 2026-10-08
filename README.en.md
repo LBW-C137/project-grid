@@ -5,18 +5,19 @@
 <h1 align="center">Project Grid</h1>
 
 <p align="center"><strong>Run Codex and Claude Code on six projects at once. Come back only when one of them needs you.</strong></p>
-<p align="center">A Windows / macOS workspace built for parallel AI coding agents: every project on one screen, and at a glance you know which one is working, which one is done and which one is waiting for you.</p>
+<p align="center">A Windows / macOS / Linux workspace built for parallel AI coding agents: every project on one screen, and at a glance you know which one is working, which one is done and which one is waiting for you.</p>
 
 <p align="center">
   <a href="https://github.com/noeigenstate/project-grid/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/project-grid?style=flat-square&color=78bfa1&label=release" alt="Latest release" /></a>
   <a href="https://github.com/noeigenstate/project-grid/releases"><img src="https://img.shields.io/github/downloads/noeigenstate/project-grid/total?style=flat-square&color=8ebce5&label=downloads" alt="Downloads" /></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-8ebce5?style=flat-square" alt="Windows 10 / 11 x64" />
   <img src="https://img.shields.io/badge/macOS-12%2B%20Apple%20silicon-8ebce5?style=flat-square" alt="macOS 12+ Apple silicon" />
+  <img src="https://img.shields.io/badge/Linux-x64%20%2F%20arm64-8ebce5?style=flat-square" alt="Linux x64 / arm64" />
   <img src="https://img.shields.io/badge/Codex%20%2B%20Claude%20Code-supported-d8a6e8?style=flat-square" alt="Codex and Claude Code" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ Download for Windows / macOS</strong></a> ·
+  <a href="https://github.com/noeigenstate/project-grid/releases/latest"><strong>⬇️ Download for Windows / macOS / Linux</strong></a> ·
   <a href="#why">Why</a> ·
   <a href="#highlights">Highlights</a> ·
   <a href="#get-started">Get started</a> ·
@@ -78,13 +79,13 @@ When a round finishes, a natural voice tells you which project finished what. Wa
 
 - **Pick up where you left off**: on start, your terminals and Codex / Claude Code sessions come back, and an interrupted task is told to continue.
 - **SSH projects**: reuse your VS Code Remote-SSH hosts; terminal, files, Git and previews all go over SSH without copying the project down.
-- **Files at hand**: file tree, an auto-saving editor, previews for images, web pages, video and Markdown; open a path in the terminal with `Ctrl+click` on Windows or `⌘+click` on macOS.
+- **Files at hand**: file tree, an auto-saving editor, previews for images, web pages, video and Markdown; open a path in the terminal with `Ctrl+click` on Windows and Linux or `⌘+click` on macOS.
 - **Beautiful and legible**: a liquid-glass interface with three nature themes; switch to the solid surface for the sharpest text.
 - **Chinese and English, rebindable shortcuts, automatic updates on Windows**, and an in-app tutorial the first time you open it.
 
 ## Get started
 
-**You need:** Windows 10 / 11 (x64), or an Apple silicon Mac (M1 or later) running macOS 12 or later; Intel Macs are not supported. You also need [Codex CLI](https://github.com/openai/codex) or [Claude Code](https://docs.anthropic.com/claude-code). Not installed yet? Settings › Coding assistants installs either with one click.
+**You need:** Windows 10 / 11 (x64), an Apple silicon Mac (M1 or later) running macOS 12 or later (Intel Macs are not supported), or a 64-bit Linux desktop (x64 or arm64, such as Ubuntu 22.04 or later). You also need [Codex CLI](https://github.com/openai/codex) or [Claude Code](https://docs.anthropic.com/claude-code). Not installed yet? Settings › Coding assistants installs either with one click.
 
 1. **Install**: follow the instructions for your platform below.
 2. **Add projects**: press `Ctrl+Shift+N` and pick one or more folders, or add an SSH project.
@@ -142,6 +143,25 @@ In terminals, `⌘C` / `⌘V` / `⌘A` copy, paste and select all; `Control+C` i
 
 Expanding a project stays inside the current window and does not switch to a full-screen Space. Use the green window button or the full-screen shortcut for full screen.
 
+### Linux installation
+
+**Version 0.6.9 adds the Linux edition**, for x64 and arm64. GitHub [Releases](https://github.com/noeigenstate/project-grid/releases/latest) provides `Project-Grid-<version>-linux-x86_64.AppImage`, `Project-Grid-<version>-linux-arm64.AppImage`, `.tar.gz` archives with the same app, and the checksum files `SHA256SUMS-linux-x64.txt` / `SHA256SUMS-linux-arm64.txt`.
+
+The AppImage is recommended and needs no installation:
+
+```bash
+chmod +x Project-Grid-*-linux-*.AppImage
+./Project-Grid-*-linux-*.AppImage
+```
+
+Or unpack the `.tar.gz` and run `./project-grid` inside it. Ubuntu 23.10 and later keep programs without an AppArmor profile from the user namespaces Chromium's sandbox needs; there, start the archive's program with `--no-sandbox`. The AppImage detects this and handles it by itself. **The Linux edition does not update itself**; download the new version to update.
+
+### Linux terminals and shortcuts
+
+Choose Bash or zsh for local terminals under Settings › Terminal and editing › Terminal; until you choose, your login shell (`$SHELL`) decides. zsh can be chosen once it is installed. Bash reads `/etc/bash.bashrc` (where the system has one) and your own `~/.bashrc`, as in any terminal; zsh loads `~/.zshenv`, `~/.zprofile`, `~/.zshrc` and `~/.zlogin` as usual. Project Grid adds prompt reporting and `codex` / `claude` wrappers for turn status, Claude Code hooks, completion alerts and session restore without modifying any user file; your aliases for `codex` or `claude` keep working. SSH projects work as on Windows.
+
+Shortcuts match Windows: in terminals, `Ctrl+C` copies a selection (or `Ctrl+Shift+C`), `Ctrl+V` pastes, `Ctrl+Shift+A` selects all, `Ctrl+C` without a selection interrupts a command, and `Ctrl+click` opens links. Files in the sidebar copy and paste to and from the system file manager (Files, Dolphin, Thunar and others); reading the clipboard uses `wl-paste` or `xclip` when one is installed.
+
 <details>
 <summary><strong>Keyboard shortcuts</strong> (all rebindable in Settings)</summary>
 
@@ -179,7 +199,7 @@ The terminals are the same; the difference is that Project Grid **knows what sta
 <details>
 <summary><strong>macOS or Linux?</strong></summary>
 
-Windows 10 / 11 x64 is supported. Since 0.6.8, Apple silicon Macs (M1 or later) are also supported on macOS 12 or later; Intel Macs are not supported. Remote projects can be any Linux server with Python 3.6+ and Bash. Linux desktop builds are still on the roadmap; tell us you want them in [Issues](https://github.com/noeigenstate/project-grid/issues).
+Windows 10 / 11 x64 is supported. Since 0.6.8, Apple silicon Macs (M1 or later) are also supported on macOS 12 or later; Intel Macs are not supported. Since 0.6.9, Linux desktops on x64 and arm64 are supported, with Bash or zsh for local terminals; see [Linux installation](#linux-installation). Remote projects can be any Linux server with Python 3.6+ and Bash.
 
 </details>
 
@@ -197,7 +217,8 @@ More detail on session restore, SSH, previews, spoken notices, and building and 
 - [ ] Project groups and quick switching
 - [ ] Unified alerts for more command-line coding agents
 - [ ] A record of each round's results and artifacts
-- [ ] Linux desktop builds, WSL workspaces
+- [x] Linux desktop builds (0.6.9)
+- [ ] WSL workspaces
 
 Ideas are welcome in [Issues](https://github.com/noeigenstate/project-grid/issues). If Project Grid is useful to you, a ⭐ star helps others find it.
 
@@ -211,6 +232,7 @@ npm start              # run in development
 npm test               # unit tests
 npm run test:desktop   # real desktop interaction tests
 npm run dist           # build the installer and portable editions
+npm run dist:linux     # on Linux, build the AppImage and tar.gz for this machine's architecture
 ```
 
 Electron · React · TypeScript · xterm.js · node-pty. Every release passes unit tests, desktop tests against the packaged app and Linux SSH integration tests before it is published. The screenshots and the demo in this README are generated from demo projects by `scripts/readme-shots.mjs`.

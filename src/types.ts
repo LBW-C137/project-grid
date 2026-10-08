@@ -13,12 +13,14 @@ export type ProjectTerminal = { action: AgentActionBrief | null; task: string; p
 // A model reached over HTTP for the spoken summary. The API key is not part of the settings.
 export type SummaryEndpoint = { provider: string; protocol: 'openai' | 'anthropic'; baseUrl: string; model: string };
 export type SummaryKeys = { keys: { cloud: boolean; local: boolean } };
-export type Settings = { columns: number; surface: 'glass' | 'solid'; terminalRenderer: 'gpu' | 'dom'; summary: { mode: 'fast' | 'agent' | 'cloud' | 'local'; cloud: SummaryEndpoint; local: SummaryEndpoint }; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: 'forest' | 'mountain-blue' | 'wild-red'; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' };
+export type Settings = { columns: number; surface: 'glass' | 'solid'; terminalRenderer: 'gpu' | 'dom'; summary: { mode: 'fast' | 'agent' | 'cloud' | 'local'; cloud: SummaryEndpoint; local: SummaryEndpoint }; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: 'forest' | 'mountain-blue' | 'wild-red'; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh' };
 export type SpeechState = { phase: 'missing' | 'downloading' | 'ready' | 'error'; ready: boolean; percent: number; error: string | null; downloadBytes: number };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type SSHInfo = { hosts: string[]; configFile: string; configExists: boolean; sshPath: string; source: string };
 export type SSHAuthPrompt = { id: string; host: string; message: string; kind: 'secret' | 'confirm' };
-export type Workspace = { projects: Project[]; settings: Settings; warning: string | null; platform: string; version: string; guide: boolean; autoHideTitlebar: boolean };
+export type Workspace = { projects: Project[]; settings: Settings; warning: string | null; platform: string; version: string; guide: boolean; autoHideTitlebar: boolean;
+  // Linux: the shell new local terminals use and whether zsh is installed.
+  localShell: { kind: 'bash' | 'zsh'; zsh: boolean } | null };
 export type TerminalSnapshot = { sessionId: string | null; seq: number; data: string };
 export type TerminalPacket = TerminalSnapshot & { id: string };
 export type FileEntry = { name: string; path: string; kind: 'directory' | 'file' | 'link' };

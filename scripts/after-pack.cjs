@@ -5,10 +5,12 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-// macOS: the PowerShell and Command Prompt integration and the Windows helpers (Windows only) are left out.
+// macOS and Linux: the PowerShell and Command Prompt integration and the Windows helpers (Windows only) are left out.
 exports.default = async context => {
-  if (context.electronPlatformName === 'darwin') {
-    const integration = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents/Resources/integration');
+  if (context.electronPlatformName === 'darwin' || context.electronPlatformName === 'linux') {
+    const integration = context.electronPlatformName === 'darwin'
+      ? path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents/Resources/integration')
+      : path.join(context.appOutDir, 'resources/integration');
     for (const name of await fs.readdir(integration)) if (/\.(ps1|cmd|exe|cs)$/i.test(name)) await fs.rm(path.join(integration, name), { force: true });
     return;
   }

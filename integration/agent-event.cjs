@@ -1,7 +1,10 @@
-// Codex notify and Claude Code hooks for macOS terminals (zsh-integration.zsh), run by Project Grid's own
-// executable as Node (ELECTRON_RUN_AS_NODE=1). It sends the same events as notify.ps1 and claude-hook.ps1.
+// Codex notify and Claude Code hooks for macOS and Linux terminals (zsh-integration.zsh, bash-integration.bash),
+// run by Project Grid's own executable as Node (ELECTRON_RUN_AS_NODE=1). It sends the same events as notify.ps1
+// and claude-hook.ps1. Bash cannot open a Unix socket, so it sends its own reports through this too.
 // Usage: agent-event.cjs codex-notify <socket> <projectId> <sessionKey> <payload>
 //        agent-event.cjs claude-hook <socket> <projectId> <sessionKey> start|stop   (the hook's JSON on stdin)
+//        agent-event.cjs shell-event <socket> <projectId> <sessionKey> <type> <sequence> <exitCode> <agent>
+//                        <codexAvailable> <claudeAvailable> <codexHome> <cwd>
 // Claude adds anything a hook prints to the conversation, so this writes nothing, and a closed Project Grid
 // never delays or fails a turn.
 const net = require('node:net');
@@ -55,10 +58,21 @@ function claudeEvent(input, projectId, sessionKey, kind) {
   };
 }
 
-async function main([action, socket, projectId, sessionKey, argument]) {
+// A shell's own report (shell-ready, shell-prompt, codex-started, codex-exited), as zsh-integration.zsh writes it.
+const shellEvents = ['shell-ready', 'shell-prompt', 'codex-started', 'codex-exited'];
+function shellEvent([type, sequence, exitCode, agent, codex, claude, codexHome, cwd], projectId, sessionKey) {
+  if (!shellEvents.includes(type) || !/^\d+$/.test(String(sequence))) return null;
+  return {
+    projectId, sessionKey, type, sequence: Number(sequence), exitCode: Number.parseInt(exitCode, 10) || 0, agent: agent === 'claude' ? 'claude' : 'codex',
+    codexAvailable: codex === 'true', claudeAvailable: claude === 'true', codexHome: String(codexHome ?? ''), cwd: String(cwd ?? ''),
+  };
+}
+
+async function main([action, socket, projectId, sessionKey, argument, ...rest]) {
   if (!socket || !projectId || !sessionKey) return;
   const event = action === 'codex-notify' ? codexEvent(argument, projectId, sessionKey)
-    : action === 'claude-hook' ? claudeEvent(await readInput(), projectId, sessionKey, argument) : null;
+    : action === 'claude-hook' ? claudeEvent(await readInput(), projectId, sessionKey, argument)
+      : action === 'shell-event' ? shellEvent([argument, ...rest], projectId, sessionKey) : null;
   if (event) await send(socket, event);
 }
 
@@ -68,4 +82,4 @@ if (require.main === module) {
   main(process.argv.slice(2)).catch(() => {}).finally(() => process.exit(0));
 }
 
-module.exports = { codexEvent, claudeEvent };
+module.exports = { codexEvent, claudeEvent, shellEvent };

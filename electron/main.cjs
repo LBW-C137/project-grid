@@ -36,7 +36,7 @@ const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARG
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
-const { ZSH, prepareZshStartup, zshEnvironment, terminalLocale, loginShellPath, mergePath } = require('./zsh-terminal.cjs');
+const { ZSH, findShell, linuxShell, prepareZshStartup, shellEnvironment, zshEnvironment, bashArguments, withoutAppImage, terminalLocale, loginShellPath, mergePath } = require('./zsh-terminal.cjs');
 
 const root = path.join(__dirname, '..');
 const integrationDir = app.isPackaged ? path.join(process.resourcesPath, 'integration') : path.join(root, 'integration');
@@ -90,7 +90,7 @@ function publicState() {
     projects: store.projects.map(p => {
       const terminals = terminalIds(p).map((id, index) => {
         const s = sessions.get(id);
-        return { id, title: t('终端 {n}', { n: index + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : store.settings.shell), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
+        return { id, title: t('终端 {n}', { n: index + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : localShell().kind), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
           codexActivity: s?.codexActivity || 'unknown', shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null,
           // The step a working agent is on, for the card's one-line status; the full list is sent separately.
@@ -118,6 +118,8 @@ function publicState() {
     settings: store.settings,
     warning: store.warning,
     platform: process.platform,
+    // Linux: the shell new local terminals use and whether zsh is installed, for the choice in Settings.
+    localShell: process.platform === 'linux' ? (({ kind, zsh }) => ({ kind, zsh }))(localShell()) : null,
     // In full screen the title bar slides away and returns when the pointer touches the top edge. The
     // desktop checks drive the title bar in full screen, so isolated test profiles keep it unless asked.
     autoHideTitlebar: !process.env.PROJECT_GRID_DATA_DIR || process.env.PROJECT_GRID_TEST_TITLEBAR === '1',
@@ -466,28 +468,43 @@ function addLocalProject(folder, name) {
   return project.id;
 }
 
+// The local shell for a new terminal: PowerShell or Command Prompt on Windows, zsh on macOS, and on Linux
+// Bash or zsh as chosen in Settings (the login shell's kind until one is chosen).
+// Linux looks for the shells again whenever a terminal starts, so one installed meanwhile is used.
+let linuxShells = null;
+function localShell(fresh = false) {
+  if (process.platform === 'darwin') return { kind: 'zsh', file: ZSH };
+  if (process.platform !== 'linux') return { kind: store.settings.shell === 'cmd' ? 'cmd' : 'powershell', file: null };
+  if (fresh || linuxShells?.choice !== store.settings.shell) linuxShells = { ...linuxShell(store.settings.shell), choice: store.settings.shell };
+  return linuxShells;
+}
+
 function startTerminal(id) {
   const project = findProject(id);
   const old = sessions.get(id);
   if (old && old.status !== 'exited') return;
   if (old) disposeTerminal(id);
-  if (!['win32', 'darwin'].includes(process.platform)) throw new Error('此版本的终端集成面向 Windows 10/11 和 macOS。');
+  if (!['win32', 'darwin', 'linux'].includes(process.platform)) throw new Error('此版本的终端集成面向 Windows 10/11、macOS 和 Linux。');
   if (project.kind !== 'ssh' && !fs.existsSync(project.path)) throw new Error('项目目录不存在，请重新添加。');
   const sessionId = randomUUID();
   const sessionKey = randomUUID();
   const startPath = restorePlans.get(id)?.cwd || store.findTerminal(id)?.record.restore?.cwd || project.path;
   // Local terminals use the shell chosen in settings (zsh on macOS); SSH projects always run Bash on the server.
-  const shellKind = project.kind === 'ssh' ? 'bash' : process.platform === 'darwin' ? 'zsh' : store.settings.shell === 'cmd' ? 'cmd' : 'powershell';
-  const bootstrapFile = ['ssh', 'zsh'].includes(shellKind) ? null : path.join(runtimeDir, `${sessionId}.json`);
+  const shell = project.kind === 'ssh' ? { kind: 'bash', file: null } : localShell(true), shellKind = shell.kind;
+  const bootstrapFile = ['powershell', 'cmd'].includes(shellKind) ? path.join(runtimeDir, `${sessionId}.json`) : null;
   if (bootstrapFile) fs.writeFileSync(bootstrapFile, JSON.stringify({
     projectId: id, projectPath: startPath, sessionKey, pipeName: eventServer.name,
     powershellPath, notifyPath: path.join(integrationDir, 'notify.ps1'), claudeHookPath: path.join(integrationDir, 'claude-hook.ps1'),
   }), { mode: 0o600 });
-  let env = createTerminalEnvironment(process.env, bootstrapFile || '');
-  // zsh learns where to report from its environment (integration/zsh-integration.zsh), and reports through
-  // integration/agent-event.cjs run by this executable as Node.
-  if (shellKind === 'zsh') env = zshEnvironment(env, { folder: zshStartup, socket: eventServer.address, projectId: id, sessionKey,
-    node: process.execPath, helper: path.join(integrationDir, 'agent-event.cjs'), startDir: startPath, locale: terminalLocale(app.getPreferredSystemLanguages()) });
+  let env = createTerminalEnvironment(withoutAppImage(process.env), bootstrapFile || '');
+  // zsh and Bash learn where to report from their environment (integration/zsh-integration.zsh and
+  // bash-integration.bash), and report through integration/agent-event.cjs run by this executable as Node.
+  const local = project.kind !== 'ssh' && ['zsh', 'bash'].includes(shellKind);
+  const integration = local && { folder: zshStartup, socket: eventServer.address, projectId: id, sessionKey, node: process.execPath,
+    helper: path.join(integrationDir, 'agent-event.cjs'), startDir: startPath,
+    // Every glibc since 2.35 has C.UTF-8; a Linux desktop session normally sets LANG itself.
+    locale: process.platform === 'darwin' ? terminalLocale(app.getPreferredSystemLanguages()) : 'C.UTF-8' };
+  if (local) env = shellKind === 'zsh' ? zshEnvironment(env, integration) : shellEnvironment(env, integration);
   if (project.kind === 'ssh' && !sshAskpassPath && process.platform === 'win32') {
     // Windows OpenSSH 8.1 cannot spawn an askpass executable under a Unicode
     // directory. The system temp volume provides an ASCII/short-path location
@@ -500,7 +517,9 @@ function startTerminal(id) {
   }
   const terminal = project.kind === 'ssh' ? new RemoteConnection({ ...project, id }, { integrationDir, auth: sshAuth, sessionKey, onEvent, codingPath: startPath, askpassPath: sshAskpassPath,
     onReady: info => { branches.set(project.id, String(info.branch || '').slice(0, 120)); broadcast(); },
-  }) : shellKind === 'zsh' ? pty.spawn(ZSH, ['-l', '-i'], {
+  }) : shellKind === 'zsh' ? pty.spawn(shell.file, ['-l', '-i'], {
+    name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env,
+  }) : shellKind === 'bash' ? pty.spawn(shell.file, bashArguments(integrationDir), {
     name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env,
   }) : shellKind === 'cmd' ? pty.spawn(cmdPath, ['/D', '/Q', '/K', path.join(integrationDir, 'bootstrap.cmd')], {
     name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env, useConpty: true, useConptyDll: true,
@@ -949,11 +968,11 @@ else {
         if (refreshed.changes.length) execFile(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/ie4uinit.exe'), ['-show'], { windowsHide: true, timeout: 5000 }, () => {});
       } catch (error) { console.warn('Windows Search icon refresh:', error.message); }
     }
-    if (process.platform === 'darwin') {
+    if (process.platform === 'darwin' || process.platform === 'linux') {
       zshStartup = prepareZshStartup(path.join(app.getPath('userData'), 'zsh'), integrationDir);
-      // Started from the Dock, this process has only the system PATH; codex, claude and npm are found with the
-      // login shell's. Terminals build their own from the user's start-up files.
-      loginShellPath().then(value => { if (value) process.env.PATH = mergePath(value, process.env.PATH); agents.changed(); }).catch(() => {});
+      // Started from the Dock or a desktop launcher, this process may have only the system PATH; codex, claude and
+      // npm are found with the login shell's. Terminals build their own from the user's start-up files.
+      loginShellPath(process.platform === 'linux' ? { shell: process.env.SHELL || findShell('bash') || '/bin/bash', env: withoutAppImage(process.env) } : undefined).then(value => { if (value) process.env.PATH = mergePath(value, process.env.PATH); agents.changed(); }).catch(() => {});
     }
     store = new WorkspaceStore(path.join(app.getPath('userData'), 'workspace.json'));
     summarySecrets = new SecretStore(path.join(app.getPath('userData'), 'summary-keys.json'), safeStorage);

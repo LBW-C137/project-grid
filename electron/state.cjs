@@ -55,8 +55,9 @@ function cleanSettings(input = {}) {
     terminalRenderer: input.terminalRenderer === 'dom' ? 'dom' : 'gpu',
     summary: cleanSummarySettings(input.summary),
     shortcuts: cleanShortcuts(input.shortcuts),
-    // Shell for local terminals; SSH projects always use Bash on the server.
-    shell: input.shell === 'cmd' ? 'cmd' : 'powershell',
+    // Shell for local terminals: PowerShell or Command Prompt on Windows, Bash or zsh on Linux (until one is
+    // chosen there, the login shell's kind). SSH projects always use Bash on the server.
+    shell: ['cmd', 'bash', 'zsh'].includes(input.shell) ? input.shell : 'powershell',
     // The app version whose usage guide was last shown; a newer version shows it again.
     guideVersion: typeof input.guideVersion === 'string' && /^\d+\.\d+\.\d+(-[\w.-]+)?$/.test(input.guideVersion) ? input.guideVersion : '',
     // Spoken completion phrase; empty uses the built-in phrases. {项目} or {project} is the project name.

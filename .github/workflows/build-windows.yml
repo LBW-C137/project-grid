@@ -1,4 +1,4 @@
-name: Build Windows and macOS executables
+name: Build Windows, macOS and Linux executables
 
 on:
   push:
@@ -324,10 +324,126 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  linux:
+    name: Linux ${{ matrix.arch }} build and desktop tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      PROJECT_GRID_TEST_TIMEOUT_SCALE: '2'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo 'Invalid package version.'; exit 1; }
+          if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" ]]; then echo 'The version tag must match package.json.'; exit 1; fi
+          image_arch=${{ matrix.arch == 'x64' && 'x86_64' || 'arm64' }}
+          echo "image=Project-Grid-$version-linux-$image_arch.AppImage" >> "$GITHUB_OUTPUT"
+          echo "archive=Project-Grid-$version-linux-${{ matrix.arch }}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "unpacked=release/${{ matrix.arch == 'x64' && 'linux-unpacked' || 'linux-arm64-unpacked' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install zsh, a virtual display and FUSE for the AppImage
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends zsh xvfb xauth fuse3
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run unit and integration tests, including real Bash and zsh terminals
+        run: npm test
+
+      - name: Build the AppImage and tar.gz
+        run: npm run dist:linux
+
+      - name: Verify the package
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="${{ steps.version.outputs.unpacked }}"
+          test -x "$app/project-grid"
+          test -f "release/${{ steps.version.outputs.image }}"
+          test -f "release/${{ steps.version.outputs.archive }}"
+          test -f "$app/resources/app.asar.unpacked/node_modules/node-pty/prebuilds/linux-${{ matrix.arch }}/pty.node"
+          test -f "$app/resources/app.asar.unpacked/node_modules/sherpa-onnx-linux-${{ matrix.arch }}/sherpa-onnx.node"
+          for name in bash-integration.bash zsh-integration.zsh agent-event.cjs; do test -f "$app/resources/integration/$name"; done
+          test -x "$app/resources/integration/ssh-askpass.sh"
+          if ls "$app/resources/integration" | grep -Ei '\.(ps1|cmd|exe|cs)$'; then echo 'Windows integration files are in the Linux app.'; exit 1; fi
+          if ls "$app/resources/app.asar.unpacked/node_modules/node-pty/prebuilds" | grep -E '^(win32|darwin)-'; then echo 'Other platforms PTY binaries are in the Linux app.'; exit 1; fi
+          top=$(npx --no-install asar list "$app/resources/app.asar" | cut -d/ -f2 | sort -u | tr '\n' ' ')
+          echo "app.asar: $top"
+          [[ $top == 'assets dist electron node_modules package.json ' ]] || { echo 'Unexpected files in app.asar.'; exit 1; }
+
+      - name: Verify the packaged app runs a Bash terminal and follows Codex
+        run: xvfb-run -a node scripts/retry.mjs node scripts/linux-smoke.mjs --packaged
+
+      - name: Verify the packaged app runs a zsh terminal and follows Codex
+        run: xvfb-run -a node scripts/retry.mjs node scripts/linux-smoke.mjs --packaged --shell zsh
+
+      - name: Verify the AppImage starts and keeps its environment out of terminals
+        run: xvfb-run -a node scripts/retry.mjs node scripts/appimage-smoke.mjs "release/${{ steps.version.outputs.image }}"
+
+      - name: Create checksums and build notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum "${{ steps.version.outputs.image }}" "${{ steps.version.outputs.archive }}" > "SHA256SUMS-linux-${{ matrix.arch }}.txt"
+          cat "SHA256SUMS-linux-${{ matrix.arch }}.txt"
+          {
+            echo "## Linux ${{ matrix.arch }} build is ready"
+            echo "- AppImage: **${{ steps.version.outputs.image }}**"
+            echo "- Archive: **${{ steps.version.outputs.archive }}**"
+            echo "- Commit: $GITHUB_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verified app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Project-Grid-linux-${{ matrix.arch }}
+          path: |
+            release/${{ steps.version.outputs.image }}
+            release/${{ steps.version.outputs.archive }}
+            release/SHA256SUMS-linux-${{ matrix.arch }}.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload desktop test screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-${{ matrix.arch }}-desktop-test-screenshots
+          path: .test-output/linux-*/*.png
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
   release:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, macos, remote-linux]
+    needs: [windows, macos, linux, remote-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -343,6 +459,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: Project-Grid-macos-arm64
+          path: release-assets
+
+      - name: Download the tested Linux builds
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Project-Grid-linux-*
+          merge-multiple: true
           path: release-assets
 
       - name: Verify and publish release assets
@@ -367,10 +490,13 @@ jobs:
           test -f "$MAC_IMAGE"
           sha256sum --check SHA256SUMS.txt
           sha256sum --check SHA256SUMS-mac.txt
-          assets=("$RELEASE_BINARY" "$RELEASE_INSTALLER" "$RELEASE_INSTALLER.blockmap" latest.yml SHA256SUMS.txt BUILD-INFO.txt "$MAC_IMAGE" "$MAC_ARCHIVE" SHA256SUMS-mac.txt)
+          linux=("Project-Grid-$RELEASE_VERSION-linux-x86_64.AppImage" "Project-Grid-$RELEASE_VERSION-linux-x64.tar.gz" "Project-Grid-$RELEASE_VERSION-linux-arm64.AppImage" "Project-Grid-$RELEASE_VERSION-linux-arm64.tar.gz")
+          for file in "${linux[@]}"; do test -f "$file"; done
+          sha256sum --check SHA256SUMS-linux-x64.txt SHA256SUMS-linux-arm64.txt
+          assets=("$RELEASE_BINARY" "$RELEASE_INSTALLER" "$RELEASE_INSTALLER.blockmap" latest.yml SHA256SUMS.txt BUILD-INFO.txt "$MAC_IMAGE" "$MAC_ARCHIVE" SHA256SUMS-mac.txt "${linux[@]}" SHA256SUMS-linux-x64.txt SHA256SUMS-linux-arm64.txt)
 
           cat > release-notes.md <<EOF
-          Windows x64 installer and portable editions of Project Grid, and a macOS edition for Apple silicon.
+          Windows x64 installer and portable editions of Project Grid, a macOS edition for Apple silicon, and Linux editions for x64 and arm64.
 
           **Windows — recommended:** install **$RELEASE_INSTALLER** to enable automatic update checks and background downloads.
           For a portable copy, download **$RELEASE_BINARY**.
@@ -383,8 +509,11 @@ jobs:
 
           Or download **$MAC_IMAGE** and drag Project Grid to Applications. The app is signed ad hoc, not notarized by Apple: on first open, allow it once in System Settings › Privacy & Security (Open Anyway), or run \`xattr -dr com.apple.quarantine "/Applications/Project Grid.app"\`. The macOS edition does not update itself; run the command again to update.
 
+          **Linux (x64 and arm64):** download the AppImage for your processor (**Project-Grid-$RELEASE_VERSION-linux-x86_64.AppImage** or **Project-Grid-$RELEASE_VERSION-linux-arm64.AppImage**), make it executable with \`chmod +x\` and run it. The **.tar.gz** archives hold the same app: unpack and run \`./project-grid\` (on Ubuntu 23.10 or later, add \`--no-sandbox\`; the AppImage does that by itself when needed). Local terminals run Bash or zsh, chosen in Settings. The Linux edition does not update itself; download the new version to update.
+
           Install Codex CLI on the computer or Linux SSH host where your project runs.
 
+          - New: Project Grid for Linux, x64 and arm64. Local terminals run Bash or zsh (chosen in Settings, the login shell's by default) with your own ~/.bashrc or zsh start-up files untouched; codex and claude report each turn, light the card when it finishes and resume after a restart, as on Windows and macOS. Files copy and paste to and from the system file manager. SSH projects work the same.
           - New: Project Grid for macOS. Local terminals run zsh with your own start-up files (~/.zprofile, ~/.zshrc and the rest, untouched); codex and claude report each turn, light the card when it finishes and resume after a restart, as on Windows. SSH projects work the same. ⌘C, ⌘V and ⌘A copy, paste and select in terminals, Control+C interrupts, ⌘-click opens links, ⌘Q asks before closing running terminals. Microphone dictation asks for permission once.
           - The editor marks Git changes that are not staged yet, and a merge conflict keeps the current side, the incoming side or both in one click.
           - Codex and Claude Code conversations open in the reading view by default and read like a document; images pasted into the message box go to the agent.

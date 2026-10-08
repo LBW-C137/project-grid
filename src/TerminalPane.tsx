@@ -8,7 +8,7 @@ import { styleTerminal } from './terminal-styling';
 import { gpuRenderer, terminalRenderer, useTerminalRenderer } from './terminal-renderer';
 import '@xterm/xterm/css/xterm.css';
 import { t } from './i18n';
-import { isMac } from './platform';
+import { isMac, isWindows } from './platform';
 
 export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpenLink, remote = false }: {
   id: string; sessionId: string | null; fontSize: number; focused: boolean; onError: (message: string) => void;
@@ -93,7 +93,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     gpu.current = gpuRenderer(terminal); gpu.current.set(terminalRenderer() === 'gpu');
     // node-pty uses its bundled modern ConPTY, including on Windows 10.
     // 21376 is xterm's capability threshold for VT wrapping and reflow.
-    if (!remote && !isMac) terminal.options.windowsPty = { backend: 'conpty', buildNumber: 21376 };
+    if (!remote && isWindows) terminal.options.windowsPty = { backend: 'conpty', buildNumber: 21376 };
     const links = terminal.registerLinkProvider(createTerminalLinkProvider(terminal, activateLink, hoverLink, leaveLink));
     const styling = styleTerminal(terminal);
     term.current = terminal; fit.current = fitAddon;
@@ -133,7 +133,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
         event.preventDefault();
         // xterm's legacy Enter mapping drops Shift. ConPTY needs native key
         // records; Linux and macOS TUIs understand the modified Enter CSI-u sequence.
-        window.projectGrid.writeTerminal(id, remote || isMac ? '\x1b[13;2u' : '\x1b[13;28;13;1;16;1_\x1b[13;28;13;0;16;1_');
+        window.projectGrid.writeTerminal(id, remote || !isWindows ? '\x1b[13;2u' : '\x1b[13;28;13;1;16;1_\x1b[13;28;13;0;16;1_');
         return false;
       }
       // macOS: ⌘C copies, ⌘V pastes and ⌘A selects all; Control keys all go to the program (Control+C interrupts).

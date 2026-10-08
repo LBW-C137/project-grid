@@ -28,7 +28,7 @@ import { AgentsSettings } from './AgentsSettings';
 import { SummarySettings } from './SummarySettings';
 import { UsageGuide } from './UsageGuide';
 import { GuideTour } from './GuideTour';
-import { isMac } from './platform';
+import { isMac, isLinux } from './platform';
 const FilePreview = lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
 const GitDiffView = lazy(() => import('./GitDiffView').then(module => ({ default: module.GitDiffView })));
 
@@ -176,8 +176,8 @@ function AnnounceSettings({ settings, update }: { settings: Settings; update: (p
     </div>}
   </div>;
 }
-function SettingsDialog({ settings, agents, onAgents, initialSection, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, onGuide, close, update, quit }: {
-  agents: AgentsState | null; onAgents: (state: AgentsState) => void; initialSection: string;
+function SettingsDialog({ settings, localShell, agents, onAgents, initialSection, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, onGuide, close, update, quit }: {
+  localShell: Workspace['localShell']; agents: AgentsState | null; onAgents: (state: AgentsState) => void; initialSection: string;
   settings: Settings; close: () => void; update: (patch: Partial<Settings>) => void; quit: () => void; onGuide: () => void;
   updates: AppUpdateState | null; onCheckUpdate: () => void; onInstallUpdate: () => void; onDownloadPage: () => void;
 }) {
@@ -233,7 +233,9 @@ function SettingsDialog({ settings, agents, onAgents, initialSection, updates, o
       <AnnounceSettings settings={settings} update={update} />
       </section>
       <section className="settings-section" id="settings-terminal" aria-label={t('终端与编辑')} hidden={current.id !== 'terminal'}>
-      {!isMac && <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端')}</b><small>{t('新开或重启的本地终端使用；SSH 项目始终使用 Bash')}</small></span></span><select aria-label={t('终端')} value={settings.shell} onChange={event => update({ shell: event.target.value as Settings['shell'] })}><option value="powershell">PowerShell</option><option value="cmd">{t('命令提示符 (cmd)')}</option></select></label>}
+      {!isMac && <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端')}</b><small>{t('新开或重启的本地终端使用；SSH 项目始终使用 Bash')}</small></span></span>{localShell
+        ? <select aria-label={t('终端')} value={localShell.kind} onChange={event => update({ shell: event.target.value as Settings['shell'] })}><option value="bash">Bash</option><option value="zsh" disabled={!localShell.zsh}>{localShell.zsh ? 'zsh' : t('zsh（未安装）')}</option></select>
+        : <select aria-label={t('终端')} value={settings.shell} onChange={event => update({ shell: event.target.value as Settings['shell'] })}><option value="powershell">PowerShell</option><option value="cmd">{t('命令提示符 (cmd)')}</option></select>}</label>}
       <label className="setting-row"><span><ArrowCounterClockwise size={19} /><span><b>{t('启动时恢复工作')}</b><small>{t('恢复 Codex 与 Claude Code 的最近会话，被中断的任务自动发送“继续”')}</small></span></span><input type="checkbox" checked={settings.restoreSessions} onChange={event => update({ restoreSessions: event.target.checked })} /></label>
       <label className="setting-row"><span><Monitor size={19} /><span><b>{t('关闭到托盘')}</b><small>{t('关闭窗口后，终端和任务继续运行')}</small></span></span><input type="checkbox" checked={settings.closeToTray} onChange={e => update({ closeToTray: e.target.checked })} /></label>
       <label className="setting-row"><span><FloppyDisk size={19} /><span><b>{t('自动保存')}</b><small>{t('停止输入约 1 秒后、切换文件或离开窗口时保存编辑中的文件；关闭后按 Ctrl+S 保存')}</small></span></span><input type="checkbox" checked={settings.autoSave} onChange={event => update({ autoSave: event.target.checked })} /></label>
@@ -246,7 +248,7 @@ function SettingsDialog({ settings, agents, onAgents, initialSection, updates, o
       <section className="settings-section" id="settings-about" aria-label={t('更新与关于')} hidden={current.id !== 'about'}>
       {updates && <section className="update-section" aria-label={t('应用更新')}>
         <div className="update-heading"><b>{t('应用更新')}</b><span>{t('当前版本 v{version}', { version: updates.currentVersion })}</span></div>
-        <p role="status">{updates.status === 'unavailable' ? isMac ? t('macOS 版不会自动更新。再次运行安装命令，即可更新到最新版本。') : t('当前为便携版或开发版。安装 Windows 版后，即可自动检查和下载更新。')
+        <p role="status">{updates.status === 'unavailable' ? isMac ? t('macOS 版不会自动更新。再次运行安装命令，即可更新到最新版本。') : isLinux ? t('Linux 版不会自动更新。在下载页面获取新版本的 AppImage 或压缩包。') : t('当前为便携版或开发版。安装 Windows 版后，即可自动检查和下载更新。')
           : updates.status === 'checking' ? t('正在检查更新…')
           : updates.status === 'current' ? t('当前已是最新版本。')
           : updates.status === 'downloading' ? t('正在下载 v{version} · {percent}%', { version: updates.version || '', percent: updates.percent })
@@ -254,7 +256,7 @@ function SettingsDialog({ settings, agents, onAgents, initialSection, updates, o
           : updates.status === 'error' ? t(updates.error || '') : t('启动后自动检查更新，并在后台下载新版本。')}</p>
         {updates.status === 'downloading' && <progress aria-label={t('更新下载进度')} max={100} value={updates.percent} />}
         <div className="update-actions">{!updates.supported
-          ? <button className="button secondary small" onClick={onDownloadPage}>{isMac ? t('打开下载页面') : t('下载 Windows 安装版')}</button>
+          ? <button className="button secondary small" onClick={onDownloadPage}>{isMac || isLinux ? t('打开下载页面') : t('下载 Windows 安装版')}</button>
           : updates.status === 'ready' ? <button className="button primary small" onClick={onInstallUpdate}>{t('重启并安装更新')}</button>
           : <button className="button secondary small" disabled={updates.status === 'checking' || updates.status === 'downloading'} onClick={onCheckUpdate}>{updates.status === 'error' ? t('重试更新') : t('检查更新')}</button>}</div>
       </section>}
@@ -494,7 +496,7 @@ export function App() {
     {error && <div className="error-toast" role="alert"><Info size={18} /><span>{error}</span><IconButton label={t('关闭提示')} onClick={() => setError(null)}><X size={16} /></IconButton></div>}
     {guide === 'tour' && <GuideTour projects={projects} focusedId={focusedId} withAdd={tourWithAdd.current} onClose={() => { setGuide(null); if (settings.guideVersion !== workspace.version) setPreference({ guideVersion: workspace.version }); }} />}
     {guide && guide !== 'tour' && <UsageGuide version={workspace.version} start={guide} onTour={startTour} onClose={() => { setGuide(null); if (settings.guideVersion !== workspace.version) setPreference({ guideVersion: workspace.version }); }} />}
-    {settingsOpen && <SettingsDialog settings={settings} agents={agents} onAgents={setAgents} initialSection={settingsSection} updates={updates} onGuide={() => { setSettingsOpen(false); setSettingsSection('appearance'); startTour(); }} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => { setSettingsOpen(false); setSettingsSection('appearance'); }} update={setPreference} quit={() => perform(api.quit())} />}
+    {settingsOpen && <SettingsDialog settings={settings} localShell={workspace.localShell ?? null} agents={agents} onAgents={setAgents} initialSection={settingsSection} updates={updates} onGuide={() => { setSettingsOpen(false); setSettingsSection('appearance'); startTour(); }} onCheckUpdate={() => { perform(api.checkForUpdates()); }} onInstallUpdate={() => { perform(api.installUpdate()); }} onDownloadPage={() => { perform(api.openDownloadPage()); }} close={() => { setSettingsOpen(false); setSettingsSection('appearance'); }} update={setPreference} quit={() => perform(api.quit())} />}
     {addOpen && <AddProjectDialog onClose={() => setAddOpen(false)} onAdded={() => setQuery('')} onError={reportError} />}
     {sshAuth[0] && <SSHAuthDialog key={sshAuth[0].id} request={sshAuth[0]} />}
     <VoiceOverlay />
