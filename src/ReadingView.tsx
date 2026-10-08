@@ -9,8 +9,12 @@ import { useScreen } from './terminal-screen';
 import { parseAgentScreen } from './agent-screen';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
+import { ReadingCliPanel } from './ReadingCliPanel';
+import { ReadingCommandOutput } from './ReadingCommandOutput';
+import { useReadingCli } from './useReadingCli';
+import type { CliOutputEntry } from './cli-panel';
 import { choiceIdentity } from './choice-keys';
-import { READING_HANDOFF_DELAY, setChoiceVisible } from './reading-mode';
+import { setChoiceVisible } from './reading-mode';
 import { useStickToBottom } from './useStickToBottom';
 import './reading.css';
 import { t } from './i18n';
@@ -47,7 +51,7 @@ function Markdown({ text }: { text: string }) {
   return <div className="reading-markdown" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-type Block = { kind: 'message'; entry: ConversationEntry } | { kind: 'tools'; id: string; entries: ConversationEntry[] };
+type Block = { kind: 'message'; entry: CliOutputEntry } | { kind: 'tools'; id: string; entries: ConversationEntry[] };
 // Tool calls that follow one another fold into one group between the messages around them.
 function blocks(entries: ConversationEntry[]): Block[] {
   const result: Block[] = [];
@@ -86,7 +90,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const screen = useMemo(() => parseAgentScreen(terminal.agent === 'claude' ? 'claude' : 'codex', visibleScreen?.rows ?? []), [terminal.agent, visibleScreen]);
   const choiceKey = screen.choice ? choiceIdentity(screen.choice) : null;
   const hasChoice = screen.choice !== null, choiceVisible = useRef(hasChoice); choiceVisible.current = hasChoice;
-  const handoff = useRef<ReturnType<typeof setTimeout> | null>(null), mounted = useRef(true);
+  const mounted = useRef(true);
   const choiceHost = useRef<HTMLDivElement>(null), restoreComposer = useRef(false), wasChoice = useRef(false);
   const [draft, setDraft] = useState('');
   const [commands, setCommands] = useState<AgentCommand[]>([]), [requested, setRequested] = useState(false);
@@ -95,15 +99,16 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   // Images pasted for the next message. The agent holds them itself; this only counts them.
   const [images, setImages] = useState(0);
   const scroller = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null);
-  const { stuck, unseen, toBottom } = useStickToBottom(scroller, content, entries, terminal.sessionId);
+  const cli = useReadingCli(terminal.id, terminal.sessionId, terminal.agent === 'claude' ? 'claude' : 'codex', entries, input, autoFocus);
+  const inputBlocked = hasChoice || cli.busy;
+  const { stuck, unseen, toBottom } = useStickToBottom(scroller, content, cli.entries, terminal.sessionId);
   useLayoutEffect(() => { if (caret.current !== null) { input.current?.setSelectionRange(caret.current, caret.current); caret.current = null; } });
   useEffect(() => { if (draft.startsWith('/') || !entries.length) setRequested(true); }, [draft, entries.length]);
   // Capture composer ownership before disabling it; another card's focus must stay where it is.
-  if (hasChoice && !wasChoice.current) restoreComposer.current = document.activeElement === input.current;
+  if (hasChoice && !wasChoice.current) restoreComposer.current = document.activeElement === input.current || document.activeElement?.closest('.reading-cli-panel')?.getAttribute('data-terminal-id') === terminal.id || (cli.busy && autoFocus && document.activeElement === document.body);
   useLayoutEffect(() => {
     setChoiceVisible(terminal.id, hasChoice);
     if (hasChoice) {
-      if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
       if (restoreComposer.current && (!wasChoice.current || document.activeElement === document.body)) (choiceHost.current?.firstElementChild as HTMLElement | null)?.focus();
     } else if (wasChoice.current) {
       if (restoreComposer.current && document.activeElement === document.body) input.current?.focus();
@@ -115,7 +120,6 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     mounted.current = true;
     return () => {
       mounted.current = false; setChoiceVisible(terminal.id, false);
-      if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
     };
   }, [terminal.id]);
   useEffect(() => {
@@ -133,7 +137,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     const query = draft.slice(1).toLowerCase(), name = (command: AgentCommand) => command.name.slice(1).toLowerCase();
     return commands.filter(command => name(command).includes(query)).sort((a, b) => Number(!name(a).startsWith(query)) - Number(!name(b).startsWith(query)));
   }, [commands, draft]);
-  const palette = !hasChoice && !dismissed && /^\/[^\s]*$/.test(draft), selected = matches[selection];
+  const palette = !inputBlocked && !dismissed && /^\/[^\s]*$/.test(draft), selected = matches[selection];
   const listId = `reading-commands-${terminal.id}`, optionId = (index: number) => `${listId}-${index}`;
   useEffect(() => { setSelection(0); }, [draft, commands]);
   useEffect(() => { if (palette) document.getElementById(optionId(selection))?.scrollIntoView({ block: 'nearest' }); }, [palette, selection]);
@@ -141,7 +145,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const complete = (command: AgentCommand) => {
     caret.current = command.name.length + 1; edit(command.name + ' '); input.current?.focus();
   };
-  const mentions = useMentions({ projectId, draft, input, disabled: /^\/[^\s]*$/.test(draft), edit, onError });
+  const mentions = useMentions({ projectId, draft, input, disabled: inputBlocked || /^\/[^\s]*$/.test(draft), edit, onError });
   useEffect(() => {
     let active = true; setEntries([]);
     void window.projectGrid.terminalConversation(terminal.id).then(result => { if (active && result.ok) setEntries(result.value); });
@@ -159,38 +163,24 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   useEffect(() => {
     if (!autoFocus) return;
     if (choiceVisible.current) { restoreComposer.current = true; (choiceHost.current?.firstElementChild as HTMLElement | null)?.focus(); }
-    else input.current?.focus();
+    else if (!cli.busy) input.current?.focus();
   }, [terminal.id, autoFocus]);
   const working = terminal.codexActive && terminal.codexActivity === 'working';
   const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
-  const grouped = useMemo(() => blocks(entries), [entries]);
-  const queueTerminalHandoff = (immediate = false) => {
-    if (handoff.current !== null) clearTimeout(handoff.current);
-    const showTerminal = () => {
-      handoff.current = null;
-      if (!mounted.current || choiceVisible.current) return;
-      onShowTerminal();
-      requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(`[data-terminal-id="${terminal.id}"] .xterm-helper-textarea`)?.focus());
-    };
-    if (immediate) showTerminal();
-    else handoff.current = setTimeout(showTerminal, READING_HANDOFF_DELAY);
-  };
+  const grouped = useMemo(() => blocks(cli.entries), [cli.entries]);
   // Footer actions preserve the prompt and attached images waiting in the composer.
   const openModel = async () => {
-    if (choiceVisible.current || !terminal.sessionId) return;
-    if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
+    if (inputBlocked || !terminal.sessionId) return;
     input.current?.focus();
     window.projectGrid.writeTerminal(terminal.id, '/model');
     await new Promise(resolve => setTimeout(resolve, 150));
     if (!mounted.current || choiceVisible.current) return;
-    window.projectGrid.writeTerminal(terminal.id, '\r'); queueTerminalHandoff();
+    cli.begin('/model'); window.projectGrid.writeTerminal(terminal.id, '\r');
   };
   // The CLI recognises slash commands and shell mode from typed keys, not bracketed paste.
   const send = async (text = draft.trim()) => {
-    if (choiceVisible.current || (!text && !images) || !terminal.sessionId) return;
-    if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
+    if (inputBlocked || (!text && !images) || !terminal.sessionId) return;
     const typed = /^[\/!]/.test(text) && !/[\r\n]/.test(text);
-    const available = typed && text.startsWith('/') ? await (commandLoad.current || window.projectGrid.terminalCommands(terminal.id).then(result => result.ok ? result.value : [])) : commands;
     if (!mounted.current || choiceVisible.current) return;
     if (text) {
       if (typed) window.projectGrid.writeTerminal(terminal.id, text);
@@ -203,22 +193,20 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     edit(''); setImages(0); toBottom();
     if (text) await new Promise(resolve => setTimeout(resolve, typed ? 150 : 400));
     if (!mounted.current || choiceVisible.current) return;
+    if (typed) cli.begin(text);
     window.projectGrid.writeTerminal(terminal.id, '\r');
-    if (typed && (text.startsWith('!') || available.find(command => command.name.toLowerCase() === text.split(/\s/)[0].toLowerCase())?.view !== 'reading')) {
-      queueTerminalHandoff(text.startsWith('!'));
-    }
   };
   const sendRef = useRef(send); sendRef.current = send;
   // Dictation into this terminal lands here while the reading view shows: the words appear at the cursor as
   // soon as they are recognised, and Enter (or the shortcut again) sends the whole message.
   useEffect(() => dictateInto(terminal.id, (text, submit) => {
-    if (choiceVisible.current) return;
+    if (choiceVisible.current || cli.busy) return;
     const node = input.current, value = node?.value ?? '', here = !!node && document.activeElement === node;
     const at = here ? node.selectionStart : value.length, end = here ? node.selectionEnd : value.length;
     const next = value.slice(0, at) + text + value.slice(end);
     if (submit) { void sendRef.current(next.trim()); return; }
     caret.current = at + text.length; edit(next); node?.focus();
-  }), [terminal.id]);
+  }), [terminal.id, cli.busy]);
   // An image pasted here goes to the agent the way it takes one in its own input: it reads the clipboard on its
   // paste key (Ctrl+V in Codex, Alt+V in Claude Code on Windows) and attaches the image to the next message.
   const pasteImage = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -259,9 +247,11 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
   };
   let body: ReactNode;
-  if (!entries.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={screen} commands={commands} complete={complete} disabled={hasChoice} />;
+  if (!cli.entries.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={screen} commands={commands} complete={complete} disabled={inputBlocked} />;
   else body = grouped.map((block, index) => block.kind === 'tools'
     ? <ToolGroup key={block.id} entries={block.entries} live={index === grouped.length - 1} />
+    : block.entry.cliOutput
+      ? <ReadingCommandOutput key={block.entry.id} rows={block.entry.cliOutput} />
     : block.entry.role === 'user'
       ? <div key={block.entry.id} className="reading-user"><span>{t('你')}</span><p>{block.entry.text}</p></div>
       : <div key={block.entry.id} className="reading-assistant"><Markdown text={block.entry.text || ''} /></div>);
@@ -283,8 +273,8 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
         {terminal.needsInput !== null ? <span>{t('等待你确认：{message}', { message: terminal.needsInput })}</span> : working ? <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })}</span></> : <span>{terminal.codexActive ? terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令') : t('终端就绪')}</span>}
       </div>
       <div className="reading-status-chips">
-        {(screen.status.model || screen.banner?.model || screen.status.effort || screen.banner?.effort) && <button type="button" className="reading-status-chip" disabled={hasChoice} title={t('切换模型')} onClick={() => void openModel()}>{[screen.status.model ?? screen.banner?.model, screen.status.effort ?? screen.banner?.effort].filter(Boolean).join(' · ')}</button>}
-        {terminal.agent === 'claude' && screen.status.mode && <button type="button" className="reading-status-chip" disabled={hasChoice} title={t('Shift+Tab 切换模式')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b[Z')}>{screen.status.mode}</button>}
+        {(screen.status.model || screen.banner?.model || screen.status.effort || screen.banner?.effort) && <button type="button" className="reading-status-chip" disabled={inputBlocked} title={t('切换模型')} onClick={() => void openModel()}>{[screen.status.model ?? screen.banner?.model, screen.status.effort ?? screen.banner?.effort].filter(Boolean).join(' · ')}</button>}
+        {terminal.agent === 'claude' && screen.status.mode && <button type="button" className="reading-status-chip" disabled={inputBlocked} title={t('Shift+Tab 切换模式')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b[Z')}>{screen.status.mode}</button>}
         {screen.status.context && <span className="reading-status-chip" title={screen.status.context}>{screen.status.context}</span>}
         {screen.status.notes.length > 0 && <span className="reading-status-chip is-muted" title={screen.status.notes.join(' · ')}>{screen.status.notes.join(' · ')}</span>}
       </div>
@@ -293,15 +283,16 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     {screen.choice && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}><ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} /></div>}
+    {!screen.choice && cli.panel && <div className="reading-choice-host"><ReadingCliPanel command={cli.panel.command} rows={cli.panel.rows} terminalId={terminal.id} onShowTerminal={onShowTerminal} /></div>}
     <div className="reading-composer">
       {palette && <div className="dropdown reading-commands" id={listId} role="listbox" aria-label={t('命令')}>{matches.map((command, index) => <div key={command.name} id={optionId(index)} role="option" aria-selected={selection === index} className="reading-command" onMouseDown={event => event.preventDefault()} onClick={() => complete(command)}>
         <code>{command.name}</code><span>{command.source === 'builtin' ? t(command.description) : command.description}</span>{command.source !== 'builtin' && <small>{command.source === 'project' ? t('项目') : command.source === 'user' ? t('用户') : t('技能')}</small>}
       </div>)}</div>}
       <MentionPalette mentions={mentions} />
-      <textarea ref={input} rows={1} disabled={hasChoice} onPaste={pasteImage} onSelect={mentions.trackCaret} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette || mentions.open} aria-controls={palette ? listId : mentions.open ? mentions.listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : mentions.open && mentions.files[mentions.selection] ? mentions.optionId(mentions.selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，@ 提及文件，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
+      <textarea ref={input} rows={1} disabled={inputBlocked} onPaste={pasteImage} onSelect={mentions.trackCaret} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette || mentions.open} aria-controls={palette ? listId : mentions.open ? mentions.listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : mentions.open && mentions.files[mentions.selection] ? mentions.optionId(mentions.selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，@ 提及文件，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
         onFocus={() => window.projectGrid.terminalFocus(terminal.id, false)} />
-      {working && <button type="button" className="icon-button" disabled={hasChoice} title={t('中断（Esc）')} aria-label={t('中断（Esc）')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b')}><Stop size={15} weight="fill" /></button>}
-      <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={hasChoice || (!draft.trim() && !images) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
+      {working && <button type="button" className="icon-button" disabled={inputBlocked} title={t('中断（Esc）')} aria-label={t('中断（Esc）')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b')}><Stop size={15} weight="fill" /></button>}
+      <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={inputBlocked || (!draft.trim() && !images) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
     </div>
   </div>;
 }
