@@ -18,15 +18,22 @@ export function countNewEntries(previous: ReadonlySet<string>, entries: readonly
   return entries.filter(entry => !previous.has(entry.id)).length;
 }
 
+// Explicit 'instant' also overrides a stylesheet's scroll-behavior: smooth.
+export function scrollToLatest(node: HTMLElement, behavior: ScrollBehavior = 'instant') {
+  node.scrollTo({ top: node.scrollHeight, behavior });
+}
+
 export function useStickToBottom(container: RefObject<HTMLElement | null>, content: RefObject<HTMLElement | null>, entries: readonly { id: string }[], conversation: unknown) {
   const [state, setState] = useState<FollowState>({ stuck: true, unseen: 0 });
+  const [readyFor, setReadyFor] = useState<unknown>(null);
+  const owner = useRef(conversation);
   const current = useRef(state), seen = useRef(new Set<string>());
   const motion = useRef({ frame: 0, smooth: false, userUntil: 0, dragging: false, touchY: null as number | null, previous: null as ScrollMetrics | null });
   const update = useCallback((next: FollowState) => {
     if (next.stuck === current.current.stuck && next.unseen === current.current.unseen) return;
     current.current = next; setState(next);
   }, []);
-  const pin = useCallback((behavior: ScrollBehavior = 'auto') => {
+  const pin = useCallback((behavior: ScrollBehavior = 'instant') => {
     const node = container.current;
     if (!node || !current.current.stuck) return;
     const scroll = motion.current;
@@ -34,18 +41,25 @@ export function useStickToBottom(container: RefObject<HTMLElement | null>, conte
     if (scroll.frame) cancelAnimationFrame(scroll.frame);
     scroll.frame = requestAnimationFrame(() => { scroll.frame = 0; });
     // Keep smooth jumps protected for their whole animation, including intermediate scroll events.
-    if (behavior === 'smooth' || scroll.smooth) {
-      scroll.smooth = true;
-      node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
-    } else node.scrollTop = node.scrollHeight;
+    scroll.smooth = behavior === 'smooth';
+    scrollToLatest(node, behavior);
     scroll.previous = metrics(node);
   }, [container]);
-  const toBottom = useCallback(() => { update({ stuck: true, unseen: 0 }); pin('smooth'); }, [pin, update]);
+  const toBottom = useCallback((behavior: ScrollBehavior = 'instant') => { update({ stuck: true, unseen: 0 }); pin(behavior); }, [pin, update]);
+  const holdPosition = useCallback(() => {
+    const scroll = motion.current, node = container.current;
+    if (scroll.smooth && node) node.scrollTo({ top: node.scrollTop, behavior: 'instant' });
+    scroll.smooth = false;
+    if (scroll.frame) cancelAnimationFrame(scroll.frame);
+    scroll.frame = requestAnimationFrame(() => { scroll.frame = 0; });
+    update({ stuck: false, unseen: current.current.unseen });
+  }, [container, update]);
 
   useLayoutEffect(() => {
     const node = container.current, body = content.current;
     if (!node || !body) return;
     const scroll = motion.current;
+    owner.current = conversation; seen.current = new Set(); setReadyFor(null);
     update({ stuck: true, unseen: 0 });
     scroll.previous = metrics(node);
     pin();
@@ -129,7 +143,9 @@ export function useStickToBottom(container: RefObject<HTMLElement | null>, conte
     seen.current = new Set(entries.map(entry => entry.id));
     if (!current.current.stuck && arrived) update({ stuck: false, unseen: current.current.unseen + arrived });
     pin();
-  }, [entries, pin, update]);
+    if (entries.length) setReadyFor(() => conversation);
+    else setReadyFor(null);
+  }, [entries, conversation, pin, update]);
 
-  return { ...state, toBottom };
+  return { ...(owner.current === conversation ? state : { stuck: true, unseen: 0 }), ready: readyFor === conversation, toBottom, holdPosition };
 }

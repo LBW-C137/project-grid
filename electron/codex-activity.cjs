@@ -27,6 +27,7 @@ class CodexActivityReader {
           this.filename = item.filename;
           this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false;
           this.snapshot = { threadId: meta.id, turnId: null, state: 'unknown', updatedAt: 0 };
+          this.historyPending = true; this.options.onHistory?.(false);
           return;
         }
       } catch {}
@@ -56,7 +57,10 @@ class CodexActivityReader {
     const file = await fs.open(this.filename, 'r');
     try {
       const stat = await file.stat();
-      if (stat.size < this.offset) { this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; this.snapshot = { ...this.snapshot, turnId: null, state: 'unknown', updatedAt: 0 }; }
+      if (stat.size < this.offset) {
+        this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; this.snapshot = { ...this.snapshot, turnId: null, state: 'unknown', updatedAt: 0 };
+        this.historyPending = true; this.options.onHistory?.(false);
+      }
       // Bound each poll; never rescan a growing transcript from its beginning.
       const end = Math.min(stat.size, this.offset + 4 * 1024 * 1024);
       while (this.offset < end) {
@@ -73,6 +77,7 @@ class CodexActivityReader {
         }
         if (this.buffer.length > 1024 * 1024) { this.buffer = Buffer.alloc(0); this.skipping = true; }
       }
+      if (this.historyPending && this.offset >= stat.size) { this.historyPending = false; this.options.onHistory?.(true); }
       return this.offset >= stat.size ? { ...this.snapshot } : null;
     } finally { await file.close(); }
   }

@@ -78,3 +78,28 @@ test('monitor coalesces slow reads, deduplicates snapshots, and cancels late res
   assert.equal(changed, 1);
   await monitor.poll(); assert.equal(reads, 3);
 });
+
+test('a multi-poll Codex history publishes only its final conversation snapshot', async t => {
+  const { ConversationLog, codexConversation } = require('../electron/conversation.cjs');
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-reading-codex-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  await fs.mkdir(path.join(home, 'sessions'));
+  const thread = randomUUID(), file = path.join(home, 'sessions', `rollout-${thread}.jsonl`), published = [];
+  const log = new ConversationLog(change => { if (!log.loading) published.push(change); });
+  const message = (id, text) => line({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'item_completed', item: { type: 'AgentMessage', id, content: [{ text }] } } });
+  await fs.writeFile(file, line({ type: 'session_meta', payload: { id: thread, cwd: home, source: 'cli' } }) + Array.from({ length: 100 }, (_, index) => message(String(index), 'x'.repeat(60000))).join(''));
+  const reader = new CodexActivityReader(home, home, Date.now(), {
+    threadId: () => thread,
+    onHistory: ready => ready ? log.endHistory() : log.beginHistory(),
+    onRecord: record => codexConversation(log, record, home),
+  });
+  assert.equal(await reader.read(), null);
+  assert.ok(log.list.length > 0);
+  assert.deepEqual(log.snapshot(), []); assert.deepEqual(published, []);
+  await reader.read();
+  assert.equal(log.snapshot().length, 100);
+  assert.deepEqual(published, [{ reset: true }]);
+  await fs.appendFile(file, message('live', 'new answer')); await reader.read();
+  assert.equal(published.length, 2); assert.equal(published[1].entry.id, 'a:live');
+  await reader.read(); assert.equal(published.length, 2);
+});

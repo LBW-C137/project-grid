@@ -16,6 +16,10 @@ const brief = action => ({ kind: action.kind, tool: action.tool, target: action.
 // Entries keep their order; a later record about the same entry (a tool that finished) replaces it.
 class ConversationLog {
   constructor(changed = () => {}, limit = 400) { this.changed = changed; this.limit = limit; this.list = []; }
+  // Records still feed activity tracking during replay, but reading snapshots wait for the file tail.
+  beginHistory() { this.loading = true; }
+  endHistory() { if (!this.loading) return; this.loading = false; this.changed({ reset: true }); }
+  snapshot() { return this.loading ? [] : this.list; }
   reset() { if (!this.list.length) return; this.list = []; this.changed({ reset: true }); }
   put(entry) {
     const index = this.list.findIndex(item => item.id === entry.id);
