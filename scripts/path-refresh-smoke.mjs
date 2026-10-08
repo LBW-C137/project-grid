@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ import { _electron as electron } from 'playwright';
 import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), exec = promisify(execFile), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `path-refresh-${Date.now()}`), profile = path.join(output, 'profile'), bin = path.join(output, 'inherited-bin'), home = path.join(output, 'codex-home');
+const output = await testRun('path-refresh'), profile = path.join(output, 'profile'), bin = path.join(output, 'inherited-bin'), home = path.join(output, 'codex-home');
 const project = { id: randomUUID(), name: '环境刷新', path: path.join(output, 'project'), restore: { terminal: false, codex: false } };
 for (const folder of [profile, bin, home, project.path]) await fs.mkdir(folder, { recursive: true });
 await fs.writeFile(path.join(bin, 'project-grid-extra.cmd'), '@echo off\r\necho EXTRA_PATH_OK\r\n');

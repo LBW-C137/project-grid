@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,7 @@ import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url), exec = promisify(execFile);
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `editor-terminals-${Date.now()}`);
+const output = await testRun('editor-terminals');
 const dataDir = path.join(output, 'profile'), codexHome = path.join(output, 'codex-home'), bin = path.join(output, 'bin');
 const project = { id: randomUUID(), name: '编辑与分屏验证', path: path.join(output, 'project'), kind: 'local', restore: { terminal: false, codex: false } };
 const ssh = await createSSHFixture({ nativeWorker: false });

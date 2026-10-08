@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ import { waitFor, terminalsSettled } from './wait.mjs';
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
 const ssh = await createSSHFixture({ nativeWorker: false });
-const output = path.join(root, '.test-output', `navigation-${Date.now()}`), profile = path.join(output, 'profile');
+const output = await testRun('navigation'), profile = path.join(output, 'profile');
 const local = { id: randomUUID(), name: '本地项目', path: path.join(output, 'local'), restore: { terminal: true, codex: false } };
 const remote = { id: randomUUID(), name: '远程项目', kind: 'ssh', path: '/srv/fixture', ssh: { host: 'fixture', configFile: ssh.configFile }, restore: { terminal: false, codex: false } };
 const legacy = { id: randomUUID(), name: '旧版完成项目', path: path.join(output, 'legacy'), done: true, restore: { terminal: true, codex: true }, terminals: [{ id: randomUUID(), restore: { terminal: true, codex: true } }] };

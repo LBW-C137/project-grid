@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,7 @@ import { waitFor, terminalsSettled } from './wait.mjs';
 const require = createRequire(import.meta.url);
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `desktop-${Date.now()}`);
+const output = await testRun('desktop');
 const dataDir = path.join(output, 'user-data');
 await fs.mkdir(dataDir, { recursive: true });
 const names = ['界面开发', '服务接口', '验证任务', "中文 空格 [a] 'b' $c", '数据处理', '工具项目'];

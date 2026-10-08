@@ -8,6 +8,7 @@
 //   --profile-idle     the window's JavaScript time by function while the terminals stream
 //   --profile, --trace where the time goes while a project opens and closes (JavaScript; rendering by kind)
 //   --gap              a trace of the first open after launch, every event of 20 ms or more
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +18,7 @@ import { _electron as electron } from 'playwright';
 import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `perf-${Date.now()}`), dataDir = path.join(output, 'profile');
+const output = await testRun('perf'), dataDir = path.join(output, 'profile');
 const surface = process.argv.find(arg => arg.startsWith('--surface='))?.split('=')[1] || 'glass';
 const projects = ['商城前端', '支付服务', '数据看板', '文档站点', '移动端 App', '运维脚本'].map(name => ({ id: randomUUID(), name, path: path.join(output, 'p', name), kind: 'local', restore: { terminal: false, codex: false } }));
 for (const project of projects) await fs.mkdir(project.path, { recursive: true });

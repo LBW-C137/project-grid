@@ -1,5 +1,6 @@
 // Command Prompt terminals: the shell chosen in settings starts, reports its prompt and directory,
 // runs codex through the same wrapper as PowerShell, and restores an interrupted session with "继续".
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +15,7 @@ import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url);
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `cmd-${Date.now()}`);
+const output = await testRun('cmd');
 const dataDir = path.join(output, 'profile'), codexHome = path.join(output, 'codex-home'), bin = path.join(output, 'bin');
 const project = { id: randomUUID(), name: '命令提示符项目', path: path.join(output, '命令提示符 项目'), kind: 'local', seenEvents: [] };
 const sessionId = randomUUID();

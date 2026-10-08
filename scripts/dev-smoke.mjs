@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import { createServer } from 'vite';
 import { _electron } from 'playwright';
 import { createRequire } from 'node:module';
@@ -8,7 +9,7 @@ const server = await createServer();
 await server.listen();
 let app;
 try {
-  const dataDir = path.resolve(`.test-output/dev-check-${Date.now()}`);
+  const dataDir = await testRun('dev-check');
   await fs.mkdir(dataDir, { recursive: true });
   const env = { ...process.env, PROJECT_GRID_DEV_URL: 'http://127.0.0.1:5178', PROJECT_GRID_DATA_DIR: dataDir };
   delete env.ELECTRON_RUN_AS_NODE;

@@ -1,4 +1,5 @@
 // Restore mixed agent sessions while the window answers PowerShell's cursor-position query late.
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,7 @@ if (process.platform !== 'win32') {
 const require = createRequire(import.meta.url);
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `restore-slow-${Date.now()}`);
+const output = await testRun('restore-slow');
 const bin = path.join(output, 'bin');
 const packaged = process.argv.includes('--packaged');
 await fs.mkdir(bin, { recursive: true });

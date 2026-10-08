@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url), exec = promisify(execFile);
 const { fileClipboard } = require('../electron/file-clipboard.cjs');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `workspace-${Date.now()}`), dataDir = path.join(output, 'profile');
+const output = await testRun('workspace'), dataDir = path.join(output, 'profile');
 const project = { id: randomUUID(), name: '文件与语音', path: path.join(output, 'project'), kind: 'local', restore: { terminal: false, codex: false } };
 await fs.mkdir(project.path, { recursive: true }); await fs.mkdir(dataDir); await fs.mkdir(path.join(output, 'external'));
 await fs.writeFile(path.join(project.path, 'source.txt'), 'FILE_CLIPBOARD_CONTENT');

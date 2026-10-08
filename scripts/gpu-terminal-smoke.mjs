@@ -1,6 +1,7 @@
 // The GPU terminal renderer, as a user meets it with the default settings: the terminal draws on a canvas,
 // typed commands run, text can be selected and copied without the card expanding, and switching to the
 // compatible renderer and back keeps the session. Uses its own profile; never touches a real workspace.
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ import { _electron as electron } from 'playwright';
 import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `gpu-terminal-${Date.now()}`), dataDir = path.join(output, 'profile');
+const output = await testRun('gpu-terminal'), dataDir = path.join(output, 'profile');
 const project = { id: randomUUID(), name: 'GPU terminal', path: path.join(output, 'project'), kind: 'local', restore: { terminal: false, codex: false } };
 await fs.mkdir(project.path, { recursive: true }); await fs.mkdir(dataDir, { recursive: true });
 await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { notifications: false, sound: false, announce: false, closeToTray: false, restoreSessions: false, guideVersion: '9.9.9' } }));

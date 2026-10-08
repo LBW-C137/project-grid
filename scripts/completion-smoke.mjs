@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ import { _electron as electron } from 'playwright';
 import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url), exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `completion-${Date.now()}`), dataDir = path.join(output, 'profile');
+const output = await testRun('completion'), dataDir = path.join(output, 'profile');
 const home = path.join(output, 'codex-home'), bin = path.join(output, 'bin');
 const project = { id: randomUUID(), name: 'Parent task status', path: path.join(output, 'project'), kind: 'local', restore: { terminal: false, codex: false } };
 for (const directory of [dataDir, project.path, bin, path.join(home, 'sessions')]) await fs.mkdir(directory, { recursive: true });

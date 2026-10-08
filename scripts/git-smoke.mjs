@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -12,7 +13,7 @@ import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url), exec = promisify(execFile), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
 const { gitEnvironment } = require('../electron/project-git.cjs');
-const output = path.join(root, '.test-output', `git-${Date.now()}`), profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
+const output = await testRun('git'), profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
 const ssh = await createSSHFixture({ nativeWorker: false });
 const project = { id: randomUUID(), name: 'Git 工作区', path: path.join(output, 'project'), restore: { terminal: false, codex: false } };
 const plain = { id: randomUUID(), name: '普通文件夹', path: ssh.home, restore: { terminal: false, codex: false } };

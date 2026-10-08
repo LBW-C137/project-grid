@@ -3,6 +3,7 @@
 // buttons and copies terminal text with Ctrl+Shift+C. Runs with an isolated profile and its own HOME, so the
 // user's start-up files and agents are never touched.
 // Usage: node scripts/linux-smoke.mjs [--packaged | --appimage <file>] [--shell zsh]
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +17,7 @@ const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shellName = process.argv.includes('--shell') ? process.argv[process.argv.indexOf('--shell') + 1] : 'bash';
 assert.ok(['bash', 'zsh'].includes(shellName), 'the shell is bash or zsh');
-const output = path.join(root, '.test-output', `linux-${shellName}-${Date.now()}`);
+const output = await testRun(`linux-${shellName}`);
 const dataDir = path.join(output, 'user-data'), home = path.join(output, 'home'), bin = path.join(home, 'bin');
 const project = { id: randomUUID(), name: '中文 项目', path: path.join(output, 'projects', '中文 项目'), unread: 0, seenEvents: [], lastCompletedAt: null };
 for (const folder of [dataDir, bin, project.path]) await fs.mkdir(folder, { recursive: true });

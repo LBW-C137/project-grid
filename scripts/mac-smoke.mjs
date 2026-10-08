@@ -2,6 +2,7 @@
 // from start to finish (with a stand-in codex that calls the real notify command), keeps macOS window buttons
 // and copies terminal text with ⌘C. Runs with an isolated profile and its own HOME, so the user's start-up
 // files and agents are never touched. Usage: node scripts/mac-smoke.mjs [--packaged]
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +14,7 @@ import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `mac-${Date.now()}`);
+const output = await testRun('mac');
 const dataDir = path.join(output, 'user-data'), home = path.join(output, 'home'), bin = path.join(home, 'bin');
 const project = { id: randomUUID(), name: '中文 项目', path: path.join(output, 'projects', '中文 项目'), unread: 0, seenEvents: [], lastCompletedAt: null };
 for (const folder of [dataDir, bin, project.path]) await fs.mkdir(folder, { recursive: true });

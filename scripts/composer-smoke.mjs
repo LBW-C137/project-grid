@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
@@ -9,7 +10,7 @@ import { _electron as electron } from 'playwright';
 import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `composer-${Date.now()}`), profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
+const output = await testRun('composer'), profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
 const projects = ['Codex 输入', '其他项目'].map((name, index) => ({ id: randomUUID(), name, path: path.join(output, `project-${index}`), restore: { terminal: false, codex: false } }));
 for (const dir of [profile, home, ...projects.map(project => project.path)]) await fs.mkdir(dir, { recursive: true });
 const requests = [], errors = [], samples = [];
