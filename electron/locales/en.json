@@ -896,5 +896,6 @@
   "等待你确认：{message}": "Waiting for your confirmation: {message}",
   "给 {agent} 发消息，/ 查看命令，Enter 发送，Shift+Enter 换行": "Message {agent}, / for commands, Enter to send, Shift+Enter for a new line",
   "从桌面图标启动时，本地终端和编码助手会自动使用这台机器的系统代理，无需在每个终端里手动设置。": "When launched from a desktop icon, local terminals and coding assistants automatically use this computer's system proxy, without setting it in each terminal.",
-  "已有的代理配置会保留；没有系统代理时继续直连。代理读取超时也不会一直阻塞启动。": "Existing proxy settings are preserved; computers without a system proxy keep connecting directly. A proxy lookup timeout does not hold up startup indefinitely."
+  "已有的代理配置会保留；没有系统代理时继续直连。代理读取超时也不会一直阻塞启动。": "Existing proxy settings are preserved; computers without a system proxy keep connecting directly. A proxy lookup timeout does not hold up startup indefinitely.",
+  "{position} / {total}": "{position} / {total}"
 }

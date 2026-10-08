@@ -7,6 +7,7 @@ import {
 } from '@phosphor-icons/react';
 import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SpeechState, SSHAuthPrompt, Workspace } from './types';
 import { ProjectTerminals } from './ProjectTerminals';
+import { ProjectSwitchHud } from './ProjectSwitchHud';
 import { ProjectExplorer } from './ProjectExplorer';
 import { ActivityPane } from './ActivityPane';
 import { readingShown, setReading, useTerminalChoice } from './reading-mode';
@@ -46,6 +47,17 @@ function focusTerminalWhenReady(id: string, tries = 60) {
   if (input) input.focus(); else if (tries > 0) requestAnimationFrame(() => focusTerminalWhenReady(id, tries - 1));
 }
 
+// A reading view hides xterm's input. Check each focus attempt before falling back.
+function focusOverviewProject(id: string) {
+  const panel = document.querySelector<HTMLElement>(`[data-project-id="${CSS.escape(id)}"]`);
+  if (!panel) return;
+  for (const target of [...panel.querySelectorAll<HTMLElement>('.reading-composer textarea'), ...panel.querySelectorAll<HTMLElement>('.xterm-helper-textarea'), panel]) {
+    target.focus({ preventScroll: true });
+    if (document.activeElement === target) break;
+  }
+  panel.scrollIntoView({ block: 'nearest' });
+}
+
 function relativeTime(timestamp: number | null, now: number) {
   if (!timestamp) return '';
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
@@ -73,8 +85,9 @@ function isRoundComplete(project: Project) {
   return project.codexActive && project.codexActivity === 'complete' && !project.unread && !project.error;
 }
 
-function ProjectPanel({ project, index, hidden, focused, fontSize, now, activityOpen, onToggleActivity, onFocus, onAction, onError, onOpenLink, onRevealProject, dragging, dropTarget }: {
+function ProjectPanel({ project, index, hidden, focused, navTarget, fontSize, now, activityOpen, onToggleActivity, onFocus, onAction, onError, onOpenLink, onRevealProject, dragging, dropTarget }: {
   project: Project; index: number; hidden: boolean; focused: boolean; fontSize: number; now: number;
+  navTarget?: number;
   // The activity pane (what the agent is doing, step by step) shows beside the terminal of an expanded project.
   activityOpen: boolean; onToggleActivity: () => void;
   onFocus: (id: string) => void;
@@ -112,12 +125,14 @@ function ProjectPanel({ project, index, hidden, focused, fontSize, now, activity
   // Reading view or raw terminal, for the terminal in use.
   const readingOn = readingShown(currentTerminal, useTerminalChoice());
   return <article
-    className={`project-panel ${showActivity ? 'has-activity' : ''} ${project.unread && !working ? 'has-unread' : ''} ${freshCompletion ? 'attention-active' : ''} ${working ? 'is-working' : ''} ${roundComplete ? 'round-complete' : ''} ${focused ? 'is-focused' : ''} ${project.error ? 'has-error' : ''} ${dragging ? 'drag-source' : ''} ${dropTarget ? 'drop-target' : ''}`}
+    className={`project-panel ${showActivity ? 'has-activity' : ''} ${project.unread && !working ? 'has-unread' : ''} ${freshCompletion ? 'attention-active' : ''} ${working ? 'is-working' : ''} ${roundComplete ? 'round-complete' : ''} ${focused ? 'is-focused' : ''} ${navTarget ? 'is-nav-target' : ''} ${project.error ? 'has-error' : ''} ${dragging ? 'drag-source' : ''} ${dropTarget ? 'drop-target' : ''}`}
     data-project-id={project.id} data-status={working ? 'working' : project.unread ? 'unread' : project.status}
+    tabIndex={-1}
     style={{ display: hidden ? 'none' : undefined }}
   >
     <span key={signalKey} className="panel-signal" aria-hidden="true" />
     <span key={`glow:${signalKey}`} className="panel-glow" aria-hidden="true" />
+    {navTarget && <span key={`nav:${navTarget}`} className="panel-nav-ring" aria-hidden="true" />}
     <header className="panel-header" title={focused ? undefined : t('点击标题栏放大，按住标题栏拖动排序')} onClick={event => {
       if (!focused && event.button === 0 && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !(event.target as Element).closest('button, [role="menu"]')) onFocus(project.id);
     }}>
@@ -355,9 +370,19 @@ export function App() {
   }, [perform, showProjectLocation]);
 
   const settingsRef = useRef<Settings | null>(null); settingsRef.current = workspace?.settings || null;
-  // Project order for next/previous (set each render), and the card whose terminal was used last.
+  // Project order for next/previous (set each render), and the current card even if focus fails.
   const navigation = useRef<string[]>([]);
   const lastProject = useRef<string | null>(null);
+  const [projectSwitch, setProjectSwitch] = useState<{ id: string; sequence: number } | null>(null);
+  const switchSequence = useRef(0);
+  const switchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showProjectSwitch = useCallback((id: string) => {
+    lastProject.current = id;
+    setProjectSwitch({ id, sequence: ++switchSequence.current });
+    if (switchTimer.current) clearTimeout(switchTimer.current);
+    switchTimer.current = setTimeout(() => { setProjectSwitch(null); switchTimer.current = null; }, 1200);
+  }, []);
+  useEffect(() => () => { if (switchTimer.current) clearTimeout(switchTimer.current); }, []);
   useEffect(() => {
     const remember = (event: FocusEvent) => { const id = (event.target as Element | null)?.closest?.<HTMLElement>('[data-project-id]')?.dataset.projectId; if (id) lastProject.current = id; };
     document.addEventListener('focusin', remember);
@@ -413,15 +438,21 @@ export function App() {
         if (!ids.length) return;
         const index = current ? ids.indexOf(current) : -1, forward = action === 'nextProject';
         const next = index < 0 ? ids[forward ? 0 : ids.length - 1] : ids[(index + (forward ? 1 : ids.length - 1)) % ids.length];
-        // Expanded: switch the expanded project. Overview: move to that card's terminal without expanding it.
-        if (focusedId) void focusProject(next);
-        else (document.querySelector<HTMLElement>(`[data-project-id="${CSS.escape(next)}"] .xterm-helper-textarea`) || document.querySelector<HTMLElement>(`[data-project-id="${CSS.escape(next)}"] .panel-name`))?.focus();
+        // Expanded: preserve the editor guard. Overview: focus the card without expanding it.
+        if (focusedId) void focusProject(next).then(accepted => {
+          if (!accepted) return;
+          showProjectSwitch(next);
+          requestAnimationFrame(() => {
+            if (lastProject.current === next) document.querySelector<HTMLElement>(`[data-project-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: 'nearest' });
+          });
+        });
+        else { focusOverviewProject(next); showProjectSwitch(next); }
       }
     };
-    const currentProject = () => focusedId || document.activeElement?.closest<HTMLElement>('[data-project-id]')?.dataset.projectId || lastProject.current;
+    const currentProject = () => focusedId || lastProject.current || document.activeElement?.closest<HTMLElement>('[data-project-id]')?.dataset.projectId;
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [focusedId, returnToGrid, focusProject, perform, reportError, workspace?.settings.explorerCollapsed]);
+  }, [focusedId, returnToGrid, focusProject, perform, reportError, showProjectSwitch, workspace?.settings.explorerCollapsed]);
 
   if (!api) return <div className="startup-message"><SquaresFour size={38} /><h1>Project Grid 是桌面应用</h1><p>请在项目目录运行 npm start，或双击打包后的应用。</p></div>;
   if (!workspace) return <div className="startup-message"><SquaresFour size={34} /><p>{error || t('正在打开工作区…')}</p></div>;
@@ -439,6 +470,8 @@ export function App() {
   const rows = Math.max(1, Math.ceil(visible.length / columns));
   const focus = projects.find(p => p.id === focusedId);
   navigation.current = (focusedId ? orderedProjects : orderedProjects.filter(project => visibleIds.has(project.id))).map(project => project.id);
+  const switchProject = projectSwitch && projectRecords.get(projectSwitch.id);
+  const switchPosition = projectSwitch ? navigation.current.indexOf(projectSwitch.id) + 1 : 0;
   const setPreference = (patch: Partial<Settings>) => { perform(api.settings(patch)); };
 
   return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''} ${fullScreen ? 'is-fullscreen' : ''} ${fullScreen && workspace.autoHideTitlebar ? 'titlebar-auto' : ''}`} style={{ '--liquid-backdrop': 'url("#project-grid-refraction") blur(6px) saturate(165%)' } as CSSProperties}>
@@ -469,6 +502,7 @@ export function App() {
         onExpandedChange={paths => setExpandedByProject(value => ({ ...value, [focus.id]: paths }))}
         onSelectFile={async path => { if (previewFile?.projectId === focus.id && previewFile.path === path && !previewFile.diff) return; if (await allowNavigation()) setPreviewFile({ projectId: focus.id, path }); }} onReturn={returnToGrid} />}
       <main className="main-workspace">
+        <ProjectSwitchHud target={projectSwitch && switchProject && switchPosition > 0 ? { name: switchProject.name, index: orderedProjects.indexOf(switchProject) + 1, position: switchPosition, total: navigation.current.length, sequence: projectSwitch.sequence } : null} />
         {agents && !agents.codex.installed && !agents.claude.installed && !agentsDismissed && <div className="workspace-warning agents-warning"><Info size={15} /><span>{t('未检测到 Codex 或 Claude Code。Project Grid 基于这两个命令行工具工作，安装其中一个后才能使用任务提醒和会话恢复。')}</span><button type="button" className="button secondary small" onClick={() => { setSettingsSection('agents'); setSettingsOpen(true); }}>{t('去安装')}</button><IconButton label={t('关闭提示')} onClick={() => setAgentsDismissed(true)}><X size={14} /></IconButton></div>}
         {workspace.warning && <div className="workspace-warning"><Info size={15} />{t(workspace.warning)}</div>}
         {focusedId && previewFile?.projectId === focusedId && previewFile.diff && <Suspense fallback={null}><GitDiffView key={`${focusedId}:${previewFile.path}:${previewFile.diff}`} projectId={focusedId} filePath={previewFile.path} mode={previewFile.diff} onClose={() => setPreviewFile(null)} onOpenFile={() => setPreviewFile({ projectId: focusedId, path: previewFile.path })} onError={reportError} onChanged={() => setChangeRevision(value => value + 1)} /></Suspense>}
@@ -485,6 +519,7 @@ export function App() {
             <div className={`project-grid ${reorder.drag ? 'is-reordering' : ''}`} onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture} style={{ '--columns': columns, '--rows': rows, display: !focusedId && !visible.length ? 'none' : undefined } as CSSProperties}>
               {orderedProjects.map((project, index) => <div key={project.id} className={`project-slot ${reorder.drag?.id === project.id ? 'drag-placeholder' : ''}`} data-project-slot={project.id} style={{ display: focusedId ? focusedId !== project.id ? 'none' : undefined : !visibleIds.has(project.id) ? 'none' : undefined }}><ProjectPanel project={project} index={index}
                 hidden={focusedId ? focusedId !== project.id : !visibleIds.has(project.id)} focused={focusedId === project.id && !previewFile}
+                navTarget={projectSwitch?.id === project.id ? projectSwitch.sequence : undefined}
                 fontSize={settings.fontSize} now={now} activityOpen={settings.activityPane} onToggleActivity={() => setPreference({ activityPane: !settings.activityPane })} onFocus={focusProject} onAction={perform} onError={reportError} onOpenLink={openTerminalLink} onRevealProject={revealProject}
                 dragging={reorder.drag?.id === project.id} /> </div>)}
               {reorder.drag && <div className="reorder-hint" role="status">{t('拖动项目排序 · 松开完成')}<span>{t('Esc 取消')}</span></div>}

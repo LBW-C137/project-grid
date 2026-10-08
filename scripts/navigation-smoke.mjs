@@ -80,6 +80,70 @@ try {
   await second.getByRole('button', { name: '启动终端', exact: true }).click();
   await waitFor(async () => (await state()).projects.find(project => project.id === remote.id).shellReady, 'real SSH transport ready');
   const sessionId = (await state()).projects.find(project => project.id === remote.id).sessionId;
+  // Cycle all four cards, including a live reading view whose hidden xterm cannot take focus.
+  for (const project of [legacy, closed]) {
+    await page.locator(`[data-project-id="${project.id}"]`).getByRole('button', { name: '启动终端', exact: true }).click();
+    await waitFor(async () => (await state()).projects.find(item => item.id === project.id).shellReady, 'navigation shell ready');
+  }
+  await page.evaluate(id => window.projectGrid.writeTerminal(id, "Send-ProjectGridEvent 'codex-started'; Start-Sleep 3600\r"), local.id);
+  await waitFor(async () => (await state()).projects.find(project => project.id === local.id).codexActive, 'navigation fake agent session');
+  await first.locator('.reading-composer textarea').waitFor();
+  const order = [legacy, closed, remote, local], hud = page.locator('.project-switch-hud');
+  assert.equal(await hud.getAttribute('aria-live'), 'polite');
+  const assertSwitch = async (project, overview = true, input = project === local ? '.reading-composer textarea' : '.xterm-helper-textarea') => {
+    const panel = page.locator(`[data-project-id="${project.id}"]`), position = order.indexOf(project) + 1;
+    await page.waitForFunction(({ id, overview, input }) => {
+      const panel = document.querySelector(`[data-project-id="${id}"]`);
+      return panel?.classList.contains('is-nav-target') && (!overview || (input ? document.activeElement?.matches(input) && panel.contains(document.activeElement) : document.activeElement === panel));
+    }, { id: project.id, overview, input });
+    assert.equal(await page.locator('.project-panel.is-nav-target').count(), 1);
+    assert.equal(await hud.locator('.project-switch-name').textContent(), project.name);
+    assert.equal(await hud.locator('.project-switch-index').textContent(), String(position).padStart(2, '0'));
+    assert.equal(await hud.locator('.project-switch-position').textContent(), `${position} / ${order.length}`);
+    assert.equal(await hud.locator('.project-switch-hud-content').isVisible(), true);
+    if (overview) assert.equal(await page.locator('.focus-mode').count(), 0, 'shortcut focus never expands a small card');
+    else assert.equal(await panel.isVisible(), true);
+  };
+  await second.locator('.xterm-helper-textarea').focus();
+  for (const project of [local, legacy, closed, remote]) { await page.keyboard.press('Control+Tab'); await assertSwitch(project); }
+  for (const project of [closed, legacy, local, remote]) { await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(project); }
+  await page.screenshot({ path: path.join(output, 'project-switch-overview.png') });
+  // If the composer refuses focus, the hidden xterm also fails and the card is the final fallback.
+  await first.locator('.reading-composer textarea').evaluate(node => { node.focus = () => {}; });
+  try { await page.keyboard.press('Control+Tab'); await assertSwitch(local, true, null); }
+  finally { await first.locator('.reading-composer textarea').evaluate(node => { delete node.focus; }); }
+  await page.keyboard.press('Control+Tab'); await assertSwitch(legacy);
+  await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(local);
+  await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(remote);
+  // Stopped cards fall back to the card itself. Even a failed card focus must advance the cursor.
+  const closedTerminal = (await state()).projects.find(project => project.id === closed.id).terminals[0].id;
+  assert.deepEqual(await page.evaluate(id => window.projectGrid.closeTerminal(id), closedTerminal), { ok: true, value: true });
+  await page.locator(`[data-project-id="${closed.id}"] .xterm-helper-textarea`).waitFor({ state: 'detached' });
+  await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(closed, true, null);
+  await second.locator('.xterm-helper-textarea').focus();
+  await page.evaluate(id => { document.querySelector(`[data-project-id="${id}"]`).focus = () => {}; }, closed.id);
+  try {
+    await page.keyboard.press('Control+Shift+Tab');
+    await assertSwitch(closed, false);
+    assert.equal(await second.locator('.xterm-helper-textarea').evaluate(node => document.activeElement === node), true);
+    await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(legacy);
+  } finally { await page.evaluate(id => { delete document.querySelector(`[data-project-id="${id}"]`).focus; }, closed.id); }
+  // Turning off motion leaves a static blue ring, and repeated presses renew the feedback timer.
+  const motion = await page.evaluate(() => document.documentElement.dataset.motion);
+  await page.evaluate(() => { document.documentElement.dataset.motion = 'off'; });
+  await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(local);
+  assert.equal(await first.locator('.panel-nav-ring').evaluate(node => getComputedStyle(node).animationName), 'none');
+  await page.waitForTimeout(700);
+  await page.keyboard.press('Control+Tab'); await assertSwitch(legacy);
+  await page.waitForTimeout(700);
+  assert.equal(await legacyPanel.evaluate(node => node.classList.contains('is-nav-target')), true, 'feedback timer restarts after each switch');
+  await page.waitForFunction(() => !document.querySelector('.project-panel.is-nav-target, .project-switch-hud-content'));
+  await page.evaluate(motion => { if (motion) document.documentElement.dataset.motion = motion; else delete document.documentElement.dataset.motion; }, motion);
+  await first.getByRole('button', { name: `全屏查看 ${local.name}`, exact: true }).click(); await settled(true);
+  await page.keyboard.press('Control+Tab'); await settled(true); await assertSwitch(legacy, false);
+  await page.keyboard.press('Control+Shift+Tab'); await settled(true); await assertSwitch(local, false);
+  await page.screenshot({ path: path.join(output, 'project-switch-expanded.png') });
+  await page.getByRole('button', { name: '返回总览', exact: true }).click(); await settled(false);
   await second.getByRole('button', { name: `${remote.name} 的更多操作`, exact: true }).click();
   await page.getByRole('menuitem', { name: '打开项目目录', exact: true }).click(); await settled(true);
   await page.getByRole('treeitem', { name: 'README.md', exact: true }).waitFor();
@@ -123,6 +187,6 @@ try {
   await page.keyboard.press('F11'); await waitFor(async () => await fullScreen() !== before, 'F11 toggles full screen');
   await page.keyboard.press('F11'); await waitFor(async () => await fullScreen() === before, 'F11 toggles full screen back');
   assert.deepEqual(errors, []);
-  console.log(`PASS: removed sidebar/manual-finish/VS Code actions, local folder/browser retained, SSH root/nested/symlink/Markdown directories stay internal and protect drafts. Screenshots: ${output}`);
+  console.log(`PASS: project shortcuts cycle reading/terminal/card focus with renewed ring and HUD in both views; removed sidebar/manual-finish/VS Code actions, local folder/browser retained, SSH root/nested/symlink/Markdown directories stay internal and protect drafts. Screenshots: ${output}`);
 } catch (error) { if (page) await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {}); throw error; }
 finally { if (app) await app.close(); await ssh.close(); }
