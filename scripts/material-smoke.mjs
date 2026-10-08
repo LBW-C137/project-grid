@@ -123,7 +123,10 @@ try {
     await waitFor(async () => (await readCells(first.locator('.xterm-rows').first())).every(cell => cell.selected), 'selection rendered');
     const selected = await readCells(first.locator('.xterm-rows').first());
     for (const cell of selected) {
-      if (['INVERSE', 'DIM_INVERSE'].includes(cell.label)) assert.ok(cell.fill.every(value => value >= 240), `${theme}: selected default inverse stays readable`);
+      if (['INVERSE', 'DIM_INVERSE'].includes(cell.label)) {
+        if (theme === 'daylight') assert.ok(cell.fill.slice(0, 3).every(value => value < 100), `${theme}: selected inverse uses dark ink`);
+        else assert.ok(cell.fill.every(value => value >= 240), `${theme}: selected default inverse stays readable`);
+      }
       else {
         // xterm may brighten RGB against the selection background to meet its
         // contrast setting. The glyph must keep that resolved color, not turn white.

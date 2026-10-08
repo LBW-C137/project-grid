@@ -6,6 +6,7 @@ import './themes.css';
 import './polish.css';
 import './typography.css';
 import './interaction.css';
+import './theme-daylight.css';
 import { restoreTheme } from './themes';
 import './platform';
 

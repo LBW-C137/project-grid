@@ -1,4 +1,5 @@
 import type { IDecoration, IDisposable, IMarker, Terminal } from '@xterm/xterm';
+import { terminalDecorationColors } from './terminal-theme';
 
 // A light touch of the reading view inside the real terminal. Claude Code and Codex print Markdown already
 // rendered: no "##", no backticks are left, only attributes. So the visible rows are read for those:
@@ -9,7 +10,6 @@ import type { IDecoration, IDisposable, IMarker, Terminal } from '@xterm/xterm';
 // from what the rows say then, so a redrawn screen never keeps a stale mark. A working agent redraws its
 // screen ten times a second while the marks stay the same; then nothing is redrawn.
 const BULLETS = new Set(['•', '●']);
-const BULLET_COLOUR = '#ff6b9a', HEADING_COLOUR = '#ff9fd5';
 
 export function styleTerminal(terminal: Terminal): IDisposable {
   let marks: { marker: IMarker; decoration?: IDecoration }[] = [];
@@ -28,6 +28,7 @@ export function styleTerminal(terminal: Terminal): IDisposable {
     try { draw(); } catch { /* Decorations are an experimental xterm API; without them the terminal is simply unstyled. */ }
   };
   const draw = () => {
+    const colors = terminalDecorationColors(document.documentElement.dataset.theme);
     const buffer = terminal.buffer.active;
     if (buffer.type !== 'normal') { clear(); return; }
     const wanted: { row: number; x: number; width: number; foregroundColor: string }[] = [];
@@ -49,8 +50,8 @@ export function styleTerminal(terminal: Terminal): IDisposable {
       }
       if (first < 0) continue;
       const lead = line.getCell(first)!;
-      if (BULLETS.has(lead.getChars()) && lead.isFgDefault()) wanted.push({ row, x: first, width: 1, foregroundColor: BULLET_COLOUR });
-      else if (allBold && afterBlank && !line.isWrapped && last - first >= 1 && last - first < 60 && !BULLETS.has(lead.getChars())) wanted.push({ row, x: first, width: Math.min(terminal.cols - first, last - first + 2), foregroundColor: HEADING_COLOUR });
+      if (BULLETS.has(lead.getChars()) && lead.isFgDefault()) wanted.push({ row, x: first, width: 1, foregroundColor: colors.bullet });
+      else if (allBold && afterBlank && !line.isWrapped && last - first >= 1 && last - first < 60 && !BULLETS.has(lead.getChars())) wanted.push({ row, x: first, width: Math.min(terminal.cols - first, last - first + 2), foregroundColor: colors.heading });
     }
     // Rows are counted from the top of the buffer, so the same marks on the same lines compare equal.
     const signature = wanted.map(item => `${item.row}:${item.x}:${item.width}:${item.foregroundColor}`).join('|');
@@ -61,6 +62,8 @@ export function styleTerminal(terminal: Terminal): IDisposable {
   };
   const later = () => { if (!timer && !disposed) timer = window.setTimeout(scan, 160); };
   const subscriptions = [terminal.onWriteParsed(later), terminal.onScroll(later), terminal.onResize(later)];
+  const themeObserver = new MutationObserver(later);
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   later();
-  return { dispose() { disposed = true; clearTimeout(timer); subscriptions.forEach(item => item.dispose()); clear(); } };
+  return { dispose() { disposed = true; clearTimeout(timer); themeObserver.disconnect(); subscriptions.forEach(item => item.dispose()); clear(); } };
 }

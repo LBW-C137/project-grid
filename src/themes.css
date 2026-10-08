@@ -9,25 +9,44 @@
   --theme-code: #07131baa;
 }
 :root[data-theme="daylight"] {
+  color-scheme: light;
+  color: #0e1e33;
   background: #6e9fc5;
-  --glass: rgba(28, 58, 92, .30);
-  --glass-strong: rgba(34, 61, 91, .82);
-  --glass-solid: #294b6b;
-  --glass-border: #edf7ff57;
-  --glass-sheen: linear-gradient(160deg, #ffffff14 0%, #ffffff08 28%, #ffffff00 58%, #ffffff05 100%);
-  --theme-accent: #b9dfff;
-  --theme-ink: #ffffff;
-  --theme-muted: #eef6ff;
-  --theme-line: #e0f1ff38;
-  --theme-hover: #e5f4ff1c;
-  --theme-chrome: rgba(66, 112, 154, .24);
-  --theme-sidebar: rgba(44, 78, 112, .38);
-  --theme-pane: rgba(12, 32, 55, .20);
-  --theme-control: rgba(65, 103, 142, .28);
-  --theme-editor: rgba(14, 36, 59, .36);
-  --theme-code: #102d4866;
-  --theme-button: #deefffc4;
-  --theme-button-ink: #214563;
+  --glass: rgba(255, 255, 255, .58);
+  --glass-strong: rgba(255, 255, 255, .86);
+  --glass-solid: #f5faff;
+  --glass-border: rgba(16, 35, 60, .12);
+  --glass-sheen: linear-gradient(160deg, #ffffff38 0%, #ffffff10 28%, #ffffff00 58%, #ffffff08 100%);
+  --glass-lift: inset 0 1px 0 #ffffffb3, 0 14px 38px -22px rgba(16, 48, 80, .22);
+  --glass-shadow: inset 0 1px 0 #ffffffcc, 0 12px 36px -12px rgba(16, 48, 80, .2);
+  --theme-accent: #1b5fbf;
+  --theme-ink: #0e1e33;
+  --theme-heading: #10233c;
+  --theme-muted: #56677d;
+  --theme-line: rgba(16, 35, 60, .12);
+  --theme-hover: rgba(27, 111, 194, .09);
+  --theme-chrome: rgba(255, 255, 255, .86);
+  --theme-sidebar: rgba(255, 255, 255, .86);
+  --theme-pane: rgba(255, 255, 255, .78);
+  --theme-control: rgba(255, 255, 255, .62);
+  --theme-editor: rgba(255, 255, 255, .62);
+  --theme-code: rgba(237, 246, 255, .86);
+  --theme-button: rgba(255, 255, 255, .82);
+  --theme-button-ink: #10233c;
+  --theme-success: #0f8059;
+  --theme-info: #1b6fc2;
+  --theme-error: #982033;
+  --theme-warning: #865b00;
+  --sidebar-ink: var(--theme-ink);
+  --sidebar-muted: var(--theme-muted);
+  --sidebar-accent: var(--theme-accent);
+  --text-shadow: none;
+  --muted: var(--theme-muted);
+  --subtle: var(--theme-muted);
+  --red: var(--theme-error);
+  --green: var(--theme-success);
+  --surface: var(--glass-solid);
+  --panel: var(--glass);
 }
 :root[data-theme="mountain-blue"] {
   background: #193b49;
@@ -70,8 +89,7 @@
   --theme-button-ink: #502e39;
 }
 :root[data-theme="daylight"] .app-shell {
-  /* Shade clouds and sunlit leaves enough for white body text without thickening the glass. */
-  background: linear-gradient(180deg, rgba(12, 35, 62, .62) 0%, rgba(12, 35, 62, .60) 45%, rgba(12, 35, 62, .52) 70%, rgba(12, 35, 62, .48) 100%), url('./assets/daylight-glacier.webp') center 38% / cover no-repeat;
+  background: url('./assets/daylight-glacier.webp') center 38% / cover no-repeat;
 }
 :root[data-theme="mountain-blue"] .app-shell {
   background: linear-gradient(#0c273320, #0c273333), url('./assets/macos-big-sur.webp') center 35% / cover no-repeat;
@@ -80,7 +98,7 @@
   background: linear-gradient(#24192012, #2419202e), url('./assets/macos-sierra.webp') center / cover no-repeat;
 }
 
-/* Palette changes affect materials, never terminal ANSI colors or task signals. */
+/* Shared theme materials; Daylight's complete light treatment is loaded last. */
 :root:not([data-theme="forest"]) .titlebar { background: transparent; }
 :root:not([data-theme="forest"]) .focus-sidebar { background: var(--glass-sheen), var(--theme-sidebar); border-color: var(--glass-hairline); }
 :root:not([data-theme="forest"]) :is(.settings-dialog, .dropdown) { background: var(--glass-sheen), var(--glass-strong); border-color: var(--theme-line); color: var(--theme-ink); }
@@ -117,6 +135,8 @@
 .theme-mini-window { display: flex; flex-direction: column; gap: 5px; position: absolute; inset: 20px 14px -8px; padding: 11px 10px; border: 1px solid #ffffff52; border-radius: 3.5px 3.5px 0 0; background: #0e1c2587; backdrop-filter: blur(7px); }
 .theme-mini-window i { width: 58%; height: 3px; border-radius: 1.5px; background: #e4f3f19c; }
 .theme-mini-window i:nth-child(2) { width: 78%; opacity: .65; }.theme-mini-window i:nth-child(3) { width: 38%; opacity: .45; }
+.theme-swatch[data-theme-preview="daylight"] .theme-mini-window { background: #ffffffb8; border-color: #ffffffa3; }
+.theme-swatch[data-theme-preview="daylight"] .theme-mini-window i { background: #17283f9c; }
 .theme-check { display: none; position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 50%; background: var(--theme-accent); color: #203338; }
 .theme-option.is-selected .theme-check { display: flex; }
 .theme-option.is-selected .theme-swatch { border-color: var(--theme-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 28%, transparent); }
