@@ -100,14 +100,19 @@ try {
     assert.equal(await hud.locator('.project-switch-name').textContent(), project.name);
     assert.equal(await hud.locator('.project-switch-index').textContent(), String(position).padStart(2, '0'));
     assert.equal(await hud.locator('.project-switch-position').textContent(), `${position} / ${order.length}`);
-    assert.equal(await hud.locator('.project-switch-hud-content').isVisible(), true);
+    // What people see: a label over the target card itself with its number, name and position.
+    const label = panel.locator('.panel-nav-hud');
+    assert.equal(await label.isVisible(), true);
+    assert.equal(await label.locator('b').textContent(), project.name);
+    assert.equal(await label.locator('small').textContent(), `${position} / ${order.length}`);
+    assert.equal(await page.locator('.panel-nav-hud').count(), 1, 'only the target card carries the label');
     if (overview) assert.equal(await page.locator('.focus-mode').count(), 0, 'shortcut focus never expands a small card');
     else assert.equal(await panel.isVisible(), true);
   };
   await second.locator('.xterm-helper-textarea').focus();
   for (const project of [local, legacy, closed, remote]) { await page.keyboard.press('Control+Tab'); await assertSwitch(project); }
   for (const project of [closed, legacy, local, remote]) { await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(project); }
-  await page.screenshot({ path: path.join(output, 'project-switch-overview.png') });
+  await page.keyboard.press('Control+Tab'); await page.waitForTimeout(350); await page.screenshot({ path: path.join(output, 'project-switch-overview.png') }); await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(remote);
   // If the composer refuses focus, the hidden xterm also fails and the card is the final fallback.
   await first.locator('.reading-composer textarea').evaluate(node => { node.focus = () => {}; });
   try { await page.keyboard.press('Control+Tab'); await assertSwitch(local, true, null); }
@@ -137,7 +142,7 @@ try {
   await page.keyboard.press('Control+Tab'); await assertSwitch(legacy);
   await page.waitForTimeout(700);
   assert.equal(await legacyPanel.evaluate(node => node.classList.contains('is-nav-target')), true, 'feedback timer restarts after each switch');
-  await page.waitForFunction(() => !document.querySelector('.project-panel.is-nav-target, .project-switch-hud-content'));
+  await page.waitForFunction(() => !document.querySelector('.project-panel.is-nav-target, .panel-nav-hud, .project-switch-hud-content'));
   await page.evaluate(motion => { if (motion) document.documentElement.dataset.motion = motion; else delete document.documentElement.dataset.motion; }, motion);
   await first.getByRole('button', { name: `全屏查看 ${local.name}`, exact: true }).click(); await settled(true);
   await page.keyboard.press('Control+Tab'); await settled(true); await assertSwitch(legacy, false);

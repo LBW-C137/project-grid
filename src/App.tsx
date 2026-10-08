@@ -85,9 +85,9 @@ function isRoundComplete(project: Project) {
   return project.codexActive && project.codexActivity === 'complete' && !project.unread && !project.error;
 }
 
-function ProjectPanel({ project, index, hidden, focused, navTarget, fontSize, now, activityOpen, onToggleActivity, onFocus, onAction, onError, onOpenLink, onRevealProject, dragging, dropTarget }: {
+function ProjectPanel({ project, index, hidden, focused, navTarget, navPosition, fontSize, now, activityOpen, onToggleActivity, onFocus, onAction, onError, onOpenLink, onRevealProject, dragging, dropTarget }: {
   project: Project; index: number; hidden: boolean; focused: boolean; fontSize: number; now: number;
-  navTarget?: number;
+  navTarget?: number; navPosition?: string;
   // The activity pane (what the agent is doing, step by step) shows beside the terminal of an expanded project.
   activityOpen: boolean; onToggleActivity: () => void;
   onFocus: (id: string) => void;
@@ -133,6 +133,8 @@ function ProjectPanel({ project, index, hidden, focused, navTarget, fontSize, no
     <span key={signalKey} className="panel-signal" aria-hidden="true" />
     <span key={`glow:${signalKey}`} className="panel-glow" aria-hidden="true" />
     {navTarget && <span key={`nav:${navTarget}`} className="panel-nav-ring" aria-hidden="true" />}
+    {/* Where next/previous project landed, over the card itself (the screen-reader announcement is ProjectSwitchHud). */}
+    {navTarget && <div key={`hud:${navTarget}`} className="panel-nav-hud" aria-hidden="true"><span className="project-switch-index">{String(index + 1).padStart(2, '0')}</span><b>{project.name}</b>{navPosition && <small>{navPosition}</small>}</div>}
     <header className="panel-header" title={focused ? undefined : t('点击标题栏放大，按住标题栏拖动排序')} onClick={event => {
       if (!focused && event.button === 0 && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && !(event.target as Element).closest('button, [role="menu"]')) onFocus(project.id);
     }}>
@@ -520,6 +522,7 @@ export function App() {
               {orderedProjects.map((project, index) => <div key={project.id} className={`project-slot ${reorder.drag?.id === project.id ? 'drag-placeholder' : ''}`} data-project-slot={project.id} style={{ display: focusedId ? focusedId !== project.id ? 'none' : undefined : !visibleIds.has(project.id) ? 'none' : undefined }}><ProjectPanel project={project} index={index}
                 hidden={focusedId ? focusedId !== project.id : !visibleIds.has(project.id)} focused={focusedId === project.id && !previewFile}
                 navTarget={projectSwitch?.id === project.id ? projectSwitch.sequence : undefined}
+                navPosition={projectSwitch?.id === project.id && switchPosition > 0 ? t('{position} / {total}', { position: switchPosition, total: navigation.current.length }) : undefined}
                 fontSize={settings.fontSize} now={now} activityOpen={settings.activityPane} onToggleActivity={() => setPreference({ activityPane: !settings.activityPane })} onFocus={focusProject} onAction={perform} onError={reportError} onOpenLink={openTerminalLink} onRevealProject={revealProject}
                 dragging={reorder.drag?.id === project.id} /> </div>)}
               {reorder.drag && <div className="reorder-hint" role="status">{t('拖动项目排序 · 松开完成')}<span>{t('Esc 取消')}</span></div>}
