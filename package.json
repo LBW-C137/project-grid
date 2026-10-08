@@ -18,6 +18,7 @@
     "dev": "node scripts/start.mjs --dev",
     "build": "node scripts/build-ssh-askpass.cjs && tsc --noEmit && vite build",
     "test": "node scripts/build-ssh-askpass.cjs && node --test tests/*.test.cjs",
+    "clean:test-output": "node scripts/clean-test-output.mjs",
     "test:desktop": "node scripts/smoke.mjs",
     "test:sessions": "node scripts/session-smoke.mjs",
     "test:restore-slow": "node scripts/restore-slow-smoke.mjs",

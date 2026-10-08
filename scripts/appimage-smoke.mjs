@@ -2,6 +2,7 @@
 // and that terminal's environment has none of the AppImage's folders or variables (AppRun adds them to the app's
 // own). The terminal's ~/.bashrc writes the environment out.
 // Usage: node scripts/appimage-smoke.mjs <file.AppImage> [--expect-proxy <system-proxy-url>]
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -16,7 +17,7 @@ const proxyIndex = process.argv.indexOf('--expect-proxy');
 const expectedProxy = proxyIndex >= 0 ? process.argv[proxyIndex + 1] : null;
 if (proxyIndex >= 0) assert.ok(expectedProxy, '--expect-proxy needs a system proxy URL');
 await fs.access(appImage);
-const output = path.join(root, '.test-output', `appimage-${Date.now()}`);
+const output = await testRun('appimage');
 const dataDir = path.join(output, 'user-data'), home = path.join(output, 'home'), project = path.join(output, 'projects', '中文 项目');
 for (const folder of [dataDir, home, project]) await fs.mkdir(folder, { recursive: true });
 await fs.writeFile(path.join(home, '.bashrc'), 'env > "$HOME/terminal-env.txt"\n');

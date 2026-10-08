@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -9,7 +10,7 @@ import { waitFor } from './wait.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const output = path.join(root, '.test-output', `visual-${Date.now()}`);
+const output = await testRun('visual');
 const profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
 const names = ['界面开发', '文档整理', '本地工具', '服务接口', '数据处理', '工具项目'];
 const projects = names.map((name, index) => ({ id: randomUUID(), name, path: path.join(output, name), unread: index === 1 ? 1 : 0, lastCompletedAt: index === 1 ? Date.now() - 60000 : null, restore: { terminal: false, codex: false } }));

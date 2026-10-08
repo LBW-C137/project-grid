@@ -4,6 +4,7 @@
 // images are written to docs/images. With --video and an ffmpeg path in FFMPEG, it also records a short demo
 // (docs/images/demo.gif for the README, demo.mp4 to upload to GitHub for an inline video).
 // The demo projects live in C:\ProjectGridDemo while it runs, so no personal path shows in the pictures.
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +17,7 @@ import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const work = path.join(root, '.test-output', `readme-${Date.now()}`), dataDir = path.join(work, 'profile'), home = path.join(work, 'codex-home');
+const work = await testRun('readme'), dataDir = path.join(work, 'profile'), home = path.join(work, 'codex-home');
 const images = path.join(root, 'docs', 'images');
 const names = ['商城前端', '支付服务', '数据看板', '文档站点', '移动端 App', '运维脚本'];
 const demoRoot = process.platform === 'win32' ? 'C:\\ProjectGridDemo' : path.join(os.tmpdir(), 'ProjectGridDemo');

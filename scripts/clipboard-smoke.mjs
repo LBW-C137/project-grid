@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -9,7 +10,7 @@ import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { fileClipboard } = require('../electron/file-clipboard.cjs');
-const output = path.join(root, '.test-output', `clipboard-${Date.now()}`), profile = path.join(output, 'profile');
+const output = await testRun('clipboard'), profile = path.join(output, 'profile');
 const project = { id: randomUUID(), name: '图片路径复制', path: path.join(output, 'project'), restore: { terminal: false, codex: false } };
 await fs.mkdir(profile, { recursive: true }); await fs.mkdir(project.path);
 const filename = '图片.png', absolute = path.join(project.path, filename);

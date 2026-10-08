@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -8,7 +9,7 @@ import { _electron as electron } from 'playwright';
 import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `reading-${Date.now()}`), profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
+const output = await testRun('reading'), profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
 const project = { id: randomUUID(), name: '阅读命令', path: path.join(output, 'project'), restore: { terminal: false, codex: false } };
 for (const directory of [profile, home, path.join(project.path, '.claude/commands')]) await fs.mkdir(directory, { recursive: true });
 await fs.writeFile(path.join(project.path, '.claude/commands/fix-issue.md'), '---\ndescription: 修复问题\n---\nFix issue $ARGUMENTS.\n');

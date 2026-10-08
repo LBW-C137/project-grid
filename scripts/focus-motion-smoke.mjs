@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -9,7 +10,7 @@ import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `focus-motion-${Date.now()}`);
+const output = await testRun('focus-motion');
 const dataDir = path.join(output, 'profile');
 await fs.mkdir(dataDir, { recursive: true });
 const projects = [];

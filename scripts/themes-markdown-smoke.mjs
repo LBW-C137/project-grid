@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,7 @@ import { waitFor } from './wait.mjs';
 const require = createRequire(import.meta.url);
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `themes-markdown-${Date.now()}`), profile = path.join(output, 'profile');
+const output = await testRun('themes-markdown'), profile = path.join(output, 'profile');
 const ssh = await createSSHFixture({ nativeWorker: false });
 const projects = ['产品工作台', '等待查看', '工具项目'].map((name, index) => ({ id: randomUUID(), name, path: path.join(output, `project-${index}`), kind: 'local', unread: index === 1 ? 1 : 0, lastCompletedAt: index ? Date.now() : null, restore: { terminal: false, codex: false } }));
 await fs.mkdir(profile, { recursive: true });

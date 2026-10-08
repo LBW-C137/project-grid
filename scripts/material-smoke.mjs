@@ -1,3 +1,4 @@
+import { testRun } from './test-output.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -8,7 +9,7 @@ import { _electron as electron } from 'playwright';
 import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, '.test-output', `material-${Date.now()}`), profile = path.join(output, 'profile');
+const output = await testRun('material'), profile = path.join(output, 'profile');
 await fs.mkdir(profile, { recursive: true });
 const projects = Array.from({ length: 16 }, (_, index) => ({ id: randomUUID(), name: `${index < 6 ? '运行样例' : '附加项目'} ${String(index + 1).padStart(2, '0')}`, path: path.join(output, `project-${index}`), restore: { terminal: false, codex: false } }));
 for (const project of projects) await fs.mkdir(project.path);
