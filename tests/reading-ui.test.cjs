@@ -379,6 +379,8 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
     './PendingPromptEntries': { PendingPromptEntries: () => null },
     './ReadingSessions': { ReadingSessions: () => null }, './reading-sessions': require('../src/reading-sessions.ts'),
     './reading-welcome': { useWelcomeStarting: () => false },
+    './ReadingCliPanel': { ReadingCliPanel: () => null }, './ReadingCommandOutput': { ReadingCommandOutput: () => null },
+    './useReadingCli': { useReadingCli: (id, session, agent, list) => ({ entries: list, busy: false, panel: null, begin() {} }) },
     './i18n': { t: (text, values) => (en[text] ?? text).replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? name)) },
   });
   const render = () => renderToStaticMarkup(React.createElement(ReadingView, {

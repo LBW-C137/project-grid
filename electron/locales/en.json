@@ -927,5 +927,9 @@
   "未命名会话": "Untitled session",
   "↑/↓ 选择 · Enter 恢复 · Esc 取消": "↑/↓ to select · Enter to resume · Esc to cancel",
   "无法读取这个 Claude 会话的历史。": "Could not read the history of this Claude session.",
-  "无法加载 Claude 会话。": "Could not load Claude sessions."
+  "无法加载 Claude 会话。": "Could not load Claude sessions.",
+  "在终端中打开": "Open in terminal",
+  "命令输出": "Command output",
+  "展开": "Expand",
+  "收起": "Collapse"
 }
