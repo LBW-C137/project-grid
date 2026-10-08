@@ -68,15 +68,15 @@
 .reading-tools li.reading-tool-edit b { color: #ffcf8f; }.reading-tools li.is-failed code { color: #ffb1ac; }.reading-tools li.is-running b { color: #9cdfff; }
 
 /* Status and the message box at the foot. */
-.reading-status { display: flex; flex: none; align-items: center; gap: 7px; padding: 4px 18px; min-height: 24px; font-size: 12px; color: #9fb5ce; min-width: 0; overflow: hidden; white-space: nowrap; }
+.reading-status { display: flex; flex: none; align-items: flex-end; gap: 7px; padding: 0 18px 0 18px; min-height: 30px; font-size: 12px; color: #9fb5ce; min-width: 0; overflow: hidden; white-space: nowrap; }
 .reading-status.is-working { color: #ffd88a; }
-.reading-status-activity { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 7px; overflow: hidden; }
+.reading-status-activity { display: flex; flex: 1 1 auto; min-width: 0; align-self: center; align-items: center; gap: 7px; padding: 2px 0 8px; overflow: hidden; }
 .reading-status-activity > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reading-status-activity > svg { flex: none; }
-.reading-status-chips { display: flex; flex: 0 1 auto; min-width: 0; max-width: 72%; margin-left: auto; align-items: center; gap: 4px; overflow: hidden; }
-.reading-status-chip { display: block; flex: 0 1 auto; min-width: 0; padding: 2px 6px; border: 0; border-radius: 3px; background: rgba(143, 203, 255, .08); color: #b9cbdc; font: 400 10.5px/1.5 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button.reading-status-chip:hover:not(:disabled) { background: rgba(143, 203, 255, .18); color: #e8f1fa; }
-.reading-status-chip.is-muted { color: #8ea6c1; background: rgba(255, 255, 255, .035); }
+.reading-status-chips { display: flex; flex: 0 1 auto; min-width: 0; max-width: 72%; margin-left: auto; align-self: flex-end; align-items: flex-end; gap: 2px; overflow: hidden; }
+.reading-status-chip { display: block; flex: 0 1 auto; min-width: 0; padding: 3px 8px 2px; border: 0; border-radius: 5px 5px 0 0; background: rgba(3, 12, 20, .5); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), inset 1px 0 0 rgba(255, 255, 255, .1), inset -1px 0 0 rgba(255, 255, 255, .1); color: #b9cbdc; font: 400 10.5px/1.5 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.reading-status-chip:hover:not(:disabled) { background: rgba(26, 52, 74, .72); color: #e8f1fa; }
+.reading-status-chip.is-muted { color: #8ea6c1; background: rgba(3, 12, 20, .38); }
 .reading-composer { position: relative; display: flex; align-items: flex-end; gap: 6px; margin: 0 12px 12px; padding: 6px 6px 6px 12px; border-radius: 6px; background: rgba(3, 12, 20, .5); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); transition: box-shadow .16s ease; }
 .reading-commands.dropdown { position: absolute; top: auto; bottom: calc(100% + 5px); left: 0; right: 0; width: auto; z-index: 3; padding: 4px; border: 1px solid #e8f5ff80; max-height: 266px; overflow-y: auto; transform-origin: bottom center; }
 .reading-command { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 8px; border-radius: 4.5px; color: #e5f0fa; font-size: 12px; cursor: pointer; }
