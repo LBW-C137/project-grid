@@ -70,3 +70,13 @@ test('Claude Code resumes its recorded conversation and continues only an unfini
   assert.equal(claudeResumeCommand({ agent: 'claude' }), 'claude --continue\r', 'no recorded session continues the newest one in the folder');
   assert.throws(() => claudeResumeCommand({ agent: 'claude', threadId: 'x; rm -rf' }), /无效/);
 });
+
+test('session restore keeps metadata from the first record and derives state only from the window', async t => {
+  const { HISTORY_WINDOW } = require('../electron/transcript-window.cjs');
+  const { folder, project } = await setup(t);
+  const entry = await rollout(folder, project, [event('task_started'), event('task_complete'), { padding: 'x'.repeat(HISTORY_WINDOW + 1000) }, event('agent_reasoning')]);
+  const restored = await recentSession(project, folder);
+  assert.equal(restored.id, entry.id); assert.equal(restored.state, 'unknown', 'excluded lifecycle records do not influence restore');
+  await fs.appendFile(entry.filename, JSON.stringify(event('task_started')) + '\n');
+  assert.equal((await recentSession(project, folder)).state, 'interrupted');
+});

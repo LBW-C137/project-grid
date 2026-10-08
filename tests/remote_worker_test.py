@@ -114,6 +114,43 @@ class RemoteFilesTest(unittest.TestCase):
         with filename.open("a", encoding="utf-8") as output: output.write("\n")
         self.assertEqual(reader.read()["state"], "complete")
 
+    def test_transcript_window_history_live_budget_and_rebinding(self):
+        home = Path(self.temp.name) / "window-home"
+        sessions = home / "sessions"
+        sessions.mkdir(parents=True)
+        identity = str(uuid.uuid4())
+        filename = sessions / ("rollout-" + identity + ".jsonl")
+        def line(record): return (json.dumps(record) + "\n").encode()
+        def event(kind, turn): return line({"type": "event_msg", "payload": {"type": kind, "turn_id": turn}})
+        meta = line({"type": "session_meta", "payload": {"id": identity, "cwd": str(self.root), "source": "cli"}})
+        # The first bytes at the seek position look like valid JSON but belong to a cut line.
+        cut = line({"cut": True})
+        complete = event("task_complete", "excluded")
+        padding = line({"padding": "x" * (remote.HISTORY_WINDOW - len(cut) - len(complete) - len(line({"padding": ""})))})
+        filename.write_bytes(meta + event("task_started", "excluded") + b"invalid partial line " + cut + padding + complete)
+        reader = remote.CodexActivityReader(str(self.root), str(home), 0, identity)
+        seen = []
+        original = reader.record
+        def record(value): seen.append(value); original(value)
+        reader.record = record
+        self.assertEqual(reader.read()["state"], "unknown")
+        self.assertFalse(reader.history_pending)
+        self.assertEqual(seen, [{"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "excluded"}}])
+        self.assertEqual(remote.recent_session(str(self.root), str(home), identity)["id"], identity)
+        before = reader.offset
+        with filename.open("ab") as output:
+            output.write(event("task_started", "live") + line({"padding": "x" * (remote.LIVE_READ_LIMIT + 1000)}) + event("task_complete", "live"))
+        self.assertIsNone(reader.read())
+        self.assertEqual(reader.offset - before, remote.LIVE_READ_LIMIT)
+        self.assertEqual(reader.read()["state"], "complete")
+        # Shrink but remain larger than a window; the old turn must not survive.
+        filename.write_bytes(meta + line({"padding": "x" * (remote.HISTORY_WINDOW + 1000)}) + complete)
+        self.assertEqual(reader.read()["state"], "unknown")
+        filename.rename(filename.with_suffix(".old"))
+        filename.write_bytes(meta + line({"padding": "x" * (remote.HISTORY_WINDOW + 2000)}) + event("task_started", "replacement"))
+        self.assertEqual(reader.read()["state"], "working")
+        self.assertEqual(reader.snapshot["turnId"], "replacement")
+
     def test_large_unicode_pages_are_lossless(self):
         content = "A" * (remote.PAGE_BYTES - 1) + "中文🙂\ufeff内容\n" * 40000
         for encoding, bom in (("utf-8", b""), ("utf-16le", b"\xff\xfe"), ("utf-16be", b"\xfe\xff")):

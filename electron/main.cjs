@@ -302,7 +302,10 @@ function followClaude(project, s, event) {
   s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
   s.claudeSessionId = event.sessionId;
   if (s.claudeTranscript?.filename !== file) {
-    s.claudeTranscript = new TranscriptTail(file, { onHistory: ready => ready ? s.conversation.endHistory() : s.conversation.beginHistory() }); s.actions.reset(); s.conversation.reset();
+    s.claudeTranscript = new TranscriptTail(file, { onHistory: ready => {
+      if (ready) s.conversation.endHistory();
+      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.lastReply = ''; }
+    } });
     s.activityMonitor?.stop();
     const tail = s.claudeTranscript;
     s.activityMonitor = monitorActivity(async () => { await tail.read(record => {
@@ -412,7 +415,10 @@ function onEvent(event) {
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
     const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0,
-      onHistory: ready => ready ? s.conversation.endHistory() : s.conversation.beginHistory(),
+      onHistory: ready => {
+        if (ready) s.conversation.endHistory();
+        else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.lastReply = ''; }
+      },
       onRecord: record => {
         noteReply(s, codexReply(record)); codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
         if (record?.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload?.type)) s.promptQueue.finish(Date.parse(record.timestamp) || Date.now());

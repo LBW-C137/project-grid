@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
+const { transcriptWindow, LIVE_READ_LIMIT } = require('./transcript-window.cjs');
 
 // What an agent is doing, step by step: each tool it calls becomes one action the window can show
 // ("editing src/App.tsx", "running npm test", "skill code-review", "MCP github · create_issue").
@@ -168,11 +169,15 @@ class TranscriptTail {
     let file; try { file = await fs.open(this.filename, 'r'); } catch { return; }
     try {
       const stat = await file.stat();
-      if (stat.size < this.offset) {
-        this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false;
-        this.historyPending = true; this.onHistory(false);
+      const identity = `${stat.dev}:${stat.ino}`;
+      if (this.fileIdentity !== identity || stat.size < this.fileSize) {
+        const rebinding = this.fileIdentity != null;
+        Object.assign(this, transcriptWindow(stat.size)); this.buffer = Buffer.alloc(0);
+        this.historyPending = true;
+        if (rebinding) this.onHistory(false);
       }
-      const end = Math.min(stat.size, this.offset + 4 * 1024 * 1024);
+      this.fileIdentity = identity; this.fileSize = stat.size;
+      const end = this.historyPending ? stat.size : Math.min(stat.size, this.offset + LIVE_READ_LIMIT);
       while (this.offset < end) {
         const chunk = Buffer.alloc(Math.min(65536, end - this.offset));
         const { bytesRead } = await file.read(chunk, 0, chunk.length, this.offset);

@@ -96,7 +96,7 @@ test('a transcript is followed from where the last read stopped, and a skill is 
   assert.equal(await skillDescription('../escape', folder), '');
 });
 
-test('a multi-poll Claude history stays private until caught up, then streams normally', async t => {
+test('a single-poll Claude history stays private until caught up, then streams normally', async t => {
   const { ConversationLog, claudeConversation } = require('../electron/conversation.cjs');
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-reading-history-'));
   t.after(() => fs.rm(folder, { recursive: true, force: true }));
@@ -105,12 +105,12 @@ test('a multi-poll Claude history stays private until caught up, then streams no
   const tail = new TranscriptTail(file, { onHistory: ready => ready ? log.endHistory() : log.beginHistory() });
   const line = (id, text) => JSON.stringify({ type: 'assistant', uuid: id, timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text }] } }) + '\n';
   await fs.writeFile(file, Array.from({ length: 100 }, (_, index) => line(String(index), 'x'.repeat(60000))).join(''));
+  await tail.read(record => {
+    claudeConversation(log, record, folder);
+    assert.deepEqual(log.snapshot(), [], 'history remains private while records are processed');
+    assert.deepEqual(published, []);
+  });
   const read = () => tail.read(record => claudeConversation(log, record, folder));
-  await read();
-  assert.ok(log.list.length > 0, 'activity records are still processed');
-  assert.deepEqual(log.snapshot(), [], 'opening midway through replay exposes no partial history');
-  assert.deepEqual(published, []);
-  await read();
   assert.equal(log.snapshot().length, 100);
   assert.equal(published.length, 1);
   assert.equal(published[0].reset, true, 'the first publication is a complete replacement');
@@ -118,4 +118,27 @@ test('a multi-poll Claude history stays private until caught up, then streams no
   assert.equal(published.length, 2);
   assert.equal(published[1].entry.id, 'a:live:0');
   await read(); assert.equal(published.length, 2, 'idle polling does not republish history');
+});
+
+test('a Claude window keeps recent replies and actions and ignores tool results with excluded calls', async t => {
+  const { HISTORY_WINDOW } = require('../electron/transcript-window.cjs');
+  const { ConversationLog, claudeConversation } = require('../electron/conversation.cjs');
+  const { claudeReply } = require('../electron/round-summary.cjs');
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-claude-cut-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  const file = path.join(folder, 'session.jsonl'), log = new ActionLog(), conversation = new ConversationLog();
+  const records = [claude('user', 'Excluded prompt'), use('excluded', 'Read', { file_path: 'old.txt' }),
+    { padding: 'x'.repeat(HISTORY_WINDOW + 1000) }, result('excluded'),
+    claude('assistant', [{ type: 'text', text: 'Recent reply' }], { uuid: 'reply' }),
+    use('recent', 'Bash', { command: 'npm test' }), result('recent')];
+  await fs.writeFile(file, records.map(record => JSON.stringify(record) + '\n').join(''));
+  let reply = '';
+  await new TranscriptTail(file).read(record => {
+    claudeRecord(log, record, cwd); claudeConversation(conversation, record, cwd);
+    const value = claudeReply(record); if (value?.reset) reply = ''; else if (value?.text) reply = value.text;
+  });
+  assert.equal(reply, 'Recent reply');
+  assert.deepEqual(log.list.map(action => [action.id, action.done]), [['recent', true]]);
+  assert.deepEqual(conversation.list.map(entry => entry.role), ['assistant', 'tool']);
+  assert.equal(conversation.list[0].text, 'Recent reply'); assert.equal(conversation.list[1].tool.done, true);
 });
