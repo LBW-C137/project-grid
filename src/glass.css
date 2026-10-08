@@ -551,7 +551,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .panel-name { gap: 7px; font-size: clamp(11.5px, calc(9.5px + .75cqh), 12.5px); font-weight: 600; }
 .panel-name small { font-size: 11px; line-height: 15px; padding: 0 6px; }
 .panel-index { min-width: 22px; height: clamp(15px, calc(9px + 2.25cqh), 18px); padding: 0 4px; border-radius: 3px; font-size: clamp(10px, calc(8px + .75cqh), 11px); }
-.status-badge, .status-button { font-size: clamp(10.5px, calc(8.5px + .75cqh), 11.5px); }.status-badge { gap: 6px; }
+.status-badge, .status-button { font-size: clamp(11px, calc(8.5px + .75cqh), 11.5px); }.status-badge { gap: 6px; }
 .status-dot { width: clamp(6px, calc(4px + .75cqh), 7px); height: clamp(6px, calc(4px + .75cqh), 7px); flex-basis: clamp(6px, calc(4px + .75cqh), 7px); }
 .panel-header .icon-button, .panel-header .voice-button { width: clamp(20px, calc(12px + 3cqh), 24px); height: clamp(20px, calc(12px + 3cqh), 24px); }
 .panel-header .icon-button svg { width: clamp(13px, calc(9px + 1.5cqh), 15px); height: clamp(13px, calc(9px + 1.5cqh), 15px); }
