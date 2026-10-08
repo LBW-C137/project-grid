@@ -34,8 +34,9 @@ function loadUI(name, overrides = {}) {
   mod.require = name => {
     if (Object.hasOwn(overrides, name)) return overrides[name];
     if (name === '@phosphor-icons/react') return { CircleNotch: props => React.createElement('svg', { className: props.className }) };
-    if (name === './i18n') return { t: text => en[text] ?? text };
+    if (name === './i18n') return { t: (text, values = {}) => (en[text] ?? text).replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match) };
     if (name === './choice-keys') return require('../src/choice-keys.ts');
+    if (name === './reading-sessions') return require('../src/reading-sessions.ts');
     return originalRequire(name);
   };
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
@@ -102,6 +103,85 @@ test('welcome uses startup spinner and status model before a banner is available
   const screen = fakeScreen({ banner: null, status: { model: 'GPT-6.1-Sol', effort: 'high', context: null, mode: null, notes: [] } });
   const html = renderToStaticMarkup(React.createElement(ReadingWelcome, { agent: 'codex', screen, commands: [], complete: () => {}, disabled: false }));
   assert.match(html, /Codex/); assert.match(html, /Starting…/); assert.match(html, /loading-spinner/); assert.match(html, /GPT-6\.1-Sol/);
+});
+
+test('welcome without a banner settles to the agent name and parsed status without a spinner', () => {
+  const { ReadingWelcome } = loadUI('ReadingWelcome.tsx');
+  const html = renderToStaticMarkup(React.createElement(ReadingWelcome, {
+    agent: 'claude', screen: fakeScreen({ banner: null }), commands: [], complete() {}, disabled: false, starting: false,
+  }));
+  assert.match(html, /Claude Code/); assert.doesNotMatch(html, /Starting…|loading-spinner/);
+  const withModel = renderToStaticMarkup(React.createElement(ReadingWelcome, {
+    agent: 'claude', screen: fakeScreen({ banner: null, status: { model: 'Opus 5.5', effort: 'high', notes: [] } }), commands: [], complete() {}, disabled: false, starting: false,
+  }));
+  assert.match(withModel, /Opus 5\.5/); assert.match(withModel, /high/); assert.doesNotMatch(withModel, /Starting…|loading-spinner/);
+});
+
+function sessionsHarness(t, initialSessions = []) {
+  const slots = [initialSessions], written = [], followed = [], sent = [], errors = []; let cursor = 0, closed = 0;
+  const hooks = {
+    useState: initial => {
+      const index = cursor++;
+      if (!Object.hasOwn(slots, index)) slots[index] = typeof initial === 'function' ? initial() : initial;
+      return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }];
+    },
+    useRef: initial => {
+      const index = cursor++;
+      if (!Object.hasOwn(slots, index)) slots[index] = { current: initial };
+      return slots[index];
+    },
+    useEffect() {},
+  };
+  const previous = globalThis.window;
+  globalThis.window = { projectGrid: {
+    writeTerminal: (id, text) => written.push({ id, text }),
+    followAgentSession: async (id, sessionId) => { followed.push({ id, sessionId }); return { ok: true, value: true }; },
+  } };
+  t.after(() => { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; });
+  const { ReadingSessions } = loadUI('ReadingSessions.tsx', { react: hooks });
+  const render = () => {
+    cursor = 0;
+    const root = ReadingSessions({ terminalId: 'resume-terminal', onClose: () => { closed++; }, onSent: text => sent.push(text), onError: error => errors.push(error) });
+    root.props.ref.current = { focus() {} }; return root;
+  };
+  const press = key => {
+    let prevented = false;
+    render().props.onKeyDown({ key, nativeEvent: {}, preventDefault: () => { prevented = true; }, stopPropagation() {} });
+    assert.equal(prevented, true);
+  };
+  const options = () => elements(render()).filter(node => node.props.className === 'reading-choice-option');
+  return { render, press, options, written, followed, sent, errors, closed: () => closed };
+}
+
+test('native session card arrows highlight, Enter types a targeted resume and follows after Enter', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const sessions = ['first', 'second'].map(id => ({ id, title: id, updatedAt: Date.now() - 180000, messages: 3 }));
+  const h = sessionsHarness(t, sessions);
+  assert.equal(h.options()[0].props['data-highlighted'], true);
+  h.press('ArrowDown'); assert.equal(h.options()[1].props['data-highlighted'], true);
+  h.press('ArrowUp'); assert.equal(h.options()[0].props['data-highlighted'], true);
+  h.press('ArrowDown'); h.press('Enter'); h.press('Enter'); h.press('Escape');
+  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '/resume second' }]); assert.deepEqual(h.followed, []);
+  assert.ok(h.options().every(option => option.props.disabled));
+  t.mock.timers.tick(150);
+  for (let index = 0; index < 6; index++) await Promise.resolve();
+  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '/resume second' }, { id: 'resume-terminal', text: '\r' }]);
+  assert.deepEqual(h.followed, [{ id: 'resume-terminal', sessionId: 'second' }]);
+  assert.deepEqual(h.sent, ['/resume second']); assert.equal(h.closed(), 1); assert.deepEqual(h.errors, []);
+});
+
+test('native session card click chooses and Esc closes without sending terminal keys', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = sessionsHarness(t, [{ id: 'clicked', title: 'Restore this prompt', updatedAt: Date.now(), messages: 2 }]);
+  const option = h.options()[0]; await option.props.onClick();
+  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '/resume clicked' }]);
+  t.mock.timers.tick(150); for (let index = 0; index < 6; index++) await Promise.resolve();
+  assert.equal(h.closed(), 1);
+  const empty = sessionsHarness(t);
+  empty.press('ArrowDown'); empty.press('Enter'); empty.press('Escape');
+  assert.equal(empty.closed(), 1); assert.deepEqual(empty.written, []);
+  const labels = elements(empty.render()).flatMap(node => typeof node.props.children === 'string' ? [node.props.children] : []);
+  assert.ok(labels.includes('This project has no other Claude sessions yet'));
 });
 
 test('choice renders context, printed numbers, details, hotkeys and CLI selection', () => {

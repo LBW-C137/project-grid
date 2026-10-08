@@ -3,8 +3,8 @@ import type { AgentScreen, ScreenAgent } from './agent-screen-types';
 import type { AgentCommand } from './types';
 import { t } from './i18n';
 
-export function ReadingWelcome({ agent, screen, commands, complete, disabled }: {
-  agent: ScreenAgent; screen: AgentScreen; commands: AgentCommand[]; complete: (command: AgentCommand) => void; disabled: boolean;
+export function ReadingWelcome({ agent, screen, commands, complete, disabled, starting = true }: {
+  agent: ScreenAgent; screen: AgentScreen; commands: AgentCommand[]; complete: (command: AgentCommand) => void; disabled: boolean; starting?: boolean;
 }) {
   const banner = screen.banner;
   const model = screen.status.model ?? banner?.model, effort = screen.status.effort ?? banner?.effort;
@@ -15,7 +15,7 @@ export function ReadingWelcome({ agent, screen, commands, complete, disabled }: 
   });
   return <div className="reading-welcome">
     <h2>{banner?.product ?? (agent === 'claude' ? 'Claude Code' : 'Codex')}{banner?.version && <small>v{banner.version}</small>}</h2>
-    {!banner && <p className="reading-welcome-starting"><CircleNotch size={13} className="loading-spinner" />{t('正在启动…')}</p>}
+    {!banner && starting && <p className="reading-welcome-starting"><CircleNotch size={13} className="loading-spinner" />{t('正在启动…')}</p>}
     {(model || effort || banner?.plan) && <p className="reading-welcome-model">{[model, effort, banner?.plan].filter(Boolean).join(' · ')}</p>}
     {banner?.directory && <code className="reading-welcome-directory" title={banner.directory}>{banner.directory}</code>}
     <h3>{t('试试这些命令')}</h3>

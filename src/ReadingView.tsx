@@ -9,6 +9,9 @@ import { useScreen } from './terminal-screen';
 import { parseAgentScreen } from './agent-screen';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
+import { ReadingSessions } from './ReadingSessions';
+import { usesSessionPicker } from './reading-sessions';
+import { useWelcomeStarting } from './reading-welcome';
 import { choiceIdentity } from './choice-keys';
 import { READING_HANDOFF_DELAY, setChoiceVisible } from './reading-mode';
 import { useStickToBottom } from './useStickToBottom';
@@ -85,7 +88,10 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const visibleScreen = useScreen(terminal.id);
   const screen = useMemo(() => parseAgentScreen(terminal.agent === 'claude' ? 'claude' : 'codex', visibleScreen?.rows ?? []), [terminal.agent, visibleScreen]);
   const choiceKey = screen.choice ? choiceIdentity(screen.choice) : null;
-  const hasChoice = screen.choice !== null, choiceVisible = useRef(hasChoice); choiceVisible.current = hasChoice;
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  useEffect(() => { setSessionsOpen(false); }, [terminal.id, terminal.sessionId, terminal.agent]);
+  const welcomeIsStarting = useWelcomeStarting(terminal.agentStartedAt, screen);
+  const hasChoice = screen.choice !== null || sessionsOpen, choiceVisible = useRef(hasChoice); choiceVisible.current = hasChoice;
   const handoff = useRef<ReturnType<typeof setTimeout> | null>(null), mounted = useRef(true);
   const choiceHost = useRef<HTMLDivElement>(null), restoreComposer = useRef(false), wasChoice = useRef(false);
   const [draft, setDraft] = useState('');
@@ -99,7 +105,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   useLayoutEffect(() => { if (caret.current !== null) { input.current?.setSelectionRange(caret.current, caret.current); caret.current = null; } });
   useEffect(() => { if (draft.startsWith('/') || !entries.length) setRequested(true); }, [draft, entries.length]);
   // Capture composer ownership before disabling it; another card's focus must stay where it is.
-  if (hasChoice && !wasChoice.current) restoreComposer.current = document.activeElement === input.current;
+  if (hasChoice && !wasChoice.current) restoreComposer.current = document.activeElement === input.current || sessionsOpen;
   useLayoutEffect(() => {
     setChoiceVisible(terminal.id, hasChoice);
     if (hasChoice) {
@@ -189,6 +195,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const send = async (text = draft.trim()) => {
     if (choiceVisible.current || (!text && !images) || !terminal.sessionId) return;
     if (handoff.current !== null) { clearTimeout(handoff.current); handoff.current = null; }
+    if (usesSessionPicker(terminal, text)) { choiceVisible.current = true; restoreComposer.current = document.activeElement === input.current; edit(''); setSessionsOpen(true); return; }
     const typed = /^[\/!]/.test(text) && !/[\r\n]/.test(text);
     const available = typed && text.startsWith('/') ? await (commandLoad.current || window.projectGrid.terminalCommands(terminal.id).then(result => result.ok ? result.value : [])) : commands;
     if (!mounted.current || choiceVisible.current) return;
@@ -259,7 +266,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
   };
   let body: ReactNode;
-  if (!entries.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={screen} commands={commands} complete={complete} disabled={hasChoice} />;
+  if (!entries.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={screen} commands={commands} complete={complete} disabled={hasChoice} starting={welcomeIsStarting} />;
   else body = grouped.map((block, index) => block.kind === 'tools'
     ? <ToolGroup key={block.id} entries={block.entries} live={index === grouped.length - 1} />
     : block.entry.role === 'user'
@@ -290,9 +297,14 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
       </div>
     </div>
     {images > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: images })}</div>}
-    {screen.choice && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
+    {screen.choice && !sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}><ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} /></div>}
+    {sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
+    }}><ReadingSessions key={`${terminal.id}-${terminal.sessionId}`} terminalId={terminal.id} onError={onError} onClose={() => setSessionsOpen(false)} onSent={text => {
+      history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50)); setImages(0); toBottom();
+    }} /></div>}
     <div className="reading-composer">
       {palette && <div className="dropdown reading-commands" id={listId} role="listbox" aria-label={t('命令')}>{matches.map((command, index) => <div key={command.name} id={optionId(index)} role="option" aria-selected={selection === index} className="reading-command" onMouseDown={event => event.preventDefault()} onClick={() => complete(command)}>
         <code>{command.name}</code><span>{command.source === 'builtin' ? t(command.description) : command.description}</span>{command.source !== 'builtin' && <small>{command.source === 'project' ? t('项目') : command.source === 'user' ? t('用户') : t('技能')}</small>}

@@ -34,6 +34,7 @@ const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription }
 const { summarizeRound, claudeReply, codexReply } = require('./round-summary.cjs');
 const { ConversationLog, claudeConversation, codexConversation } = require('./conversation.cjs');
 const { listAgentCommands } = require('./agent-commands.cjs');
+const { claudeConfigDir, findClaudeSession, listClaudeSessions } = require('./claude-sessions.cjs');
 const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARGETS } = require('./summary-models.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
@@ -93,6 +94,7 @@ function publicState() {
       const terminals = terminalIds(p).map((id, index) => {
         const s = sessions.get(id);
         return { id, title: t('终端 {n}', { n: index + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : localShell().kind), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
+          agentStartedAt: s?.codexActive ? s.activitySince : null,
           codexActivity: s?.codexActivity || 'unknown', needsInput: s?.needsInput?.message || null, shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastActivityAt: s?.lastActivityAt || null, lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null,
           // The step a working agent is on, for the card's one-line status; the full list is sent separately.
@@ -283,14 +285,32 @@ function describeActions(s, cwd, actions) {
 // Claude Code writes each tool call to its transcript; follow it while the session lasts.
 function followClaude(project, s, event) {
   const file = typeof event.transcriptPath === 'string' ? path.resolve(event.transcriptPath) : '';
-  const home = path.resolve(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
+  const home = claudeConfigDir();
   if (!file || path.basename(file) !== `${event.sessionId}.jsonl` || !file.toLowerCase().startsWith(home.toLowerCase() + path.sep)) return;
+  s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
+  s.claudeSessionId = event.sessionId;
   if (s.claudeTranscript?.filename !== file) {
     s.claudeTranscript = new TranscriptTail(file); s.actions.reset(); s.conversation.reset();
     s.activityMonitor?.stop();
     const tail = s.claudeTranscript;
-    s.activityMonitor = monitorActivity(async () => { await tail.read(record => { noteReply(s, claudeReply(record)); claudeConversation(s.conversation, record, project.path); describeActions(s, project.path, claudeRecord(s.actions, record, project.path)); }); return null; }, () => {});
+    s.activityMonitor = monitorActivity(async () => { await tail.read(record => {
+      if (sessions.get(s.terminalId) !== s || s.claudeTranscript !== tail) return;
+      noteReply(s, claudeReply(record)); claudeConversation(s.conversation, record, project.path); describeActions(s, project.path, claudeRecord(s.actions, record, project.path));
+    }); return null; }, () => {});
   } else void s.activityMonitor?.poll();
+}
+
+// Restores and the reading-view picker know the id before Claude emits its next prompt hook.
+async function followClaudeSession(project, s, id) {
+  const request = s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
+  const cwd = store.findTerminal(s.terminalId)?.record.restore?.cwd || project.path;
+  const file = await findClaudeSession(cwd, id);
+  if (!file || sessions.get(s.terminalId) !== s || (!s.codexActive && s.claudeResumeId !== id) || (s.codexActive && s.agent !== 'claude')) return false;
+  if (s.claudeFollowRequest !== request) return s.claudeSessionId === id && s.claudeTranscript?.filename === file;
+  followClaude(project, s, { sessionId: id, transcriptPath: file });
+  store.setRestore(s.terminalId, { threadId: id });
+  await s.activityMonitor?.poll();
+  return true;
 }
 
 // A round being worked on ends with a spoken notice: load the voice now, so it is ready by then.
@@ -343,6 +363,7 @@ function onEvent(event) {
   if (event.type !== 'turn-complete' && !acceptShellEvent(s, event)) return;
   if (event.type === 'shell-ready' || event.type === 'shell-prompt') {
     s.needsInput = null;
+    s.claudeResumeId = null; s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
     s.activityMonitor?.stop(); s.activityMonitor = null;
     s.codexActive = false; s.codexActivity = 'unknown'; s.reportedThreadId = null; s.promptQueue.reset();
     s.ready = event.type === 'shell-prompt';
@@ -353,21 +374,26 @@ function onEvent(event) {
     if (typeof event.codexHome === 'string') s.codexHome = event.codexHome;
     if (!quitting && typeof event.cwd === 'string') store.setRestore(s.terminalId, { cwd: event.cwd });
   } else if (event.type === 'codex-started') {
+    const claudeResumeId = event.agent === 'claude' ? s.claudeResumeId : null;
+    const keepClaudeHistory = claudeResumeId && s.claudeSessionId === claudeResumeId && s.claudeTranscript;
     s.ready = false;
     s.codexActive = true;
     s.status = 'codex';
     s.error = null;
     s.submissions.reset();
     s.codexActivity = 'unknown'; s.activitySince = Date.now(); s.activityInputAt = 0;
-    s.actions.reset(); s.conversation.reset(); s.claudeTranscript = null; s.promptQueue.reset();
+    if (!keepClaudeHistory) { s.actions.reset(); s.conversation.reset(); s.claudeTranscript = null; s.claudeSessionId = null; }
+    s.promptQueue.reset();
     s.agent = event.agent === 'claude' ? 'claude' : 'codex';
-    s.activityMonitor?.stop(); s.activityMonitor = null;
+    if (!keepClaudeHistory) { s.activityMonitor?.stop(); s.activityMonitor = null; }
     // A terminal restores the agent it last ran. Switching agents drops the other one's conversation id.
     const previousAgent = store.findTerminal(s.terminalId)?.record.restore?.agent || 'codex';
     const agentRestore = { agent: s.agent, ...(previousAgent !== s.agent ? { threadId: null, interrupted: false } : {}) };
     if (s.agent === 'claude') {
       // Claude reports turns and its session id through hooks (claudeActivity).
       store.setRestore(s.terminalId, { terminal: true, codex: true, cwd: event.cwd, ...agentRestore });
+      s.claudeResumeId = null;
+      if (claudeResumeId) void followClaudeSession(project, s, claudeResumeId).catch(error => { s.error = String(error); broadcast(); });
       broadcast(); return;
     }
     store.setRestore(s.terminalId, agentRestore);
@@ -389,6 +415,7 @@ function onEvent(event) {
     // Unread completion is independent of session activity. It survives new turns.
   } else if (event.type === 'codex-exited') {
     s.needsInput = null;
+    s.claudeResumeId = null; s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
     s.activityMonitor?.stop(); s.activityMonitor = null; s.codexActivity = 'unknown';
     s.ready = false;
     s.codexActive = false;
@@ -420,7 +447,9 @@ async function resumeAfterPrompt(project, session) {
       if (sessions.get(session.terminalId) !== session || !session.ready || session.inputDirty || session.codexActive) return;
       store.expectCompletion(project.id, restore.interrupted === true);
       session.ready = false;
+      session.claudeResumeId = restore.threadId || null;
       session.gate.afterPrompt(command);
+      if (restore.threadId) await followClaudeSession(project, session, restore.threadId);
       broadcast();
     } catch (error) { session.error = `恢复会话失败：${error.message}`; broadcast(); }
     return;
@@ -895,6 +924,17 @@ function registerIpc() {
   });
   handle('terminal:actions', id => { findProject(id); return sessions.get(id)?.actions.list || []; });
   handle('terminal:conversation', id => { findProject(id); return sessions.get(id)?.conversation.list || []; });
+  handle('terminal:agentSessions', id => {
+    const project = findProject(id), s = sessions.get(id);
+    if (project.kind === 'ssh' || s?.agent !== 'claude') return [];
+    const cwd = store.findTerminal(id)?.record.restore?.cwd || project.path;
+    return listClaudeSessions(cwd, s.codexActive ? s.claudeSessionId : s.claudeResumeId);
+  });
+  handle('terminal:followAgentSession', async (id, sessionId) => {
+    const project = findProject(id), s = sessions.get(id);
+    if (project.kind === 'ssh' || !s?.codexActive || s.agent !== 'claude') return false;
+    return followClaudeSession(project, s, sessionId);
+  });
   handle('terminal:commands', async id => {
     const project = findProject(id), s = sessions.get(id);
     const commands = await listAgentCommands({ agent: s?.agent || 'claude', projectPath: project.kind === 'ssh' ? undefined : project.path });
