@@ -9,7 +9,7 @@ const change = role => ({ entry: { role } });
 
 function publisher() {
   const source = fs.readFileSync(path.join(__dirname, '../electron/main.cjs'), 'utf8');
-  const packets = [], session = { terminalId: 'terminal', conversation: { list: [] } };
+  const packets = [], session = { terminalId: 'terminal', conversation: { list: [], loading: false, snapshot() { return this.list; } } };
   const context = vm.createContext({
     sessions: new Map([['terminal', session]]), conversationBatchDelay, setTimeout, clearTimeout,
     send: (channel, packet) => packets.push({ channel, packet }),

@@ -294,6 +294,9 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
     './useReadingConversation': { conversationKey: () => 'session', useReadingConversation: () => entries },
     './useVisibleTail': tail, './reading.css': {},
     './useMentions': { useMentions: () => ({ open: false }) }, './MentionPalette': { MentionPalette: () => null },
+    './pending-prompts': require('../src/pending-prompts.ts'),
+    './usePendingPrompts': { usePendingPrompts: () => ({ pending: [], echo() {}, cancelEcho() {} }) },
+    './PendingPromptEntries': { PendingPromptEntries: () => null },
     './i18n': { t: (text, values) => (en[text] ?? text).replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? name)) },
   });
   const render = () => renderToStaticMarkup(React.createElement(ReadingView, {
