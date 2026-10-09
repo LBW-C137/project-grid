@@ -515,10 +515,11 @@ jobs:
 
           ## Changes in $RELEASE_VERSION
 
-          - Desktop launches now pass the machine's system proxy to local terminals and coding assistants when no proxy environment variables are set. Proxy addresses and ports come from system settings; none are hardcoded.
-          - Existing proxy and bypass environment variables are preserved. Machines without a system proxy continue to connect directly.
-          - Proxy discovery has a bounded startup wait; a stalled endpoint does not discard a proxy already resolved for another endpoint.
-          - Regression tests cover direct connections, different local ports, network proxies, HTTPS, IPv6, SOCKS, failed lookups and timeouts. Linux AppImage checks also verify proxy inheritance into a restored terminal.
+          - Clearer to read on every theme: the wallpaper is darkened and smoothed once, each card is a pane of dark frosted glass (white text at 92%, teal titles, bright-blue accents), and prompts, tool calls, code, questions and activity groups sit on their own light cards.
+          - Text edges and glass are tuned per system and screen density: crisp one-pixel text shadows below 2x scaling, soft ones above; grayscale smoothing on macOS; a lighter blur over denser panes on Linux; denser panes when the system asks for more contrast.
+          - Questions from Claude Code (AskUserQuestion) and Codex (request_user_input in Plan mode) appear in the reading view as cards: choose, tick several, type an own answer or notes, switch questions and submit. The message box is locked meanwhile.
+          - Dictation offers a high-accuracy model for mixed Chinese and English, Qwen3-ASR 0.6B (about 985 MB, offline). It downloads in the background while SenseVoice keeps working, then takes over.
+          - The reading view shows its status line only while the agent works or waits for you. On Windows, a file save refused for a moment by another program is retried, and still stops if the file changed meanwhile. Slash command lists match Claude Code 2.1.294 and Codex 0.161.
 
           Commit: $GITHUB_SHA
           Build: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID
