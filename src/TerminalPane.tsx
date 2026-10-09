@@ -70,8 +70,8 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const hoverLink = (_event: MouseEvent, target: string) => { if (host.current) host.current.title = `${isMac ? t('⌘ + 点按打开链接') : t('Ctrl + 鼠标左键打开链接')}\n${target}`; };
     const leaveLink = () => { if (host.current) host.current.removeAttribute('title'); };
     const terminal = new Terminal({
-      fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', Menlo, 'Microsoft YaHei UI', 'PingFang SC', monospace",
-      fontSize, lineHeight: 1.3, ...terminalOptions, scrollback: 3000,
+      fontFamily: document.documentElement.dataset.terminalFontFamily || "'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', Menlo, 'Microsoft YaHei UI', 'PingFang SC', monospace",
+      fontSize, lineHeight: 1.3, ...terminalOptions, fontWeight: String(Number(document.documentElement.dataset.terminalWeight) || 500) as '400' | '500' | '600', scrollback: 3000,
       cursorBlink: true, cursorStyle: 'bar',
       // Decorations (the heading and bullet styling) are still an experimental part of xterm's API.
       allowProposedApi: true, allowTransparency: true,
@@ -90,10 +90,15 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     if (!remote && isWindows) terminal.options.windowsPty = { backend: 'conpty', buildNumber: 21376 };
     const links = terminal.registerLinkProvider(createTerminalLinkProvider(terminal, activateLink, hoverLink, leaveLink));
     const styling = styleTerminal(terminal);
-    const themeObserver = new MutationObserver(() => {
-      terminal.options.theme = terminalTheme(document.documentElement.dataset.theme);
+    const themeObserver = new MutationObserver(records => {
+      if (records.some(record => record.attributeName === 'data-theme')) terminal.options.theme = terminalTheme(document.documentElement.dataset.theme);
+      if (records.some(record => record.attributeName === 'data-terminal-weight')) terminal.options.fontWeight = String(Number(document.documentElement.dataset.terminalWeight) || 500) as '400' | '500' | '600';
+      if (records.some(record => record.attributeName === 'data-terminal-font-family')) {
+        terminal.options.fontFamily = document.documentElement.dataset.terminalFontFamily || terminal.options.fontFamily;
+        requestAnimationFrame(() => { if (term.current === terminal && host.current?.clientWidth) fitAddon.fit(); });
+      }
     });
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-terminal-weight', 'data-terminal-font-family'] });
     term.current = terminal; fit.current = fitAddon;
     const unregister = registerScreen(id, terminal);
     let disposed = false;
