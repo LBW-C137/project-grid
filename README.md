@@ -235,6 +235,10 @@ npm run dist:linux     # 在 Linux 上构建本机架构的 AppImage 与 tar.gz
 
 Electron · React · TypeScript · xterm.js · node-pty。每个版本都要通过单元测试、打包版桌面测试和 Linux SSH 集成测试后才会发布。README 里的截图和演示由 `scripts/readme-shots.mjs` 从演示项目自动生成。
 
+## 许可证
+
+本项目以 [MIT 许可证](LICENSE) 开源：可以自由使用、复制、修改、合并、发布、分发、再授权和销售，只需在副本中保留版权声明和许可声明。软件按“原样”提供，不附带任何担保。
+
 ---
 
 <p align="center">

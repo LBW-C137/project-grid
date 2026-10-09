@@ -237,6 +237,10 @@ npm run dist:linux     # on Linux, build the AppImage and tar.gz for this machin
 
 Electron · React · TypeScript · xterm.js · node-pty. Every release passes unit tests, desktop tests against the packaged app and Linux SSH integration tests before it is published. The screenshots and the demo in this README are generated from demo projects by `scripts/readme-shots.mjs`.
 
+## License
+
+Project Grid is open source under the [MIT License](LICENSE): you may use, copy, modify, merge, publish, distribute, sublicense and sell it, provided the copyright and permission notices are kept in copies. The software is provided "as is", without warranty of any kind.
+
 ---
 
 <p align="center">
