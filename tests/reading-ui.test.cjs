@@ -87,7 +87,7 @@ test('screen parser stub preserves its replacement contract', () => {
 test('welcome renders CLI metadata and the cached agent commands without a terminal toggle', () => {
   const { ReadingWelcome } = loadUI('ReadingWelcome.tsx');
   for (const agent of ['claude', 'codex']) {
-    const names = agent === 'claude' ? ['/init', '/help', '/model', '/status', '/review'] : ['/init', '/model', '/status', '/review', '/approvals'];
+    const names = agent === 'claude' ? ['/init', '/help', '/model', '/status', '/review'] : ['/init', '/model', '/status', '/review', '/permissions'];
     const commands = names.map(name => ({ name, source: 'builtin', description: '审查代码', view: 'reading' }));
     const html = renderToStaticMarkup(React.createElement(ReadingWelcome, { agent, screen: fakeScreen(), commands, complete: () => {}, disabled: false }));
     assert.match(html, /Claude Code/); assert.match(html, /v2\.1\.293/); assert.match(html, /Opus 5\.5/); assert.match(html, /high/);
@@ -369,7 +369,7 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
     './ActivityPane': {}, './voice-input': {}, './terminal-screen': { useScreen: () => null },
     './agent-screen': { parseAgentScreen: () => fakeScreen() },
     './ReadingWelcome': { ReadingWelcome: () => React.createElement('p', null, 'welcome preserved') },
-    './ReadingChoice': {}, './choice-keys': {}, './reading-mode': {},
+    './ReadingChoice': {}, './ReadingQuestion': {}, './choice-keys': {}, './reading-mode': {},
     './useStickToBottom': { useStickToBottom: () => ({ stuck: true, unseen: 0, ready: true, holdPosition() {}, toBottom() {} }) },
     './useReadingConversation': { conversationKey: () => 'session', useReadingConversation: () => entries },
     './useVisibleTail': tail, './reading.css': {},
@@ -380,6 +380,7 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
     './ReadingSessions': { ReadingSessions: () => null }, './reading-sessions': require('../src/reading-sessions.ts'),
     './reading-welcome': { useWelcomeStarting: () => false },
     './ReadingCliPanel': { ReadingCliPanel: () => null }, './ReadingCommandOutput': { ReadingCommandOutput: () => null },
+    './cli-panel': require('../src/cli-panel.ts'),
     './useReadingCli': { useReadingCli: (id, session, agent, list) => ({ entries: list, busy: false, panel: null, begin() {} }) },
     './i18n': { t: (text, values) => (en[text] ?? text).replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? name)) },
   });
@@ -394,4 +395,21 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
   assert.doesNotMatch(html, /answer-359/);
   entries = []; parsed.length = 0;
   assert.match(render(), /welcome preserved/); assert.equal(parsed.length, 0);
+});
+
+test('a question renders as its own card: progress, the question, options, an own answer or notes, Submit and Chat', () => {
+  const icon = props => React.createElement('svg', { className: props.className });
+  const icons = { CircleNotch: icon, CaretLeft: icon, CaretRight: icon, Check: icon, PaperPlaneRight: icon };
+  const { ReadingQuestion } = loadUI('ReadingQuestion.tsx', { '@phosphor-icons/react': icons, './question-keys': require('../src/question-keys.ts') });
+  const { parseAgentScreen } = require('../src/agent-screen.ts');
+  const screen = name => parseAgentScreen(name.startsWith('claude') ? 'claude' : 'codex', fs.readFileSync(path.join(__dirname, 'fixtures/questions', name + '.txt'), 'utf8').split('\n')).choice;
+  const render = name => renderToStaticMarkup(React.createElement(ReadingQuestion, { choice: screen(name), terminalId: 'terminal', onError: () => {} }));
+  const multi = render('claude-question-multi-checked');
+  assert.match(multi, /要清理哪些目录？/); assert.match(multi, /aria-pressed="true"/); assert.match(multi, /Submit this question/);
+  assert.match(multi, /Talk it over instead/); assert.match(multi, /placeholder="Type your own answer…"/); assert.match(multi, /清理目录/);
+  assert.doesNotMatch(multi, /Chat about this|Type something/, 'the CLI\'s own English rows are shown in the window\'s words');
+  const review = render('claude-question-review');
+  assert.match(review, /Review your answers/); assert.match(review, /node_modules, abc/); assert.match(review, /Submit answers/);
+  const codex = render('codex-question');
+  assert.match(codex, /Question 1\/2/); assert.match(codex, /Notes \(optional\)/); assert.doesNotMatch(codex, /Optionally, add details/);
 });

@@ -181,13 +181,14 @@ test('saved forest and other theme choices survive loading and unrelated setting
 });
 
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'daylight', language: 'zh', surface: 'glass', terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true,
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { columns: 0, fontSize: 12, focusAnimation: 'smooth', theme: 'daylight', language: 'zh', surface: 'glass', terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice',
     summary: { mode: 'fast', cloud: { provider: 'openai', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }, local: { provider: 'ollama', protocol: 'openai', baseUrl: 'http://localhost:11434/v1', model: 'qwen2.5:1.5b' } } });
   const summary = cleanSettings({ summary: { mode: 'local', local: { provider: 'vllm', baseUrl: ' http://10.0.0.5:8000/v1 ', model: 'Qwen/Qwen2.5-1.5B-Instruct' }, cloud: { provider: 'custom', protocol: 'anthropic', baseUrl: 'https://gateway.example/api', model: '' } } }).summary;
   assert.deepEqual(summary, { mode: 'local', cloud: { provider: 'custom', protocol: 'anthropic', baseUrl: 'https://gateway.example/api', model: '' }, local: { provider: 'vllm', protocol: 'openai', baseUrl: 'http://10.0.0.5:8000/v1', model: 'Qwen/Qwen2.5-1.5B-Instruct' } });
   assert.equal(cleanSettings({ summary: { mode: 'shout', cloud: { provider: 'nope', protocol: 'anthropic' } } }).summary.mode, 'fast');
   assert.equal(cleanSettings({ summary: { cloud: { provider: 'openai', protocol: 'anthropic' } } }).summary.cloud.protocol, 'openai', 'only a custom endpoint chooses its protocol');
   assert.equal(cleanSettings({ autoSave: false }).autoSave, false);
+  assert.equal(cleanSettings({ voiceModel: 'toString' }).voiceModel, 'sensevoice', 'only a listed recognizer can be chosen');
   assert.equal(cleanSettings({ surface: 'solid' }).surface, 'solid'); assert.equal(cleanSettings({ surface: 'paper' }).surface, 'glass');
   assert.equal(cleanSettings({ terminalRenderer: 'dom' }).terminalRenderer, 'dom'); assert.equal(cleanSettings({ terminalRenderer: 'canvas' }).terminalRenderer, 'gpu');
   assert.equal(cleanSettings({ language: 'fr' }).language, 'zh');

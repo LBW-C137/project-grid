@@ -1,4 +1,5 @@
 import type { AgentScreen, ScreenAgent, ScreenBanner, ScreenChoice, ScreenOption, ScreenStatus } from './agent-screen-types.ts';
+import { parseQuestion } from './agent-question.ts';
 
 const rule = (row: string) => /^[─╌]{2,}$/.test(row.trim());
 const optionRow = (row: string) => /^(\s*)([❯›↓↑]?\s*)(\d+)\.\s+(.+)$/.exec(row);
@@ -176,5 +177,5 @@ export function parseAgentScreen(agent: ScreenAgent, rows: string[]): AgentScree
   const status = parseStatus(agent, normalized, start);
   const overlay = parseOverlay(agent, normalized, start);
   return { banner: parseBanner(agent, normalized, status), status,
-    choice: overlay === 'none' ? parseChoice(agent, normalized) : null, overlay };
+    choice: overlay === 'none' ? parseQuestion(agent, normalized) ?? parseChoice(agent, normalized) : null, overlay };
 }

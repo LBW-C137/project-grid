@@ -36,9 +36,9 @@ const assetIndex = process.argv.indexOf('--voice-assets');
 const assets = assetIndex >= 0 ? path.resolve(process.argv[assetIndex + 1]) : null;
 if (assets) {
   // A folder holding the downloaded SenseVoice files, so the real recognizer runs without a download.
-  const { MODEL_DIRECTORY, MODEL_FILES } = require('../electron/voice.cjs');
-  await fs.mkdir(path.join(dataDir, 'voice', MODEL_DIRECTORY), { recursive: true });
-  for (const file of MODEL_FILES) await fs.copyFile(path.join(assets, file.name), path.join(dataDir, 'voice', MODEL_DIRECTORY, file.name));
+  const { MODELS: { sensevoice } } = require('../electron/voice.cjs');
+  await fs.mkdir(path.join(dataDir, 'voice', sensevoice.directory), { recursive: true });
+  for (const file of sensevoice.files) await fs.copyFile(path.join(assets, file.name), path.join(dataDir, 'voice', sensevoice.directory, file.name));
 }
 const packaged = process.argv.includes('--packaged');
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: dataDir, PROJECT_GRID_TEST_GUIDE: '1' }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
@@ -78,7 +78,8 @@ try {
     };
   }, output);
   if (!assets) await application.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('voice:state'); ipcMain.handle('voice:state', () => ({ ok: true, value: { phase: 'ready', ready: true, percent: 100, model: 'test stub', error: null } }));
+    const model = { id: 'sensevoice', label: 'test stub', downloadBytes: 0, phase: 'ready', percent: 100, error: null };
+    ipcMain.removeHandler('voice:state'); ipcMain.handle('voice:state', () => ({ ok: true, value: { phase: 'ready', ready: true, percent: 100, model: model.label, error: null, downloadBytes: 0, choice: model.id, active: model.id, models: [model] } }));
     ipcMain.removeHandler('voice:transcribe'); ipcMain.handle('voice:transcribe', (_event, audio) => { if (audio.byteLength < 16000) return { ok: false, error: 'Missing recorded microphone samples' }; return { ok: true, value: 'Please open the project folder and continue the task.' }; });
   });
   // Updating from an older version opens the usage guide on what is new; it can be paged and is shown once.

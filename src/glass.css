@@ -1,5 +1,5 @@
-/* Clear liquid-glass material, implemented with CSS and a shared SVG lens.
-   Tint and refraction belong to the backdrop; all content stays at full opacity. */
+/* Base glass material. Every theme's frosted panes, ink and type are set on top of this in clarity.css.
+   Tint and blur belong to the backdrop; all content stays at full opacity. */
 :root {
   color: #ffffff; background: #283e38;
   --glass: rgba(9, 24, 34, .44);
@@ -25,7 +25,6 @@
   --text-shadow: 0 1px 0 rgba(0, 12, 22, .32);
   --border: var(--glass-border); --muted: #e7f1fa;
 }
-.liquid-glass-definitions { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
 .app-shell {
   isolation: isolate;
   background:
@@ -329,6 +328,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .voice-button.mic-missing, .voice-button.mic-missing:hover { color: #ff5c5c; }
 .voice-button.is-recording { color: #ffffff; background: #2f8cff; box-shadow: 0 0 0 calc(2px + var(--voice-level, 0) * 6px) #2f8cff55, 0 0 12px #2f8cff88; transition: box-shadow .08s linear; }
 .voice-button.is-busy { color: #3fa9ff; }
+.voice-model-setting { display: flex; flex: none; align-items: center; gap: 10px; min-width: 0; }.voice-model-setting select { max-width: 300px; }
 .voice-model-status { font-size: 12px; color: var(--theme-muted, #e7f1fa); white-space: nowrap; }.voice-model-status.is-ready { color: #a2e6c0; }
 /* Ctrl+T dictation: a microphone floats in the middle of the project card it types into (the anchor
    takes that card's box). It never takes the pointer, so the terminal stays visible and clickable underneath. */

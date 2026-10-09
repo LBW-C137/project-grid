@@ -5,7 +5,7 @@ const { realpath } = require('node:fs');
 const { promisify } = require('node:util');
 const path = require('node:path');
 const os = require('node:os');
-const { listAgentCommands } = require('../electron/agent-commands.cjs');
+const { listAgentCommands, isLocalAgentCommand } = require('../electron/agent-commands.cjs');
 
 async function fixture(t) {
   const root = await promisify(realpath.native)(await fs.mkdtemp(path.join(os.tmpdir(), 'pg-commands-')));
@@ -19,7 +19,7 @@ test('builtins have the requested views and sorted names; no project means built
   const { projectPath, home, write } = await fixture(t);
   await write(path.join(home, '.claude/commands/local.md'), '# Local');
   await write(path.join(home, '.codex/prompts/local.md'), '# Local');
-  for (const [agent, count, reading] of [['claude', 35, ['/btw', '/init', '/pr-comments', '/review', '/security-review']], ['codex', 13, ['/init', '/review']]]) {
+  for (const [agent, count, reading] of [['claude', 31, ['/btw', '/init', '/review', '/security-review']], ['codex', 52, ['/goal', '/init', '/plan', '/review', '/side']]]) {
     const commands = await listAgentCommands({ agent, home });
     assert.equal(commands.length, count);
     assert.deepEqual(commands.map(item => item.name), commands.map(item => item.name).sort((a, b) => a.localeCompare(b)));
@@ -27,6 +27,38 @@ test('builtins have the requested views and sorted names; no project means built
     assert.ok(commands.every(item => item.source === 'builtin' && item.description && item.name.startsWith('/')));
     assert.equal(commands.find(item => item.name === '/compact').view, 'terminal');
     assert.deepEqual(await listAgentCommands({ agent, home: path.join(home, 'missing'), projectPath }), commands, 'missing folders are ignored');
+  }
+});
+
+test('Codex 0.161.0 lists canonical popup commands with terminal and prompt views', async t => {
+  const { home } = await fixture(t);
+  const commands = await listAgentCommands({ agent: 'codex', home });
+  const terminal = [
+    'model', 'fast', 'ide', 'permissions', 'keymap', 'vim', 'experimental', 'approve',
+    'memories', 'skills', 'import', 'hooks', 'rename', 'new', 'archive', 'delete', 'resume',
+    'fork', 'worktree', 'app', 'compact', 'recap', 'voice', 'agents', 'subagents',
+    'copy', 'export', 'raw', 'tui', 'diff', 'mention', 'status', 'daemon', 'warnings',
+    'cd', 'pwd', 'usage', 'title', 'statusline', 'theme', 'pets', 'mcp', 'plugins',
+    'feedback', 'ps', 'stop', 'clear',
+  ];
+  assert.deepEqual(commands.filter(item => item.view === 'terminal').map(item => item.name),
+    terminal.map(name => '/' + name).sort((a, b) => a.localeCompare(b)));
+  for (const name of terminal) assert.equal(isLocalAgentCommand('codex', '/' + name), true, name);
+  for (const text of ['/review find regressions', '/init', '/plan investigate', '/goal fix tests', '/side why']) {
+    assert.equal(isLocalAgentCommand('codex', text), false, text);
+  }
+  // Exclude retired names, hidden/development/recovery actions, exits and duplicate aliases.
+  for (const name of ['approvals', 'apps', 'debug-config', 'debug-m-drop', 'debug-m-update',
+    'rollout', 'test-approval', 'daybreak', 'setup-default-sandbox', 'btw', 'quit', 'exit', 'logout',
+    'cwd', 'pet', 'clean']) {
+    assert.ok(!commands.some(item => item.name === '/' + name), name);
+    assert.equal(isLocalAgentCommand('codex', '/' + name), false, name);
+  }
+  for (const text of ['/permissions', ' /status ', '/mcp verbose', '/mcp login server', '/raw on', '/resume saved']) {
+    assert.equal(isLocalAgentCommand('codex', text), true, text);
+  }
+  for (const text of ['/permissions-extra', 'explain /status', '']) {
+    assert.equal(isLocalAgentCommand('codex', text), false, text);
   }
 });
 
@@ -108,4 +140,11 @@ test('a linked commands root is read, but linked folders inside it are not follo
   assert.ok(!commands.some(item => item.name.startsWith('/linked')), 'a link inside a commands folder is not followed');
   // A project whose whole .claude folder is linked is read through the link.
   assert.deepEqual((await listAgentCommands({ agent: 'claude', projectPath: linkedProject, home: path.join(root, 'empty-home') })).filter(item => item.source !== 'builtin').map(item => item.name), ['/ancestor']);
+});
+
+test('local slash commands (no model turn) are told apart from prompts and prompt commands', () => {
+  for (const text of ['/context', '/doctor', '/compact', '/model', '/model opus', ' /status ']) assert.equal(isLocalAgentCommand('claude', text), true, text);
+  for (const text of ['/init', '/review', '/btw why', '/fix-issue 3', 'fix /context parsing', '/contextual', '']) assert.equal(isLocalAgentCommand('claude', text), false, text);
+  assert.equal(isLocalAgentCommand('codex', '/status'), true);
+  assert.equal(isLocalAgentCommand('codex', '/init'), false);
 });

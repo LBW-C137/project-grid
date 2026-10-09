@@ -12,3 +12,6 @@ __pycache__/
 
 # Promotional video project (HyperFrames sources, captures, renders); kept out of the app repo.
 promo-video/
+
+# Personal Claude Code settings
+.claude/settings.local.json

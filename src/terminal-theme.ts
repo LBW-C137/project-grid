@@ -11,24 +11,29 @@ export const darkTerminalTheme: ITheme = {
   scrollbarSliderBackground: '#46536455', scrollbarSliderHoverBackground: '#64768c88', scrollbarSliderActiveBackground: '#7b8ea599',
 };
 
-export const lightTerminalTheme: ITheme = {
-  // Transparent white supplies light RGB channels to xterm's contrast calculation,
-  // while the CSS inner screen supplies the actual frosted background.
-  background: '#ffffff00', foreground: '#0e1e33', cursor: '#163e75', cursorAccent: '#ffffff',
-  selectionBackground: '#c9def5', selectionInactiveBackground: '#dce8f5',
-  black: '#0e1e33', red: '#c0262d', green: '#0f7b4f', yellow: '#9a6700',
-  blue: '#1b5fbf', magenta: '#8a3fc0', cyan: '#0b7285', white: '#56677d',
-  brightBlack: '#56677d', brightRed: '#c3323b', brightGreen: '#168256', brightYellow: '#956c0e',
-  brightBlue: '#286bc5', brightMagenta: '#9250be', brightCyan: '#13798b', brightWhite: '#4c6078',
-  scrollbarSliderBackground: '#17385844', scrollbarSliderHoverBackground: '#17385866', scrollbarSliderActiveBackground: '#17385888',
+// Daylight's ink is white at 92% with teal green and bright blue for accents, over the dark frosted pane every theme
+// uses (clarity.css). A transparent black base tells xterm's contrast correction that the ink sits on dark, so it
+// keeps these colours as they are.
+export const daylightTerminalTheme: ITheme = {
+  background: '#00000000', foreground: '#ebebeb', cursor: '#4aa8ff', cursorAccent: '#10141c',
+  selectionBackground: '#2a5d8f', selectionInactiveBackground: '#244b70',
+  black: '#a3acb9', red: '#ff7a7a', green: '#3ddc97', yellow: '#fbbf24',
+  blue: '#4aa8ff', magenta: '#e599f7', cyan: '#5eead4', white: '#ffffff',
+  brightBlack: '#c0c7d1', brightRed: '#ff9a9a', brightGreen: '#6ee7b7', brightYellow: '#fcd34d',
+  brightBlue: '#7cc0ff', brightMagenta: '#f0b8fb', brightCyan: '#99f6e4', brightWhite: '#ffffff',
+  scrollbarSliderBackground: '#ffffff26', scrollbarSliderHoverBackground: '#ffffff40', scrollbarSliderActiveBackground: '#ffffff59',
 };
 
+// Body text is medium (500) and bold is 700, as everywhere in the window. The contrast floor is 4.5:1, the same for
+// every theme, so switching themes never resets the terminal's options.
+export const terminalOptions = { fontWeight: '500', fontWeightBold: '700', minimumContrastRatio: 4.5 } as const;
+
 export function terminalTheme(theme: string | undefined): ITheme {
-  return { ...(theme === 'daylight' ? lightTerminalTheme : darkTerminalTheme) };
+  return { ...(theme === 'daylight' ? daylightTerminalTheme : darkTerminalTheme) };
 }
 
 export function terminalDecorationColors(theme: string | undefined) {
   return theme === 'daylight'
-    ? { bullet: '#b02663', heading: '#90316e' }
+    ? { bullet: '#ff8fb1', heading: '#fcd34d' }
     : { bullet: '#ff6b9a', heading: '#ff9fd5' };
 }

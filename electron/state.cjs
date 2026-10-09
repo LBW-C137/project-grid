@@ -3,6 +3,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { normalizeSSH } = require('./ssh-config.cjs');
 const SUMMARY_PRESETS = require('./summary-presets.json');
+const { MODELS: VOICE_MODELS, DEFAULT_MODEL: DEFAULT_VOICE_MODEL } = require('./voice.cjs');
 
 // Local folders once opened as projects, newest first, so a removed project can be added again in one click.
 const HISTORY_LIMIT = 30;
@@ -19,7 +20,7 @@ function cleanHistory(input) {
 // Claude turn was left unfinished. Only non-default values are stored.
 const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'claude' } : {}), ...(restore?.interrupted === true ? { interrupted: true } : {}) });
 
-const defaults = { columns: 0, surface: 'glass', terminalRenderer: 'gpu', autoSave: true, activityPane: true, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'daylight' };
+const defaults = { columns: 0, surface: 'glass', terminalRenderer: 'gpu', autoSave: true, activityPane: true, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, restoreSessions: true, focusAnimation: 'smooth', theme: 'daylight', voiceModel: DEFAULT_VOICE_MODEL };
 
 // Keyboard shortcuts the user changed, by action; defaults live in the window (src/shortcuts.ts).
 // "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
@@ -54,6 +55,8 @@ function cleanSettings(input = {}) {
     surface: input.surface === 'solid' ? 'solid' : 'glass',
     terminalRenderer: input.terminalRenderer === 'dom' ? 'dom' : 'gpu',
     summary: cleanSummarySettings(input.summary),
+    // The offline recognizer for dictation (voice.cjs).
+    voiceModel: Object.hasOwn(VOICE_MODELS, input.voiceModel) ? input.voiceModel : defaults.voiceModel,
     shortcuts: cleanShortcuts(input.shortcuts),
     // Shell for local terminals: PowerShell or Command Prompt on Windows, Bash or zsh on Linux (until one is
     // chosen there, the login shell's kind). SSH projects always use Bash on the server.

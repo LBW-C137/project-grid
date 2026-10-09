@@ -44,6 +44,18 @@ try {
   // A normal shell prompt reports the agent's exit. Keep this fixture active without launching a CLI.
   await write("function global:prompt { 'reading-fixture> ' }; Send-ProjectGridEvent 'codex-started' -Agent 'claude'\r");
   await waitFor(async () => (await state()).codexActive && (await state()).agent === 'claude', 'authenticated Claude fixture');
+  // Claude's idle input between its two rules, with its footer: a typed command shows its output inside the reading
+  // view and is finished once the CLI is idle like this again. The fixture draws it after each command (the helper's
+  // own write is left out of the recorded keys).
+  const idle = "Clear-Host; Write-Host ([string][char]0x2500 * 40); Write-Host ([string][char]0x276F + ' '); Write-Host ([string][char]0x2500 * 40); Write-Host ('  ' + [char]0x23F8 + ' manual mode on')\r";
+  await write(idle);
+  const settled = async label => {
+    await waitFor(async () => (await writes()).some(item => item.data === '\r'), `${label} submitted`);
+    const sent = await app.evaluate(() => globalThis.voicePastes.slice());
+    await write(idle);
+    await waitFor(async () => await composer.isEnabled(), `${label} finished in the reading view`);
+    await app.evaluate((_electron, sent) => { globalThis.voicePastes = sent; }, sent);
+  };
   await reading(); await composer.fill('/');
   await palette.getByRole('option').filter({ has: page.getByText('/status', { exact: true }) }).waitFor();
   const custom = palette.getByRole('option').filter({ hasText: '/fix-issue' });
@@ -75,16 +87,17 @@ try {
   await composer.fill('/sta'); await palette.getByRole('option').filter({ has: page.getByText('/status', { exact: true }) }).waitFor();
   await page.screenshot({ path: path.join(output, 'palette.png') });
   await composer.press('Tab'); assert.equal(await composer.inputValue(), '/status ');
-  await resetWrites(); await composer.press('Enter'); await raw();
+  await resetWrites(); await composer.press('Enter'); await settled('/status');
   let sent = await writes();
   assert.deepEqual(sent.map(item => item.data), ['/status', '\r'], 'slash command is typed, never bracketed paste');
   assert.ok(sent[1].at - sent[0].at >= 140, 'Enter follows the command after its typing delay');
-  await waitFor(() => terminal.locator('.xterm-helper-textarea').evaluate(node => document.activeElement === node), 'raw terminal receives focus');
+  assert.equal(await composer.count(), 1, 'a typed command keeps the reading view');
   assert.equal(await page.locator('.focus-mode').count(), 0, 'composer interaction keeps the card small');
-  checks.push('Tab completion, typed /status, delayed Enter and raw focus');
-  await showReading(); await composer.fill('/fix-issue 42'); await resetWrites(); await composer.press('Enter');
+  checks.push('Tab completion, typed /status and delayed Enter, inside the reading view');
+  await composer.fill('/fix-issue 42'); await resetWrites(); await composer.press('Enter');
   await waitFor(async () => (await writes()).some(item => item.data === '\r'), 'project command submitted');
   assert.deepEqual((await writes()).map(item => item.data), ['/fix-issue 42', '\r']);
+  await settled('project command');
   assert.equal(await composer.isVisible(), true);
   await resetWrites(); await composer.press('Shift+Tab');
   await waitFor(async () => (await writes()).some(item => item.data === '\x1b[Z'), 'CLI Shift+Tab');
@@ -98,13 +111,12 @@ try {
   await composer.fill('/fix-iss'); await palette.getByRole('option').first().waitFor(); await composer.press('Enter');
   assert.equal(await composer.inputValue(), '/fix-issue ', 'Enter completes a partial command');
   await composer.fill('/fix-issue'); await resetWrites(); await composer.press('Enter');
-  await waitFor(async () => (await writes()).some(item => item.data === '\r'), 'exact command sends on Enter');
+  await settled('exact command');
   assert.equal(await composer.isVisible(), true);
-  await composer.fill('/unknown-reading-command'); await resetWrites(); await composer.press('Enter'); await raw();
+  await composer.fill('/unknown-reading-command'); await resetWrites(); await composer.press('Enter'); await settled('unknown command');
   assert.deepEqual((await writes()).map(item => item.data), ['/unknown-reading-command', '\r']);
-  await showReading(); await composer.fill('!echo reading-fixture'); await resetWrites(); await composer.press('Enter'); await raw();
+  await composer.fill('!echo reading-fixture'); await resetWrites(); await composer.press('Enter'); await settled('shell mode');
   assert.deepEqual((await writes()).map(item => item.data), ['!echo reading-fixture', '\r']);
-  await showReading();
   checks.push('partial/exact Enter, unknown command and shell mode');
   const permission = { session_id: 's1', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' };
   await write(hook('notify', permission));
@@ -122,6 +134,8 @@ try {
   await showReading();
   await write(hook('start', { session_id: 's1', prompt: 'test interrupt' }));
   await waitFor(async () => (await state()).codexActivity === 'working', 'working fixture');
+  // Claude's spinner line while it works (an idle input on screen would mean it has finished).
+  await write("Clear-Host; Write-Host ([string][char]0x2736 + ' Osmosing' + [char]0x2026)\r");
   await waitFor(async () => await terminal.locator('.reading-status.is-working').count() > 0, 'working status rendered');
   await composer.fill('/'); await palette.waitFor(); await resetWrites(); await composer.press('Escape');
   await waitFor(async () => await composer.getAttribute('aria-expanded') === 'false', 'palette Escape closes the list');
@@ -131,9 +145,9 @@ try {
   await write("Send-ProjectGridEvent 'codex-started' -Agent 'codex'\r");
   await waitFor(async () => (await state()).agent === 'codex', 'fixture agent changes');
   await composer.fill('/a'); await composer.fill('/');
-  await palette.getByRole('option').filter({ has: page.getByText('/approvals', { exact: true }) }).waitFor();
+  await palette.getByRole('option').filter({ has: page.getByText('/plan', { exact: true }) }).waitFor();
   assert.equal(await palette.getByRole('option').filter({ hasText: '/fix-issue' }).count(), 0, 'agent change reloads commands');
-  assert.equal(await palette.getByRole('option').filter({ hasText: '/permissions' }).count(), 0);
+  assert.equal(await palette.getByRole('option').filter({ hasText: '/security-review' }).count(), 0);
   checks.push('command list reloads when the terminal agent changes');
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, checks, errors }, null, 2));

@@ -18,9 +18,8 @@ import { useProjectReorder } from './useProjectReorder';
 import { useProjectFocusMotion } from './useProjectFocusMotion';
 import { applyTheme, themes } from './themes';
 import { applyMotion } from './motion';
-import { LiquidGlass } from './LiquidGlass';
 import { setTerminalRenderer } from './terminal-renderer';
-import { VoiceButton, VoiceModelStatus, VoiceOverlay } from './VoiceButton';
+import { VoiceButton, VoiceModelSetting, VoiceOverlay } from './VoiceButton';
 import { announce, announcementVoice, onVoicesReady } from './announce';
 import { applyLanguage, currentLanguage, t } from './i18n';
 import { actionFor, applyShortcuts, editingKeyInField, shortcut } from './shortcuts';
@@ -257,7 +256,7 @@ function SettingsDialog({ settings, localShell, agents, onAgents, initialSection
       <label className="setting-row"><span><ArrowCounterClockwise size={19} /><span><b>{t('启动时恢复工作')}</b><small>{t('恢复 Codex 与 Claude Code 的最近会话，被中断的任务自动发送“继续”')}</small></span></span><input type="checkbox" checked={settings.restoreSessions} onChange={event => update({ restoreSessions: event.target.checked })} /></label>
       <label className="setting-row"><span><Monitor size={19} /><span><b>{t('关闭到托盘')}</b><small>{t('关闭窗口后，终端和任务继续运行')}</small></span></span><input type="checkbox" checked={settings.closeToTray} onChange={e => update({ closeToTray: e.target.checked })} /></label>
       <label className="setting-row"><span><FloppyDisk size={19} /><span><b>{t('自动保存')}</b><small>{t('停止输入约 1 秒后、切换文件或离开窗口时保存编辑中的文件；关闭后按 Ctrl+S 保存')}</small></span></span><input type="checkbox" checked={settings.autoSave} onChange={event => update({ autoSave: event.target.checked })} /></label>
-      <div className="setting-row"><span><Microphone size={19} /><span><b>{t('本地语音输入')}</b><small>{t('按 {key} 或点击终端上的麦克风说话，按回车识别并发送，Esc 取消', { key: shortcut('voice') })}</small></span></span><VoiceModelStatus /></div>
+      <div className="setting-row"><span><Microphone size={19} /><span><b>{t('本地语音输入')}</b><small>{t('按 {key} 或点击终端上的麦克风说话，按回车识别并发送，Esc 取消', { key: shortcut('voice') })}</small></span></span><VoiceModelSetting choice={settings.voiceModel} onChoose={voiceModel => update({ voiceModel })} /></div>
       </section>
       <section className="settings-section" id="settings-agents" aria-label={t('编码助手')} hidden={current.id !== 'agents'}>
       <AgentsSettings agents={agents} onChange={onAgents} />
@@ -477,7 +476,7 @@ export function App() {
   const switchPosition = projectSwitch ? navigation.current.indexOf(projectSwitch.id) + 1 : 0;
   const setPreference = (patch: Partial<Settings>) => { perform(api.settings(patch)); };
 
-  return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''} ${fullScreen ? 'is-fullscreen' : ''} ${fullScreen && workspace.autoHideTitlebar ? 'titlebar-auto' : ''}`} style={{ '--liquid-backdrop': 'url("#project-grid-refraction") blur(6px) saturate(165%)' } as CSSProperties}>
+  return <div ref={focusMotionRoot} className={`app-shell ${focusedId ? 'focus-mode' : ''} ${fullScreen ? 'is-fullscreen' : ''} ${fullScreen && workspace.autoHideTitlebar ? 'titlebar-auto' : ''}`} style={{ '--terminal-font-size': `${settings.fontSize}px` } as CSSProperties}>
     {fullScreen && workspace.autoHideTitlebar && <div className="titlebar-reveal" aria-hidden="true" />}
     <div className="titlebar">
       <div className="titlebar-brand"><span className="brand-mark"><i /><i /><i /><i /></span><span>Project Grid</span></div>
@@ -539,6 +538,5 @@ export function App() {
     {addOpen && <AddProjectDialog onClose={() => setAddOpen(false)} onAdded={() => setQuery('')} onError={reportError} />}
     {sshAuth[0] && <SSHAuthDialog key={sshAuth[0].id} request={sshAuth[0]} />}
     <VoiceOverlay />
-    <LiquidGlass />
   </div>;
 }

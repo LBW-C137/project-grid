@@ -18,7 +18,7 @@ export type ProjectTerminal = { agentStartedAt?: number | null; action: AgentAct
 // A model reached over HTTP for the spoken summary. The API key is not part of the settings.
 export type SummaryEndpoint = { provider: string; protocol: 'openai' | 'anthropic'; baseUrl: string; model: string };
 export type SummaryKeys = { keys: { cloud: boolean; local: boolean } };
-export type Settings = { columns: number; surface: 'glass' | 'solid'; terminalRenderer: 'gpu' | 'dom'; summary: { mode: 'fast' | 'agent' | 'cloud' | 'local'; cloud: SummaryEndpoint; local: SummaryEndpoint }; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: ThemeId; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh' };
+export type Settings = { columns: number; surface: 'glass' | 'solid'; terminalRenderer: 'gpu' | 'dom'; summary: { mode: 'fast' | 'agent' | 'cloud' | 'local'; cloud: SummaryEndpoint; local: SummaryEndpoint }; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: ThemeId; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal', string>>; guideVersion: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; voiceModel: string };
 export type SpeechState = { phase: 'missing' | 'downloading' | 'ready' | 'error'; ready: boolean; percent: number; error: string | null; downloadBytes: number };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type SSHInfo = { hosts: string[]; configFile: string; configExists: boolean; sshPath: string; source: string };
@@ -30,7 +30,10 @@ export type TerminalSnapshot = { sessionId: string | null; seq: number; data: st
 export type TerminalPacket = TerminalSnapshot & { id: string };
 export type FileEntry = { name: string; path: string; kind: 'directory' | 'file' | 'link' };
 export type FileProgress = { projectId: string; text: string } | null;
-export type VoiceState = { phase: 'missing' | 'downloading' | 'ready' | 'transcribing' | 'error'; ready: boolean; percent: number; error: string | null; model: string; downloadBytes: number };
+// One offline recognizer: downloaded (ready), downloading, paused (missing) or failed (error).
+export type VoiceModel = { id: string; label: string; downloadBytes: number; phase: 'missing' | 'downloading' | 'ready' | 'error'; percent: number; error: string | null };
+// phase, percent and error describe the model in use (active), or the chosen one before any is downloaded.
+export type VoiceState = { phase: 'missing' | 'downloading' | 'ready' | 'transcribing' | 'error'; ready: boolean; percent: number; error: string | null; model: string; downloadBytes: number; choice: string; active: string | null; models: VoiceModel[] };
 export type DirectoryListing = { path: string; entries: FileEntry[]; total: number; nextOffset: number | null };
 export type MentionFile = { path: string; kind: 'file' | 'dir' };
 export type GitChange = { path: string; index: string; worktree: string; originalPath: string | null; submodule: boolean; conflict: boolean; untracked: boolean };

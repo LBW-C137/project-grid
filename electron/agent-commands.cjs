@@ -2,24 +2,39 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
+// Built-in commands as the installed CLIs answer them (checked live with scripts/slash-live.mjs against Claude Code
+// 2.1.294, which no longer knows /agents, /todos, /vim or /pr-comments).
 const BUILTINS = {
   claude: {
     terminal: [
       ['help', '帮助与快捷键'], ['model', '切换模型'], ['resume', '恢复之前的对话'], ['status', '版本、账号与连接状态'],
-      ['config', '设置'], ['permissions', '工具权限'], ['mcp', 'MCP 服务器'], ['agents', '子代理'], ['hooks', 'Hook 设置'],
+      ['config', '设置'], ['permissions', '工具权限'], ['mcp', 'MCP 服务器'], ['hooks', 'Hook 设置'],
       ['memory', '编辑记忆文件'], ['context', '上下文占用'], ['cost', '用量与费用'], ['usage', '套餐用量'], ['doctor', '检查安装'],
       ['clear', '清空对话'], ['compact', '压缩对话'], ['rewind', '回退到之前的位置'], ['export', '导出对话'], ['add-dir', '添加工作目录'],
-      ['todos', '待办列表'], ['vim', '切换 Vim 模式'], ['login', '登录'], ['logout', '退出登录'], ['bashes', '后台命令'], ['plugin', '插件'],
+      ['login', '登录'], ['logout', '退出登录'], ['bashes', '后台命令'], ['plugin', '插件'],
       ['output-style', '输出风格'], ['statusline', '状态栏'], ['terminal-setup', '终端设置'], ['release-notes', '更新说明'], ['exit', '退出 Claude Code'],
     ],
-    reading: [['init', '生成 CLAUDE.md'], ['review', '审查代码'], ['security-review', '安全审查'], ['pr-comments', '查看 PR 评论'], ['btw', '顺带问一个问题']],
+    reading: [['init', '生成 CLAUDE.md'], ['review', '审查代码'], ['security-review', '安全审查'], ['btw', '顺带问一个问题']],
   },
+  // Codex CLI 0.161.0: rust-v0.161.0's tui/src/slash_command.rs and bottom_pane/command_popup.rs.
+  // Use canonical popup names; omit hidden/debug commands, Daybreak (under development), the recovery-only
+  // Windows sandbox setup and exit/logout actions. Stable feature/account-gated commands are included;
+  // /fast comes from the model's service tiers, and may be absent for models without that tier.
   codex: {
     terminal: [
-      ['model', '切换模型与推理强度'], ['approvals', '批准策略'], ['status', '会话状态'], ['diff', '查看改动'], ['mention', '引用文件'],
-      ['mcp', 'MCP 工具'], ['new', '新对话'], ['resume', '恢复对话'], ['compact', '压缩对话'], ['logout', '退出登录'], ['quit', '退出 Codex'],
+      ['model', '切换模型与推理强度'], ['fast', '切换快速模式'], ['ide', '切换 IDE 上下文'], ['permissions', '工具权限'],
+      ['keymap', '快捷键设置'], ['vim', '切换 Vim 模式'], ['experimental', '实验功能设置'], ['approve', '批准自动审查拒绝后的重试'],
+      ['memories', '记忆设置'], ['skills', '选择技能'], ['import', '导入 Claude Code 配置与对话'], ['hooks', 'Hook 设置'],
+      ['rename', '重命名对话'], ['new', '新对话'], ['archive', '归档对话'], ['delete', '永久删除对话'], ['resume', '恢复对话'],
+      ['fork', '分支对话'], ['worktree', '工作树对话'], ['app', '在桌面应用中继续'], ['compact', '压缩对话'], ['recap', '生成对话摘要'],
+      ['voice', '语音对话与设置'], ['agents', '代理指挥中心'], ['subagents', '切换子代理'],
+      ['copy', '复制回复'], ['export', '导出对话'], ['raw', '切换原始终端输出'], ['tui', '下次启动的终端界面'],
+      ['diff', '查看改动'], ['mention', '引用文件'], ['status', '会话状态与用量'], ['daemon', '管理后台服务'], ['warnings', '警告与诊断'],
+      ['cd', '切换工作目录'], ['pwd', '查看工作目录'], ['usage', '账号用量与额度重置'], ['title', '终端标题设置'], ['statusline', '状态栏设置'],
+      ['theme', '语法高亮主题'], ['pets', '选择或隐藏终端宠物'], ['mcp', 'MCP 工具与登录'], ['plugins', '浏览插件'],
+      ['feedback', '反馈与日志'], ['ps', '后台终端'], ['stop', '停止后台终端'], ['clear', '清空终端并新建对话'],
     ],
-    reading: [['init', '生成 AGENTS.md'], ['review', '审查改动']],
+    reading: [['init', '生成 AGENTS.md'], ['review', '审查改动'], ['plan', '规划任务'], ['goal', '设置长期任务目标'], ['side', '临时分支对话']],
   },
 };
 const byName = (a, b) => a.name.localeCompare(b.name);
@@ -94,4 +109,11 @@ async function listAgentCommands({ agent, projectPath, home = os.homedir() }) {
   return Object.values(groups).flatMap(group => group.sort(byName)).filter(command => { if (seen.has(command.name)) return false; seen.add(command.name); return true; });
 }
 
-module.exports = { listAgentCommands };
+// A built-in command that only opens the CLI's own screen or prints a line (the terminal view above), with no model
+// turn. Claude Code still runs its prompt hooks for some of these, and no Stop follows.
+function isLocalAgentCommand(agent, text) {
+  const name = /^\/([\w:-]+)(?:\s|$)/.exec(String(text || '').trim())?.[1];
+  return !!name && (BUILTINS[agent]?.terminal || []).some(([command]) => command === name);
+}
+
+module.exports = { listAgentCommands, isLocalAgentCommand };

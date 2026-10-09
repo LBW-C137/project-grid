@@ -5,13 +5,26 @@ import './voice-overlay.css';
 import { t } from './i18n';
 import { shortcut } from './shortcuts';
 
-// Settings summary of the offline model. It downloads by itself after installation; this only reports it.
-export function VoiceModelStatus() {
-  const { model } = useVoice();
-  if (!model) return null;
-  if (model.ready) return <span className="voice-model-status is-ready" role="status">{t('已就绪')}</span>;
-  if (model.phase === 'downloading') return <span className="voice-model-status" role="status">{t('下载中 {percent}%', { percent: model.percent })}</span>;
-  return <button className="button secondary small" title={model.error ? t(model.error) : undefined} onClick={() => void window.projectGrid.prepareVoice()}>{model.phase === 'error' ? t('重试下载') : t('下载模型')}</button>;
+// What each recognizer is for, shown with its name and download size.
+const VOICE_MODEL_KINDS: Record<string, string> = { sensevoice: '标准 · 速度快', qwen3: '高精度 · 中英混合' };
+const downloadSize = (bytes: number) => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+
+// Settings: the offline recognizer for dictation, and how its download stands. The default downloads by itself
+// after installation; a model chosen later downloads in the background while the one in use keeps working.
+export function VoiceModelSetting({ choice, onChoose }: { choice: string; onChoose: (id: string) => void }) {
+  const { model: voice } = useVoice();
+  if (!voice?.models?.length) return null;
+  const chosen = voice.models.find(model => model.id === choice) ?? voice.models[0];
+  const status = chosen.phase === 'ready' ? <span className="voice-model-status is-ready" role="status">{t('已就绪')}</span>
+    : chosen.phase === 'downloading' ? <span className="voice-model-status" role="status">{voice.active && voice.active !== chosen.id
+      ? t('下载中 {percent}%，完成前继续使用 {model}', { percent: chosen.percent, model: voice.model }) : t('下载中 {percent}%', { percent: chosen.percent })}</span>
+    : <button type="button" className="button secondary small" title={chosen.error ? t(chosen.error) : undefined} onClick={() => void window.projectGrid.prepareVoice()}>{chosen.phase === 'error' ? t('重试下载') : t('下载模型')}</button>;
+  return <span className="voice-model-setting">
+    <select aria-label={t('语音识别模型')} value={chosen.id} onChange={event => onChoose(event.target.value)}>
+      {voice.models.map(model => <option key={model.id} value={model.id}>{`${model.label} · ${t(VOICE_MODEL_KINDS[model.id] ?? '')}（${downloadSize(model.downloadBytes)}）`}</option>)}
+    </select>
+    {status}
+  </span>;
 }
 
 // Blue: a microphone is connected. Red: none is connected. Pulsing: recording this terminal.

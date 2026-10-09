@@ -7,8 +7,10 @@ import { actionText, stepVerb } from './ActivityPane';
 import { dictateInto } from './voice-input';
 import { useScreen } from './terminal-screen';
 import { parseAgentScreen } from './agent-screen';
+import { isCliIdle } from './cli-panel';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
+import { ReadingQuestion } from './ReadingQuestion';
 import { ReadingSessions } from './ReadingSessions';
 import { usesSessionPicker } from './reading-sessions';
 import { useWelcomeStarting } from './reading-welcome';
@@ -154,19 +156,13 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (choiceVisible.current) { restoreComposer.current = true; (choiceHost.current?.firstElementChild as HTMLElement | null)?.focus(); }
     else if (!cli.busy) input.current?.focus();
   }, [terminal.id, autoFocus]);
-  const working = terminal.codexActive && terminal.codexActivity === 'working';
+  // Claude's own screen has the last word: a round its hooks opened without closing (a local slash command) must not
+  // keep "thinking" on screen while Claude sits idle at its prompt.
+  const claudeIdle = terminal.agent === 'claude' && !!visibleScreen && isCliIdle('claude', visibleScreen.rows, screen);
+  const working = terminal.codexActive && terminal.codexActivity === 'working' && !claudeIdle;
   const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
   const grouped = useMemo(() => blocks(cli.entries), [cli.entries]);
   const tail = useVisibleTail(grouped, conversation, scroller, stuck, holdPosition);
-  // Footer actions preserve the prompt and attached images waiting in the composer.
-  const openModel = async () => {
-    if (inputBlocked || !terminal.sessionId) return;
-    input.current?.focus();
-    window.projectGrid.writeTerminal(terminal.id, '/model');
-    await new Promise(resolve => setTimeout(resolve, 150));
-    if (!mounted.current || choiceVisible.current) return;
-    cli.begin('/model'); window.projectGrid.writeTerminal(terminal.id, '\r');
-  };
   // The CLI recognises slash commands and shell mode from typed keys, not bracketed paste.
   const send = async (text = draft.trim()) => {
     if (inputBlocked || (!text && !images) || !terminal.sessionId) return;
@@ -265,21 +261,18 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
         <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={() => toBottom('smooth')}><ArrowDown size={18} /></button>
       </div>}
     </div>
-    <div className={`reading-status ${working ? 'is-working' : ''}`} role="status">
+    {/* Only what needs attention or is under way; an idle agent and its model and context show nothing here. */}
+    {(screen.choice?.kind === 'question' || terminal.needsInput !== null || working) && <div className={`reading-status ${working ? 'is-working' : ''}`} role="status">
       <div className="reading-status-activity">
-        {terminal.needsInput !== null ? <span>{t('等待你确认：{message}', { message: terminal.needsInput })}</span> : working ? <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })}</span></> : <span>{terminal.codexActive ? terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令') : t('终端就绪')}</span>}
+        {screen.choice?.kind === 'question' ? <span>{t('等待你回答问题')}</span> : terminal.needsInput !== null ? <span>{t('等待你确认：{message}', { message: terminal.needsInput })}</span> : <><CircleNotch size={13} className="loading-spinner" /><span>{terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })}</span></>}
       </div>
-      <div className="reading-status-chips">
-        {(screen.status.model || screen.banner?.model || screen.status.effort || screen.banner?.effort) && <button type="button" className="reading-status-chip" disabled={inputBlocked} title={t('切换模型')} onClick={() => void openModel()}>{[screen.status.model ?? screen.banner?.model, screen.status.effort ?? screen.banner?.effort].filter(Boolean).join(' · ')}</button>}
-        {terminal.agent === 'claude' && screen.status.mode && <button type="button" className="reading-status-chip" disabled={inputBlocked} title={t('Shift+Tab 切换模式')} onClick={() => window.projectGrid.writeTerminal(terminal.id, '\x1b[Z')}>{screen.status.mode}</button>}
-        {screen.status.context && <span className="reading-status-chip" title={screen.status.context}>{screen.status.context}</span>}
-        {screen.status.notes.length > 0 && <span className="reading-status-chip is-muted" title={screen.status.notes.join(' · ')}>{screen.status.notes.join(' · ')}</span>}
-      </div>
-    </div>
+    </div>}
     {images > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: images })}</div>}
     {screen.choice && !sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
-    }}><ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} /></div>}
+    }}>{screen.choice.kind === 'question'
+      ? <ReadingQuestion key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} />
+      : <ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} />}</div>}
     {sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}><ReadingSessions key={`${terminal.id}-${terminal.sessionId}`} terminalId={terminal.id} onError={onError} onClose={() => setSessionsOpen(false)} onSent={text => {

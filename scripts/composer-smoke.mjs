@@ -58,7 +58,7 @@ try {
   const terminal = page.locator(`[data-terminal-id="${projects[0].id}"]`), control = page.locator(`[data-terminal-id="${controlId}"]`);
   // The card header's toggle acts on the split in use: select the split, then switch it to the raw terminal.
   const showTerminal = async split => {
-    await split.locator('.reading-status').click();
+    await split.locator('.reading-scroll').click();
     await page.locator(`[data-project-id="${projects[0].id}"] .panel-header`).getByRole('button', { name: '切换到终端', exact: true }).click();
     await split.locator('.reading-view').waitFor({ state: 'detached' });
   };
@@ -126,6 +126,10 @@ try {
   await waitFor(async () => (await state()).projects[0].terminals[1].codexActive, 'control becomes an authenticated Codex fixture');
   await showTerminal(control);
   await waitFor(async () => (await cellBackgrounds()).DARK_SURFACE === 'rgba(0, 0, 0, 0)', 'same dark history surface becomes transparent');
+  // Back to the theme the ANSI backgrounds were first measured in (Daylight has its own palette).
+  await page.evaluate(() => window.projectGrid.settings({ theme: 'daylight' }));
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'daylight');
+  await waitFor(async () => JSON.stringify(await cellBackgrounds()) === JSON.stringify(original), 'Daylight ANSI backgrounds again').catch(() => {});
   const agentColors = await cellBackgrounds();
   for (const label of ['DIFF_RED', 'DIFF_GREEN', 'ANSI_RED', 'INVERSE']) assert.equal(agentColors[label], original[label], `${label} background survives`);
   assert.ok(!requests.some(request => request.method === 'POST'), `draft input must never submit a model request: ${JSON.stringify(requests)}`);

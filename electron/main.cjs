@@ -34,7 +34,7 @@ const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription }
 const { summarizeRound, claudeReply, codexReply } = require('./round-summary.cjs');
 const { ConversationLog, claudeConversation, codexConversation } = require('./conversation.cjs');
 const { conversationBatchDelay, pollAfterSubmission } = require('./conversation-timing.cjs');
-const { listAgentCommands } = require('./agent-commands.cjs');
+const { listAgentCommands, isLocalAgentCommand } = require('./agent-commands.cjs');
 const { claudeConfigDir, findClaudeSession, listClaudeSessions } = require('./claude-sessions.cjs');
 const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARGETS } = require('./summary-models.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
@@ -360,6 +360,12 @@ function claudeActivity(project, s, event) {
   if (!s.codexActive || s.agent !== 'claude' || !['working', 'complete', 'attention'].includes(event.state)) return;
   if (typeof event.sessionId !== 'string' || !/^[\w-]{1,100}$/.test(event.sessionId) || typeof event.eventId !== 'string' || event.eventId.length > 200) return;
   if (event.state === 'attention') { s.needsInput = { message: typeof event.message === 'string' ? event.message.slice(0, 300) : '', since: Date.now() }; broadcast(); return; }
+  // Claude Code runs its prompt hooks for some local slash commands (/context, /doctor, /compact) too. They open a screen
+  // or print a line and no round follows, so they neither start a round nor end one; the card would stay "working".
+  if (event.state === 'working') {
+    s.claudeLocalCommand = typeof event.prompt === 'string' && isLocalAgentCommand('claude', event.prompt);
+    if (s.claudeLocalCommand) return;
+  } else if (event.state === 'complete' && s.claudeLocalCommand) { s.claudeLocalCommand = false; return; }
   s.needsInput = null;
   const turnId = event.eventId.slice(event.sessionId.length + 1);
   // Remember the conversation and whether its turn is still open, so a restart can resume it and continue.
@@ -789,6 +795,7 @@ function registerIpc() {
     store.updateSettings(patch); broadcast();
     if (store.settings.language !== language) { trayMenu(); if (process.platform === 'darwin') Menu.setApplicationMenu(macMenu()); }
     if (patch.restoreSessions === false) restorePlans.clear();
+    voiceManager.choose(store.settings.voiceModel);
   });
   handle('project:directory', (id, relativePath = '', offset = 0) => findProject(id).kind === 'ssh' ? remoteFor(id).request('directory', { path: relativePath, offset }) : listDirectory(findProject(id), relativePath, offset));
   handle('project:findFiles', (projectId, query) => findFiles(findProject(projectId), query));
@@ -1056,7 +1063,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     store = new WorkspaceStore(path.join(app.getPath('userData'), 'workspace.json'));
     summarySecrets = new SecretStore(path.join(app.getPath('userData'), 'summary-keys.json'), safeStorage);
-    voiceManager = new VoiceManager({ directory: voiceDirectory(), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
+    voiceManager = new VoiceManager({ directory: voiceDirectory(), model: store.settings.voiceModel, fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
     // Download the offline model in the background after installation so dictation works on first use.
     // Waits for startup and session restore first; isolated test profiles skip the 239 MB download.
     speechManager = new SpeechManager({ directory: voiceDirectory(), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('speech:state', state), busy: roundsWorking });
@@ -1150,7 +1157,9 @@ if (!app.requestSingleInstanceLock()) {
     window.on('focus', () => { clearTimeout(attentionTimer); window.flashFrame(false); });
     window.on('enter-full-screen', () => send('window:fullscreen-changed', true));
     window.on('leave-full-screen', () => send('window:fullscreen-changed', false));
+    // The reason (crashed, oom, killed…) and exit code are kept in the log before the window loads again.
     window.webContents.on('render-process-gone', (_event, details) => {
+      console.error(`Window renderer gone: ${JSON.stringify({ reason: details.reason, exitCode: details.exitCode, terminalRenderer: store.settings.terminalRenderer })}`);
       if (!quitting && details.reason !== 'clean-exit') window.reload();
     });
     window.on('close', event => {

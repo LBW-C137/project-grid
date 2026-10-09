@@ -52,3 +52,21 @@ test('path copy preserves selections and uses host-specific absolute paths', () 
   assert.equal(projectPaths(local, [''], 'relative'), '.');
   assert.throws(() => projectPaths(local, ['../secret'], 'absolute'), /路径/);
 });
+
+test('a save retries a replacement Windows refuses for a moment, and gives up on an outside edit', { skip: process.platform !== 'win32' }, async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-file-edit-'));
+  const rename = fs.rename;
+  t.after(async () => { fs.rename = rename; await fs.rm(directory, { recursive: true, force: true }); });
+  const project = { path: directory }, file = path.join(directory, 'locked.txt');
+  await fs.writeFile(file, 'original');
+  let refusals = 2;
+  fs.rename = async (...args) => { if (refusals-- > 0) throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' }); return rename(...args); };
+  const preview = await readProjectFile(project, 'locked.txt', 0);
+  await saveProjectFile(project, 'locked.txt', 0, preview.revision, 'saved after two refusals');
+  assert.equal(await fs.readFile(file, 'utf8'), 'saved after two refusals');
+  const next = await readProjectFile(project, 'locked.txt', 0);
+  fs.rename = async () => { await fs.writeFile(file, 'edited elsewhere meanwhile'); throw Object.assign(new Error('EPERM'), { code: 'EPERM' }); };
+  await assert.rejects(saveProjectFile(project, 'locked.txt', 0, next.revision, 'my draft'), /其他程序修改/);
+  assert.equal(await fs.readFile(file, 'utf8'), 'edited elsewhere meanwhile');
+  assert.deepEqual((await fs.readdir(directory)).filter(name => name.endsWith('.tmp')), [], 'no temporary file is left behind');
+});

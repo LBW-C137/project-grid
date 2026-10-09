@@ -74,10 +74,6 @@
 .reading-status-activity { display: flex; flex: 1 1 auto; min-width: 0; align-self: center; align-items: center; gap: 7px; padding: 2px 0 8px; overflow: hidden; }
 .reading-status-activity > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reading-status-activity > svg { flex: none; }
-.reading-status-chips { display: flex; flex: 0 1 auto; min-width: 0; max-width: 72%; margin-left: auto; align-self: flex-end; align-items: flex-end; gap: 2px; overflow: hidden; }
-.reading-status-chip { display: block; flex: 0 1 auto; min-width: 0; padding: 3px 8px 2px; border: 0; border-radius: 5px 5px 0 0; background: rgba(3, 12, 20, .5); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), inset 1px 0 0 rgba(255, 255, 255, .1), inset -1px 0 0 rgba(255, 255, 255, .1); color: #b9cbdc; font: 400 10.5px/1.5 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button.reading-status-chip:hover:not(:disabled) { background: rgba(26, 52, 74, .72); color: #e8f1fa; }
-.reading-status-chip.is-muted { color: #8ea6c1; background: rgba(3, 12, 20, .38); }
 .reading-composer { position: relative; display: flex; align-items: flex-end; gap: 6px; margin: 0 12px 12px; padding: 6px 6px 6px 12px; border-radius: 6px; background: rgba(3, 12, 20, .5); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); transition: box-shadow .16s ease; }
 .reading-commands.dropdown { position: absolute; top: auto; bottom: calc(100% + 5px); left: 0; right: 0; width: auto; z-index: 3; padding: 4px; border: 1px solid #e8f5ff80; max-height: 266px; overflow-y: auto; transform-origin: bottom center; }
 .reading-command { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 8px; border-radius: 4.5px; color: #e5f0fa; font-size: 12px; cursor: pointer; }
@@ -116,5 +112,34 @@ button.reading-status-chip:hover:not(:disabled) { background: rgba(26, 52, 74, .
 .reading-choice-option kbd { flex: none; padding: 1px 5px; border: 1px solid rgba(219, 238, 255, .15); border-radius: 3px; font-size: 10px; }
 .reading-choice-option svg { flex: none; align-self: center; color: var(--choice-accent); }
 .reading-choice-hint { display: block; margin-top: 8px; font-size: 10.5px; color: #8ea6c1; white-space: pre-wrap; }
+/* A question with options (ReadingQuestion): its progress, the question as a title, options with a number or a tick,
+   an own-answer or notes field, then Submit and Chat about this. */
+.reading-choice.is-question { --choice-accent: #3ddc97; padding: 12px 14px; }
+.reading-question-head { display: flex; align-items: center; gap: 6px; min-height: 24px; margin-bottom: 6px; }
+.reading-question-tabs { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.reading-question-tab { display: inline-flex; align-items: center; gap: 4px; padding: 1px 9px; border-radius: 999px; background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); color: #c9d6e3; font-size: 11px; line-height: 18px; white-space: nowrap; }
+.reading-question-tab.is-answered { color: #b6f5d6; background: rgba(61, 220, 151, .14); box-shadow: inset 0 0 0 1px rgba(61, 220, 151, .32); }
+.reading-question-spacer { flex: 1; }
+.reading-question-switch.icon-button { width: 24px; height: 24px; border-radius: 6px; }
+.reading-question-head .text-button { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; }
+.reading-question-title { display: block; margin: 2px 0 10px; font-size: 1.08em; font-weight: 700; line-height: 1.45; color: #ffffff; overflow-wrap: anywhere; }
+.reading-question-review { display: flex; flex-direction: column; gap: 6px; margin: 0 0 10px; }
+.reading-question-review > div { padding: 7px 10px; border-radius: 8px; background: rgba(255, 255, 255, .06); }
+.reading-question-review dt { font-size: 11.5px; color: #b9c8d6; }
+.reading-question-review dd { margin: 2px 0 0; font-weight: 600; color: #ffffff; }
+.reading-question-option { align-items: flex-start; padding: 8px 10px; border-radius: 8px; }
+.reading-question-mark { display: grid; place-items: center; flex: none; width: 20px; height: 20px; margin-top: 1px; border-radius: 6px; color: var(--choice-accent); font: 600 11.5px var(--font-mono); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
+.is-multi .reading-question-mark { border-radius: 5px; }
+:is(.reading-question-option, .reading-question-input).is-checked .reading-question-mark { color: #08170f; background: var(--choice-accent); box-shadow: none; }
+.reading-question-option .reading-question-mark svg { color: inherit; }
+.reading-question-input { display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 10px; border-radius: 8px; }
+.reading-question-input[data-highlighted="true"] { background: rgba(255, 255, 255, .06); }
+.reading-question-input input { flex: 1; min-width: 0; padding: 6px 10px; border: 0; border-radius: 7px; outline: 0; background: rgba(0, 0, 0, .25); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); color: #ffffff; font: inherit; }
+.reading-question-input input:focus { box-shadow: inset 0 0 0 1px rgba(61, 220, 151, .6), 0 0 0 3px rgba(61, 220, 151, .14); }
+.reading-question-input input::placeholder { color: rgba(255, 255, 255, .45); }
+.reading-question-input .icon-button { flex: none; width: 28px; height: 28px; border-radius: 7px; }
+.reading-question-input.is-notes { margin-top: 6px; padding-left: 6px; }
+.reading-question-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 10px; }
+.reading-question-actions .button.primary { display: inline-flex; align-items: center; gap: 6px; }
 .reading-sessions-empty { display: flex; align-items: center; gap: 7px; margin: 10px 8px; color: #9fb5ce; }
 

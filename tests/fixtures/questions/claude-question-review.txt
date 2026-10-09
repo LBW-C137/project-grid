@@ -1,0 +1,23 @@
+
+ ▐▛███▛█   Claude Code v2.1.295
+▝▜██████▀  Opus 5.5 with xhigh effort · Claude Pro
+ ▝▝   ▝▝   C:\work\demo-app
+
+
+❯ 请立刻使用 AskUserQuestion 工具一次问我两个问题：第一个问题「回收站怎么处理？」单选，选项「保留回收站（推荐）」「清空回收站」；第二个问题「要
+  清理哪些目录？」多选，选项「node_modules」「dist」「.test-output」。拿到回答后只复述我的回答，不要做其他任何事。
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☒ 回收站  ☒ 清理目录  ✔ Submit  →
+
+Review your answers
+
+ ● 回收站怎么处理？
+   → 清空回收站
+ ● 要清理哪些目录？
+   → node_modules, abc
+
+Ready to submit your answers?
+
+❯ 1. Submit answers
+  2. Cancel

@@ -118,7 +118,8 @@ try {
   await waitFor(async () => (await page.locator(`.focus-mode [data-project-id="${firstCard}"].is-focused`).count()) === 1, 'Ctrl+Shift+Enter expands the current project');
   await page.keyboard.press('Control+Shift+Enter');
   await page.waitForFunction(() => !document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));
-  const material = await page.locator('.project-panel').first().evaluate(el => ({ filter: getComputedStyle(el).backdropFilter, reduced: matchMedia('(prefers-reduced-transparency: reduce)').matches, background: getComputedStyle(el).backgroundColor }));
+  // The pane's blur sits on the card itself or on its backing layer (::before).
+  const material = await page.locator('.project-panel').first().evaluate(el => ({ filter: `${getComputedStyle(el).backdropFilter} ${getComputedStyle(el, '::before').backdropFilter}`, reduced: matchMedia('(prefers-reduced-transparency: reduce)').matches, background: getComputedStyle(el).backgroundColor }));
   console.log('Glass material:', JSON.stringify(material));
   assert.ok(material.filter.includes('blur') || material.reduced);
   console.log('PASS: desktop loads six real project folders');

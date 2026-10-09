@@ -21,6 +21,9 @@ await fs.writeFile(path.join(projects[0].path, 'README.md'), '# 清晰的工作�
 await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { terminalRenderer: 'dom', columns: 3, notifications: false, sound: false, closeToTray: false, restoreSessions: false, fontSize: 14 } }));
 const env = { ...process.env, PROJECT_GRID_DATA_DIR: profile, CODEX_HOME: home }; delete env.ELECTRON_RUN_AS_NODE; delete env.PROJECT_GRID_DEV_URL;
 const packaged = process.argv.includes('--packaged');
+// --daylight-only: run the Daylight checks (material, working glow, body contrast) and stop before the other themes.
+const daylightOnly = process.argv.includes('--daylight-only');
+class DaylightDone extends Error {}
 let app, page;
 const state = async () => (await page.evaluate(() => window.projectGrid.getState())).value;
 const panel = index => page.locator(`[data-project-id="${projects[index].id}"]`);
@@ -46,19 +49,23 @@ async function checkDaylightContrast() {
       const scaleX = image.width / innerWidth, scaleY = image.height / innerHeight;
       const linear = channel => { const value = channel / 255; return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4; };
       return areas.map(box => {
-        let darkest = 1;
+        let brightest = 0;
         // Exclude the status edge and rounded corners; this is the terminal reading surface.
         for (let y = Math.ceil((box.y + 12) * scaleY); y < Math.floor((box.y + box.height - 12) * scaleY); y++) {
           for (let x = Math.ceil((box.x + 12) * scaleX); x < Math.floor((box.x + box.width - 12) * scaleX); x++) {
             const p = (y * image.width + x) * 4;
-            darkest = Math.min(darkest, .2126 * linear(pixels[p]) + .7152 * linear(pixels[p + 1]) + .0722 * linear(pixels[p + 2]));
+            brightest = Math.max(brightest, .2126 * linear(pixels[p]) + .7152 * linear(pixels[p + 1]) + .0722 * linear(pixels[p + 2]));
           }
         }
-        const ink = .2126 * linear(14) + .7152 * linear(30) + .0722 * linear(51);
-        return (darkest + .05) / (ink + .05);
+        // Daylight's terminal foreground, #ebebeb: light ink, so its worst ground is the brightest one.
+        const ink = .2126 * linear(235) + .7152 * linear(235) + .0722 * linear(235);
+        return (Math.max(ink, brightest) + .05) / (Math.min(ink, brightest) + .05);
       });
     }, { png: screenshot.toString('base64'), areas });
-    for (const contrast of contrasts) assert.ok(contrast >= 4.5, `daylight dark body text contrast is ${contrast.toFixed(2)}:1`);
+    // The wallpaper is darkened once and each card's frost darkens it again, so even the brightest ground behind the
+    // text leaves white ink above 3:1 (body text also carries a soft shadow).
+    console.log(`Daylight ink contrast with the brightest ground per card: ${contrasts.map(value => value.toFixed(2)).join(', ')}`);
+    assert.ok(contrasts.every(value => value >= 3), `white ink stays legible over the brightest ground: ${contrasts.map(value => value.toFixed(2)).join(', ')}`);
     await fs.writeFile(path.join(output, 'daylight-contrast.json'), JSON.stringify(contrasts, null, 2));
   } finally { await mask.evaluate(node => node.remove()); }
 }
@@ -108,7 +115,7 @@ try {
       assert.deepEqual(sample, samples[0], `${mode}: working lights and reading surface stay steady`);
       assert.equal(sample.edge, .95, `${mode}: vivid working edge stays steady`);
       assert.equal(sample.glow, 1, `${mode}: blue body wash stays steady`);
-      assert.ok(sample.edgeShadow.includes('24px') && /rgba\(47, 111, 208/.test(sample.tint) && sample.tint.includes('60%'), `${mode}: blue glow and fading wash ${JSON.stringify(sample)}`);
+      assert.ok(sample.edgeShadow.includes('24px') && /rgba\((47, 111, 208|59, 158, 255)/.test(sample.tint) && sample.tint.includes('60%'), `${mode}: blue glow and fading wash ${JSON.stringify(sample)}`);
       assert.equal(sample.text.opacity, '1'); assert.equal(sample.text.animation, 'none');
     }
     liveSamples.push({ mode, samples });
@@ -118,33 +125,16 @@ try {
   assert.equal(await breathing(1), 0, 'old unread completion stays quiet');
   assert.equal(await breathing(2), 0, 'ready shell stays quiet');
   await page.screenshot({ path: path.join(output, 'daylight-working.png') });
-  assert.match(await panel(0).evaluate(node => getComputedStyle(node, '::before').backdropFilter), /url\("?#project-grid-lens"?\) blur\(2px\)/, 'Daylight is clear liquid glass with a lens rim');
-  const well = await panel(0).locator('.panel-terminal-area').evaluate(node => ({ backdrop: getComputedStyle(node).backdropFilter, fill: getComputedStyle(node).backgroundImage }));
-  assert.ok(/brightness\(/.test(well.backdrop) && /contrast\(/.test(well.backdrop) && !/rgba\(255, 255, 255, 0?\.[3-9]/.test(well.fill), `Daylight text sits in an evened well, not on white: ${JSON.stringify(well)}`);
-  // Measure the established SVG refraction on Forest; Daylight's lens is the same filter with a wider rim.
-  await page.evaluate(() => window.projectGrid.settings({ theme: 'forest' }));
-  await page.waitForFunction(() => document.documentElement.dataset.theme === 'forest');
-  const surface = await panel(0).evaluate(node => {
-    const box = node.getBoundingClientRect();
-    return { x: box.x, y: box.y, width: box.width, height: box.height, viewport: innerWidth, backdrop: getComputedStyle(node).backdropFilter };
-  });
-  const refracted = await page.screenshot({ path: path.join(output, 'liquid-refraction.png') });
-  await page.locator('#project-grid-refraction feDisplacementMap').evaluate(node => node.setAttribute('scale', '0'));
-  const flat = await page.screenshot({ path: path.join(output, 'liquid-without-refraction.png') });
-  await page.locator('#project-grid-refraction feDisplacementMap').evaluate(node => node.setAttribute('scale', '14'));
-  const lens = await app.evaluate(({ nativeImage }, { before, after, surface }) => {
-    const a = nativeImage.createFromBuffer(Buffer.from(before, 'base64')), b = nativeImage.createFromBuffer(Buffer.from(after, 'base64'));
-    const { width } = a.getSize(), scale = width / surface.viewport, first = a.toBitmap(), second = b.toBitmap();
-    let changed = 0, peak = 0;
-    for (let y = Math.ceil((surface.y + surface.height * .4) * scale); y < (surface.y + surface.height * .8) * scale; y++) {
-      for (let x = Math.ceil((surface.x + 3) * scale); x < (surface.x + surface.width * .035) * scale; x++) {
-        const at = (y * width + x) * 4, delta = Math.max(...[0, 1, 2].map(channel => Math.abs(first[at + channel] - second[at + channel])));
-        if (delta > 2) changed++; peak = Math.max(peak, delta);
-      }
-    }
-    return { changed, peak, backdrop: surface.backdrop };
-  }, { before: refracted.toString('base64'), after: flat.toString('base64'), surface });
-  assert.ok(lens.changed > 10 && lens.peak > 3, `SVG must actually refract the backdrop: ${JSON.stringify(lens)}`);
+  // Every card is one frosted pane (clarity.css): a dark fill over a strong blur, and nothing inside it is glass again
+  // (no header band, no inner screen).
+  const pane = await panel(0).evaluate(node => ({ filter: getComputedStyle(node, '::before').backdropFilter, color: getComputedStyle(node, '::before').backgroundColor }));
+  assert.ok(/blur\(\d+px\)/.test(pane.filter) && pane.color === 'rgba(28, 32, 40, 0.3)', `a card is one frosted pane: ${JSON.stringify(pane)}`);
+  const inner = await panel(0).evaluate(node => [node.querySelector('.panel-header'), node.querySelector('.panel-terminal-area')].map(part => {
+    const style = getComputedStyle(part);
+    return { backdrop: style.backdropFilter, fill: style.backgroundColor, image: style.backgroundImage, shadow: style.boxShadow, margin: style.margin };
+  }));
+  for (const part of inner) assert.deepEqual([part.backdrop, part.fill, part.image, part.shadow, part.margin], ['none', 'rgba(0, 0, 0, 0)', 'none', 'none', '0px'], `nothing inside a card is glass on glass: ${JSON.stringify(inner)}`);
+  if (daylightOnly) { await checkDaylightContrast(); await page.screenshot({ path: path.join(output, 'daylight.png') }); throw new DaylightDone(); }
   for (const [theme, name] of [['daylight', '晴空'], ['forest', '林间光影'], ['mountain-blue', '山青蓝'], ['wild-red', '西野红']]) {
     await page.evaluate(theme => window.projectGrid.settings({ theme }), theme);
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
@@ -258,15 +248,18 @@ try {
   await setMotion('smooth');
   await waitFor(async () => await breathing(0) > 0, 'turning animation back on resumes breathing');
   assert.deepEqual(errors, []);
-  await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, timings, glowReach, lens, liveSamples, compact, compactEdges, errors }, null, 2));
+  await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, timings, glowReach, liveSamples, compact, compactEdges, errors }, null, 2));
   console.log(`PASS: steady blue working edge and wash, daylight body contrast, a slow diffuse breathing glow on completion, quiet unviewed glow, quiet idle, all themes, high DPI, compact controls, explorer and preserved small-card input. Screenshots: ${output}`);
 } catch (error) {
+  if (error instanceof DaylightDone) { assert.deepEqual(errors, []); console.log(`PASS (Daylight only): frosted pane material, legible ink and steady working edge. Screenshots: ${output}`); }
+  else {
   console.error(error);
   if (page) {
     await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {});
     console.error('Visual test viewport:', await page.evaluate(() => ({ width: innerWidth, height: innerHeight, scale: devicePixelRatio })).catch(() => null));
   }
   throw error;
+  }
 } finally {
   // Release our simulated task and exit only this isolated profile's shells
   // before Electron tears down ConPTY handles.

@@ -32,14 +32,30 @@ export type ScreenOption = {
   detail: string;             // the rest of the option text, continuation rows joined with a space
   hotkey: string | null;      // Codex "(y)", "(p)", "(esc)" → "y", "p", "esc"; null when none is printed
   selected: boolean;          // the row with the CLI's cursor (Claude "❯", Codex "›")
+  // Questions only: what the option does ('answer'; 'input' types an own answer; 'chat' is Claude's "Chat about this"
+  // under the rule) and, in a multi-select question, whether it is ticked ("[✔]").
+  role?: 'answer' | 'input' | 'chat';
+  checked?: boolean;
+};
+// A question the agent asked with options: Claude Code's AskUserQuestion or Codex's request_user_input (Plan mode).
+export type ScreenQuestion = {
+  agent: ScreenAgent;
+  tabs: { label: string; answered: boolean }[]; // Claude's question tabs in order ("☐ 回收站", "☒ 清理目录"); [] for one
+  position: { index: number; count: number } | null; // Codex "Question 1/2"
+  multi: boolean;                       // several options can be ticked, then submitted with Claude's Submit row
+  submit: { selected: boolean } | null; // Claude's "Submit" row under multi-select options
+  notes: { open: boolean; text: string } | null; // Codex's notes on the highlighted option (Tab); null for Claude
+  review: { question: string; answer: string }[] | null; // Claude's last page: "Review your answers"
+  last: boolean;                        // Codex: Enter submits every answer
 };
 export type ScreenChoice = {
-  kind: 'permission' | 'menu';
+  kind: 'permission' | 'menu' | 'question';
   title: string;              // "Do you want to create hello.txt?", "Would you like to run the following command?",
                               // "Select model", "Select Model and Effort"
   context: string[];          // rows between the title area and the options worth showing (command, reason, file name)
   options: ScreenOption[];
   hint: string | null;        // "Esc to cancel · Tab to amend", "Press enter to confirm or esc to cancel", "enter select · esc back"
+  question?: ScreenQuestion;  // kind 'question': the title is the question itself
 };
 
 export type AgentScreen = {

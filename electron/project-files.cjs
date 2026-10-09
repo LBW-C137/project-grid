@@ -212,8 +212,16 @@ async function saveProjectFile(project, relativePath, pageIndex, revision, conte
     await copyRange(preview.page.byteEnd, stat.size);
     await destination.chmod(stat.mode); await destination.sync(); await destination.close(); destination = null;
     await source.close(); source = null;
-    if (fileRevision(await fs.stat(resolved)) !== revision) throw new Error('文件已被其他程序修改，本次保存已取消。');
-    await fs.rename(temporary, resolved);
+    // On Windows a scanner or indexer can hold the file for a moment and refuse the replacement (EPERM/EACCES/EBUSY).
+    // Try again a few times within about 2.6 s, checking each time that nobody else has changed the file meanwhile.
+    for (let attempt = 0; ; attempt++) {
+      if (fileRevision(await fs.stat(resolved)) !== revision) throw new Error('文件已被其他程序修改，本次保存已取消。');
+      try { await fs.rename(temporary, resolved); break; }
+      catch (error) {
+        if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 8) throw error;
+        await new Promise(resolve => setTimeout(resolve, Math.min((attempt + 1) * 100, 400)));
+      }
+    }
   } finally {
     await source?.close(); await destination?.close();
     await fs.unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });

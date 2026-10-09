@@ -10,6 +10,9 @@ import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url);
 const { createSSHFixture } = require('../tests/helpers/ssh-fixture.cjs');
+const { terminalTheme } = require('../src/terminal-theme.ts');
+// Each theme's own ANSI red, green and blue as the terminal renders them (Daylight has its own palette).
+const ansiColors = theme => ['red', 'green', 'blue'].map(key => `rgb(${terminalTheme(theme)[key].slice(1).match(/../g).map(value => parseInt(value, 16)).join(', ')})`);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = await testRun('themes-markdown'), profile = path.join(output, 'profile');
 const ssh = await createSSHFixture({ nativeWorker: false });
@@ -70,7 +73,7 @@ try {
   await page.evaluate(id => window.projectGrid.writeTerminal(id, "Write-Host (([string][char]27) + '[31mRED ' + ([string][char]27) + '[32mGREEN ' + ([string][char]27) + '[34mBLUE' + ([string][char]27) + '[0m')\r"), projects[0].id);
   await waitFor(async () => first.locator('.xterm-rows > div').evaluateAll(rows => rows.some(row => row.textContent.trim() === 'RED GREEN BLUE')), 'ANSI colors');
   const colors = () => first.locator('.xterm-rows > div').evaluateAll(rows => [...rows.find(row => row.textContent.trim() === 'RED GREEN BLUE').querySelectorAll('span')].map(span => getComputedStyle(span).color));
-  const originalColors = await colors();
+  assert.deepEqual(await colors(), ansiColors('daylight'));
   await first.locator('.terminal-host').evaluate(node => { globalThis.originalThemeTerminal = node; });
   await page.evaluate(id => window.projectGrid.writeTerminal(id, "Write-Output 'PENDING_THEME_DRAFT'"), projects[0].id);
   await page.context().setOffline(true);
@@ -78,7 +81,7 @@ try {
     await chooseTheme(id, name);
     assert.equal((await state()).projects[0].sessionId, sessionId);
     assert.ok(await first.locator('.terminal-host').evaluate(node => node === globalThis.originalThemeTerminal));
-    assert.deepEqual(await colors(), originalColors);
+    await waitFor(async () => JSON.stringify(await colors()) === JSON.stringify(ansiColors(id)), `${name}: its own ANSI colors`);
     const signal = await page.locator(`[data-project-id="${projects[1].id}"]`).evaluate(node => getComputedStyle(node).getPropertyValue('--signal-rgb').trim());
     assert.equal(signal, '255, 134, 212');
     await page.screenshot({ path: path.join(output, `${id}-overview.png`) });

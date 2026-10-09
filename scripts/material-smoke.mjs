@@ -67,7 +67,7 @@ try {
   await checkEdges('overview');
   await checkGaps('overview');
   const geometry = await page.locator('.project-grid').evaluate(grid => ({ gap: getComputedStyle(grid).gap, radius: getComputedStyle(grid.querySelector('.project-panel')).borderTopLeftRadius, header: getComputedStyle(grid.querySelector('.panel-header')).borderTopLeftRadius }));
-  assert.deepEqual(geometry, { gap: `${layoutGap}px`, radius: '12px', header: '11px' });
+  assert.deepEqual(geometry, { gap: `${layoutGap}px`, radius: '16px', header: '15px' });
   for (const project of projects.slice(0, 6)) await page.evaluate(id => window.projectGrid.startTerminal(id), project.id);
   await waitFor(async () => (await state()).projects.slice(0, 6).every(project => project.shellReady), 'six real shells ready');
   const lens = await page.locator('.app-shell').evaluate(node => node.style.getPropertyValue('--liquid-backdrop'));
@@ -109,7 +109,8 @@ try {
     await page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
     const cells = await readCells(first.locator('.xterm-rows').first());
     for (const cell of cells) {
-      assert.equal(cell.weight, cell.label === 'BOLD' ? '700' : '400');
+      // Terminal text is medium, and bold is 700, in every theme (terminal-theme.ts).
+      assert.equal(cell.weight, cell.label === 'BOLD' ? '700' : '500');
       assert.equal(cell.size, '13px', 'user font size stays unchanged');
       assert.equal(cell.filter, 'none'); assert.equal(cell.opacity, '1');
       if (cell.label.startsWith('DIM_')) {
@@ -125,8 +126,8 @@ try {
     const selected = await readCells(first.locator('.xterm-rows').first());
     for (const cell of selected) {
       if (['INVERSE', 'DIM_INVERSE'].includes(cell.label)) {
-        if (theme === 'daylight') assert.ok(cell.fill.slice(0, 3).every(value => value < 100), `${theme}: selected inverse uses dark ink`);
-        else assert.ok(cell.fill.every(value => value >= 240), `${theme}: selected default inverse stays readable`);
+        // Daylight's white ink sits on a dark contrast base too (the frosted pane), so inverse reads as in the other themes.
+        assert.ok(cell.fill.every(value => value >= 240), `${theme}: selected default inverse stays readable`);
       }
       else {
         // xterm may brighten RGB against the selection background to meet its
@@ -142,6 +143,8 @@ try {
     await page.screenshot({ path: path.join(output, `${theme}-split-selection.png`) });
     await page.keyboard.press('Escape');
     await waitFor(async () => (await readCells(first.locator('.xterm-rows').first())).every(cell => !cell.selected), 'selection cleared');
+    // xterm may repaint dim cells a frame after the selection flag clears; wait for the colours to settle.
+    await waitFor(async () => JSON.stringify(await readCells(first.locator('.xterm-rows').first())) === JSON.stringify(cells), 'colours restored after selection').catch(() => {});
     const cleared = await readCells(first.locator('.xterm-rows').first());
     assert.deepEqual(cleared, cells, 'clearing selection restores original inverse and ANSI colors');
     typography.push({ theme, cells, selected, cleared });

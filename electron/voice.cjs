@@ -5,22 +5,48 @@ const os = require('node:os');
 const { createHash } = require('node:crypto');
 const { Worker } = require('node:worker_threads');
 
-// SenseVoice Small (int8) through sherpa-onnx: strong Mandarin accuracy, simplified output,
-// and non-autoregressive decoding that turns a sentence into text in well under a second on CPU.
-// The revision is pinned so a repository update can never change the verified bytes. The 2025-09-09
-// re-export was rejected: with sherpa-onnx 1.13.8 it ignores language detection and inverse text normalization.
-const REPOSITORY = 'csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17';
-const REVISION = '2365baeacb507f821a0c8120fcee3d484dba7a07';
 const HOSTS = ['https://huggingface.co', 'https://hf-mirror.com'];
-const MODEL_DIRECTORY = 'sense-voice-2024-07-17';
-const MODEL_FILES = [
-  { name: 'tokens.txt', size: 315894, sha256: 'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc' },
-  { name: 'model.int8.onnx', size: 239233841, sha256: 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51' },
-].map(file => ({ ...file, urls: HOSTS.map(host => `${host}/${REPOSITORY}/resolve/${REVISION}/${file.name}?download=true`) }));
-const DOWNLOAD_BYTES = MODEL_FILES.reduce((total, file) => total + file.size, 0);
+// Every file is pinned to one repository revision, so a repository update can never change the verified bytes.
+const pinned = (repository, revision, files) => files.map(file => ({ ...file, urls: HOSTS.map(host => `${host}/${repository}/resolve/${revision}/${file.name}?download=true`) }));
+
+// The recognizers to choose from, all run on the CPU through sherpa-onnx. config turns a file name into the
+// model part of the recognizer's configuration.
+const MODELS = {
+  // SenseVoice Small (int8): strong Mandarin accuracy, simplified output with punctuation, and non-autoregressive
+  // decoding that turns a sentence into text in well under a second. The 2025-09-09 re-export was rejected: with
+  // sherpa-onnx 1.13.8 it ignores language detection and inverse text normalization.
+  sensevoice: {
+    label: 'SenseVoice Small', directory: 'sense-voice-2024-07-17',
+    files: pinned('csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17', '2365baeacb507f821a0c8120fcee3d484dba7a07', [
+      { name: 'tokens.txt', size: 315894, sha256: 'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc' },
+      { name: 'model.int8.onnx', size: 239233841, sha256: 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51' },
+    ]),
+    config: file => ({ senseVoice: { model: file('model.int8.onnx'), language: 'auto', useInverseTextNormalization: 1 }, tokens: file('tokens.txt') }),
+  },
+  // Qwen3-ASR 0.6B (int8): for speech that mixes Chinese and English. On dictation-style sentences (scripts/voice-bench.mjs)
+  // it made about a third fewer errors than SenseVoice on mixed sentences and kept the English words' own spelling
+  // and case (useEffect, TypeScript, GitHub), with punctuation. It needs about 1.7 GB while loaded and decodes at
+  // about a third of real time. FireRedASR2 scored a little lower on errors but writes English in capitals without
+  // punctuation, and is slower.
+  qwen3: {
+    label: 'Qwen3-ASR 0.6B', directory: 'qwen3-asr-0.6b-2026-03-25',
+    files: pinned('csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25', '68818b2313fe77bd06f6a7c5068ff3ef59d02b8a', [
+      { name: 'tokenizer/merges.txt', size: 1671853, sha256: '8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5' },
+      { name: 'tokenizer/tokenizer_config.json', size: 12487, sha256: '4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c' },
+      { name: 'tokenizer/vocab.json', size: 2776833, sha256: 'ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910' },
+      { name: 'conv_frontend.onnx', size: 44148281, sha256: 'd22dc4423e0940e49884e903d2ea2f7e5567c14fc1aed97e4e26d6b8f208ef9e' },
+      { name: 'encoder.int8.onnx', size: 182491662, sha256: '60748d3e6744a57c9c91e1b17424a6c2990567e8adceb0783940c03ed98fa9d9' },
+      { name: 'decoder.int8.onnx', size: 755914231, sha256: '4f6885be5959ae26af3089d38ee7972c5fafbeeb1cf8d5e76eab6d8b61ca5771' },
+    ]),
+    config: file => ({ qwen3Asr: { convFrontend: file('conv_frontend.onnx'), encoder: file('encoder.int8.onnx'), decoder: file('decoder.int8.onnx'), tokenizer: file('tokenizer'), hotwords: '' } }),
+  },
+};
+// Downloaded after installation, and used while a model chosen later is still downloading.
+const DEFAULT_MODEL = 'sensevoice';
+const downloadBytes = id => MODELS[id].files.reduce((total, file) => total + file.size, 0);
 // Files from the previous Whisper engine, removed once so they stop occupying about 64 MB.
 const LEGACY_ENTRIES = ['runtime', 'runtime.zip', 'runtime.zip.partial', 'model.bin', 'model.bin.partial', 'recordings'];
-// The loaded model holds about 300 MB. It is released after this long without dictation and loaded
+// A loaded model holds a few hundred MB or more. It is released after this long without dictation and loaded
 // again while the next recording is being spoken (warm).
 const IDLE_RELEASE = 5 * 60 * 1000;
 
@@ -77,53 +103,84 @@ function samplesFromWav(bytes) {
   return samples;
 }
 
+// One model is chosen in settings. Recordings go to it once it is downloaded; until then they go to the
+// default model, so choosing a larger one never interrupts dictation.
 class VoiceManager {
-  constructor({ directory, fetcher = fetch, changed = () => {}, idle = IDLE_RELEASE, worker = path.join(__dirname, 'voice-worker.cjs') }) {
+  constructor({ directory, model = DEFAULT_MODEL, fetcher = fetch, changed = () => {}, idle = IDLE_RELEASE, worker = path.join(__dirname, 'voice-worker.cjs') }) {
     Object.assign(this, { directory, fetcher, changed, idle, workerFile: worker });
-    this.modelDirectory = path.join(directory, MODEL_DIRECTORY);
-    this.state = { phase: 'missing', ready: false, percent: 0, error: null, model: 'SenseVoice Small · 本地离线识别', downloadBytes: DOWNLOAD_BYTES };
+    this.choice = MODELS[model] ? model : DEFAULT_MODEL;
+    this.status = Object.fromEntries(Object.keys(MODELS).map(id => [id, { phase: 'missing', percent: 0, error: null }]));
+    this.transcribing = false;
+    this.state = this.snapshot();
     this.requests = new Map(); this.sequence = 0;
   }
-  file(name) { return path.join(this.modelDirectory, name); }
-  update(patch) { if (Object.keys(patch).every(key => this.state[key] === patch[key])) return; this.state = { ...this.state, ...patch }; this.changed({ ...this.state }); }
+  file(id, name) { return path.join(this.directory, MODELS[id].directory, name); }
+  // The model recordings go to now: the chosen one, or the default while the chosen one is not downloaded.
+  active() { return [this.choice, DEFAULT_MODEL].find(id => this.status[id].phase === 'ready') || null; }
+  // phase, percent and error describe the model in use, or, before any is downloaded, the chosen one.
+  snapshot() {
+    const active = this.active(), shown = this.status[active || this.choice];
+    return {
+      phase: !active ? shown.phase : this.transcribing ? 'transcribing' : 'ready', ready: !!active, percent: shown.percent, error: shown.error,
+      model: MODELS[active || this.choice].label, downloadBytes: downloadBytes(this.choice), choice: this.choice, active,
+      models: Object.keys(MODELS).map(id => ({ id, label: MODELS[id].label, downloadBytes: downloadBytes(id), ...this.status[id] })),
+    };
+  }
+  emit() { const next = this.snapshot(); if (JSON.stringify(next) === JSON.stringify(this.state)) return; this.state = next; this.changed(next); }
+  set(id, patch) { Object.assign(this.status[id], patch); this.emit(); }
   async getState() {
     this.initialized ??= (async () => {
       await Promise.all(LEGACY_ENTRIES.map(name => fsp.rm(path.join(this.directory, name), { recursive: true, force: true }).catch(() => {})));
-      try {
-        // Size is enough at startup; the full hash already ran when each file was downloaded.
-        for (const file of MODEL_FILES) if ((await fsp.stat(this.file(file.name))).size !== file.size) return;
-        this.update({ phase: 'ready', ready: true, percent: 100 });
-      } catch { }
+      // Size is enough at startup; the full hash already ran when each file was downloaded.
+      await Promise.all(Object.keys(MODELS).map(async id => {
+        try { for (const file of MODELS[id].files) if ((await fsp.stat(this.file(id, file.name))).size !== file.size) return; } catch { return; }
+        this.set(id, { phase: 'ready', percent: 100 });
+      }));
     })();
-    await this.initialized; return { ...this.state };
+    await this.initialized; return this.snapshot();
   }
-  async prepare() {
+  // Downloads a model (the chosen one unless named). One download runs at a time; starting another pauses it,
+  // and its partial files resume later.
+  async prepare(id = this.choice) {
     await this.getState();
-    if (this.preparing) return this.preparing;
-    if (this.state.ready) return this.getState();
-    this.controller = new AbortController();
-    this.update({ phase: 'downloading', error: null, percent: 0 });
-    this.preparing = (async () => {
+    if (this.status[id].phase === 'ready') return this.snapshot();
+    if (this.download?.id === id) return this.download.promise;
+    this.download?.controller.abort();
+    const controller = new AbortController();
+    this.set(id, { phase: 'downloading', error: null });
+    const promise = (async () => {
       try {
-        let completed = 0;
-        for (const file of MODEL_FILES) {
-          await downloadAsset(file, this.file(file.name), this.fetcher, this.controller.signal, count => this.update({ percent: Math.floor((completed + count) / DOWNLOAD_BYTES * 100) }));
+        let completed = 0; const total = downloadBytes(id);
+        for (const file of MODELS[id].files) {
+          await downloadAsset(file, this.file(id, file.name), this.fetcher, controller.signal, count => this.set(id, { percent: Math.floor((completed + count) / total * 100) }));
           completed += file.size;
         }
-        this.update({ phase: 'ready', ready: true, percent: 100, error: null });
+        this.set(id, { phase: 'ready', percent: 100, error: null });
       } catch (error) {
-        this.update({ phase: 'error', error: this.controller.signal.aborted ? '下载已暂停，下次启动会继续。' : error.message });
+        this.set(id, controller.signal.aborted ? { phase: 'missing', error: id === this.choice ? '下载已暂停，下次启动会继续。' : null } : { phase: 'error', error: error.message });
         throw error;
-      } finally { this.preparing = null; }
-      return { ...this.state };
+      } finally { if (this.download?.controller === controller) this.download = null; }
+      return this.snapshot();
     })();
-    return this.preparing;
+    this.download = { id, controller, promise };
+    return promise;
+  }
+  // Chosen in settings: downloads it if needed. The loaded recognizer changes between recordings (engine).
+  choose(id) {
+    if (!MODELS[id] || id === this.choice) return;
+    this.choice = id; this.emit();
+    if (this.download && this.download.id !== id) this.download.controller.abort();
+    void this.prepare(id).catch(() => {});
   }
   engine() {
     this.rest();
-    if (this.worker) return this.worker;
+    const id = this.active();
+    if (this.worker && this.workerModel === id) return this.worker;
+    // A different model is now in use; the previous one has no recognition pending (transcribe runs one at a time).
+    const previous = this.worker; this.worker = null; void previous?.terminate();
     const threads = Math.min(4, Math.max(1, os.availableParallelism() - 2));
-    const worker = this.worker = new Worker(this.workerFile, { workerData: { model: this.file('model.int8.onnx'), tokens: this.file('tokens.txt'), threads } });
+    const worker = this.worker = new Worker(this.workerFile, { workerData: { model: MODELS[id].config(name => this.file(id, name)), threads } });
+    this.workerModel = id;
     worker.on('message', ({ id, text, error }) => {
       const request = this.requests.get(id); if (!request) return;
       this.requests.delete(id);
@@ -151,15 +208,14 @@ class VoiceManager {
   // Loads the model while a recording is still being spoken, so recognition starts at once.
   async warm() {
     await this.getState();
-    if (this.state.ready) this.engine().postMessage({ warm: true });
+    if (this.active()) this.engine().postMessage({ warm: true });
   }
-  // SenseVoice detects the language itself and writes Chinese, including Cantonese, in simplified characters.
   async transcribe(audio) {
-    await this.getState();
-    if (!this.state.ready) throw new Error(this.state.phase === 'downloading' ? `语音模型正在下载（${this.state.percent}%），完成后即可使用。` : '语音模型尚未下载。');
+    const state = await this.getState();
+    if (!state.ready) throw new Error(state.phase === 'downloading' ? `语音模型正在下载（${state.percent}%），完成后即可使用。` : '语音模型尚未下载。');
     if (this.requests.size) throw new Error('正在识别上一段录音，请稍后。');
     const samples = samplesFromWav(validateAudio(audio));
-    this.update({ phase: 'transcribing', error: null });
+    this.transcribing = true; this.emit();
     try {
       const id = ++this.sequence;
       const raw = await new Promise((resolve, reject) => {
@@ -169,15 +225,15 @@ class VoiceManager {
       });
       const text = raw.trim();
       if (!text) throw new Error('没有识别到文字，请靠近麦克风重试。');
-      this.update({ phase: 'ready' }); return text;
-    } catch (error) { this.update({ phase: 'ready', error: error.message }); throw error; }
+      return text;
+    } finally { this.transcribing = false; this.emit(); }
   }
   // Shutdown: stop any download and fail pending recognitions before the worker goes away.
   close() {
-    this.controller?.abort(); clearTimeout(this.idleTimer);
+    this.download?.controller.abort(); clearTimeout(this.idleTimer);
     for (const { reject } of this.requests.values()) reject(new Error('识别已取消。'));
     this.requests.clear();
     const worker = this.worker; this.worker = null; void worker?.terminate();
   }
 }
-module.exports = { VoiceManager, MODEL_DIRECTORY, MODEL_FILES, DOWNLOAD_BYTES, digest, downloadAsset, validateAudio, samplesFromWav };
+module.exports = { VoiceManager, MODELS, DEFAULT_MODEL, downloadBytes, digest, downloadAsset, validateAudio, samplesFromWav };

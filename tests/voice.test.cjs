@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { VoiceManager, downloadAsset, validateAudio, samplesFromWav, MODEL_FILES } = require('../electron/voice.cjs');
+const { VoiceManager, downloadAsset, validateAudio, samplesFromWav, MODELS } = require('../electron/voice.cjs');
 const { wavFromSamples } = require('../src/voice-audio.ts');
 
 test('microphone encoder makes bounded mono 16 kHz WAV with safe clipping', () => {
@@ -52,12 +52,17 @@ test('recorded WAV becomes normalized samples for the recognizer', () => {
   assert.equal(decoded.length, 16000); assert.ok(Math.abs(decoded[0] - .5) < 1e-4); assert.equal(decoded[1], -1);
 });
 
-test('the pinned SenseVoice files are verified by size and SHA-256 on both hosts', () => {
-  assert.ok(MODEL_FILES.length >= 2);
-  for (const file of MODEL_FILES) {
-    assert.match(file.sha256, /^[0-9a-f]{64}$/); assert.ok(file.size > 0);
-    assert.deepEqual(file.urls.map(url => new URL(url).host), ['huggingface.co', 'hf-mirror.com']);
-    assert.ok(file.urls.every(url => /\/resolve\/[0-9a-f]{40}\//.test(url)), 'downloads are pinned to one repository revision');
+test('the files of every recognizer are pinned and verified by size and SHA-256 on both hosts', () => {
+  for (const [id, model] of Object.entries(MODELS)) {
+    assert.ok(model.files.length >= 2, id); assert.ok(model.label && model.directory, id);
+    for (const file of model.files) {
+      assert.match(file.sha256, /^[0-9a-f]{64}$/); assert.ok(file.size > 0);
+      assert.deepEqual(file.urls.map(url => new URL(url).host), ['huggingface.co', 'hf-mirror.com']);
+      assert.ok(file.urls.every(url => /\/resolve\/[0-9a-f]{40}\//.test(url)), 'downloads are pinned to one repository revision');
+    }
+    // Every file the recognizer opens is one of the verified downloads.
+    const opened = JSON.stringify(model.config(name => `<${name}>`)).match(/<[^>]+>/g);
+    assert.deepEqual(opened.filter(name => !model.files.some(file => `<${file.name}>` === name || file.name.startsWith(name.slice(1, -1) + '/'))), [], id);
   }
 });
 
@@ -65,7 +70,7 @@ test('the recognizer is released when idle and loads again for the next recordin
   const voice = new VoiceManager({ directory: os.tmpdir(), idle: 40, worker: path.join(__dirname, 'helpers/voice-worker-stub.cjs') });
   t.after(() => voice.close());
   // Stands for a downloaded model; the stub worker never opens it.
-  voice.initialized = Promise.resolve(); voice.state = { ...voice.state, phase: 'ready', ready: true };
+  voice.initialized = Promise.resolve(); voice.status.sensevoice.phase = 'ready';
   const released = async () => { for (let tries = 0; voice.worker && tries < 2000; tries++) await new Promise(resolve => setTimeout(resolve, 1)); return !voice.worker; };
   await voice.warm();
   const first = voice.worker;
@@ -74,4 +79,31 @@ test('the recognizer is released when idle and loads again for the next recordin
   assert.equal(await voice.transcribe(wavFromSamples(new Float32Array(16000))), 'heard');
   assert.ok(voice.worker && voice.worker !== first);
   assert.ok(await released());
+});
+
+test('a chosen model downloads while dictation keeps using the default, then takes over between recordings', async t => {
+  const prefix = path.join(os.tmpdir(), 'project-grid-voice-test-'); const folder = await fs.mkdtemp(prefix);
+  const bytes = Buffer.from('larger model fixture');
+  MODELS.fixture = { label: 'Fixture', directory: 'fixture', files: [{ name: 'model.onnx', urls: ['https://example.invalid/model'], size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }], config: file => ({ fixture: file('model.onnx') }) };
+  let release; const served = new Promise(resolve => { release = resolve; });
+  const states = [];
+  const voice = new VoiceManager({ directory: folder, idle: 1000, worker: path.join(__dirname, 'helpers/voice-worker-stub.cjs'), changed: state => states.push(state), fetcher: async () => { await served; return new Response(bytes); } });
+  t.after(async () => { voice.close(); delete MODELS.fixture; assert.ok(path.resolve(folder).startsWith(prefix)); await fs.rm(folder, { recursive: true, force: true }); });
+  voice.initialized = Promise.resolve(); voice.status.sensevoice.phase = 'ready';
+  voice.choose('fixture'); await new Promise(resolve => setImmediate(resolve));
+  let state = await voice.getState();
+  assert.deepEqual([state.choice, state.active, state.ready, state.model], ['fixture', 'sensevoice', true, 'SenseVoice Small']);
+  assert.equal(state.models.find(model => model.id === 'fixture').phase, 'downloading');
+  assert.equal(await voice.transcribe(wavFromSamples(new Float32Array(16000))), 'heard');
+  assert.equal(voice.workerModel, 'sensevoice', 'recordings go to the default while the chosen model downloads');
+  const first = voice.worker;
+  release(); await voice.download.promise;
+  state = await voice.getState();
+  assert.deepEqual([state.active, state.model, state.phase], ['fixture', 'Fixture', 'ready']);
+  assert.deepEqual(await fs.readFile(path.join(folder, 'fixture', 'model.onnx')), bytes);
+  assert.equal(await voice.transcribe(wavFromSamples(new Float32Array(16000))), 'heard');
+  assert.equal(voice.workerModel, 'fixture'); assert.notEqual(voice.worker, first, 'the next recording loads the chosen model');
+  assert.ok(states.some(item => item.phase === 'transcribing'));
+  voice.choose('sensevoice');
+  assert.equal((await voice.getState()).active, 'sensevoice', 'choosing back switches at once');
 });

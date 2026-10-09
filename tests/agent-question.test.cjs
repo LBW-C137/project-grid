@@ -1,0 +1,107 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { parseAgentScreen } = require('../src/agent-screen.ts');
+const { questionKeys, questionStops } = require('../src/question-keys.ts');
+
+// Screens drawn by Claude Code 2.1.294 (AskUserQuestion) and Codex 0.161 (request_user_input in Plan mode).
+const read = name => fs.readFileSync(path.join(__dirname, 'fixtures/questions', name + '.txt'), 'utf8').split('\n');
+const parse = name => parseAgentScreen(name.startsWith('claude') ? 'claude' : 'codex', read(name)).choice;
+const UP = '\x1b[A', DOWN = '\x1b[B', ENTER = '\r';
+const option = (number, label, detail, role, selected = false, checked) =>
+  ({ number, label, detail, hotkey: null, selected, role, ...(checked === undefined ? {} : { checked }) });
+const claude = fields => ({ agent: 'claude', tabs: [], position: null, multi: false, submit: null, notes: null, review: null, last: false, ...fields });
+const codex = fields => ({ agent: 'codex', tabs: [], position: null, multi: false, submit: null, notes: { open: false, text: '' }, review: null, last: false, ...fields });
+
+test('every question fixture is recognised', () => {
+  for (const file of fs.readdirSync(path.join(__dirname, 'fixtures/questions'))) {
+    const choice = parse(file.replace(/\.txt$/, ''));
+    assert.equal(choice?.kind, 'question', file);
+  }
+});
+
+test('Claude single question: options with their descriptions, an own answer and Chat about this', () => {
+  assert.deepEqual(parse('claude-question'), {
+    kind: 'question', title: '回收站怎么处理？', context: [], hint: 'Enter to select · ↑/↓ to navigate · Esc to cancel',
+    options: [
+      option(1, '保留回收站（推荐）', '不动回收站里的内容。', 'answer', true),
+      option(2, '清空回收站', '永久删除回收站里的全部内容，无法撤销。', 'answer'),
+      option(3, 'Type something.', '', 'input'),
+      option(4, 'Chat about this', '', 'chat'),
+    ],
+    question: claude({}),
+  });
+});
+
+test('Claude question tabs, multi-select ticks, the typed own answer and the Submit row', () => {
+  assert.deepEqual(parse('claude-question-tabs').question.tabs, [{ label: '回收站', answered: false }, { label: '清理目录', answered: false }]);
+  const checked = parse('claude-question-multi-checked');
+  assert.equal(checked.title, '要清理哪些目录？');
+  assert.deepEqual(checked.question, claude({ tabs: [{ label: '回收站', answered: false }, { label: '清理目录', answered: true }], multi: true, submit: { selected: false } }));
+  assert.deepEqual(checked.options.map(item => [item.label, item.checked, item.selected, item.role]), [
+    ['node_modules', true, false, 'answer'], ['dist', false, true, 'answer'], ['.test-output', false, false, 'answer'],
+    ['Type something', false, false, 'input'], ['Chat about this', undefined, false, 'chat'],
+  ]);
+  const typed = parse('claude-question-typed');
+  assert.deepEqual([typed.options[3].label, typed.options[3].checked, typed.options[3].selected], ['abc', true, true]);
+  assert.deepEqual(parse('claude-question-submit').question.submit, { selected: true });
+});
+
+test('Claude review page lists the answers before Submit answers / Cancel', () => {
+  const review = parse('claude-question-review');
+  assert.equal(review.title, 'Ready to submit your answers?');
+  assert.deepEqual(review.question.review, [{ question: '回收站怎么处理？', answer: '清空回收站' }, { question: '要清理哪些目录？', answer: 'node_modules, abc' }]);
+  assert.deepEqual(review.options.map(item => [item.label, item.selected]), [['Submit answers', true], ['Cancel', false]]);
+});
+
+test('Codex questions: position, two-column options, the last question and open notes', () => {
+  assert.deepEqual(parse('codex-question'), {
+    kind: 'question', title: '回收站怎么处理？', context: [], hint: 'tab to add notes | enter to submit answer | ←/→ to navigate questions | esc to interrupt',
+    options: [
+      option(1, '保留回收站（推荐）', '保留回收站中的内容。', 'answer', true),
+      option(2, '清空回收站', '清空回收站中的内容。', 'answer'),
+      option(3, 'None of the above', 'Optionally, add details in notes (tab)', 'answer'),
+    ],
+    question: codex({ position: { index: 1, count: 2 } }),
+  });
+  assert.equal(parse('codex-question-last').question.last, true);
+  const notes = parse('codex-question-notes');
+  assert.deepEqual([notes.question.notes, notes.options[1].selected], [{ open: true, text: '' }, true]);
+});
+
+test('a question already answered or scrolled away is not a choice; padding does not change anything', () => {
+  for (const name of ['claude-question', 'codex-question']) {
+    assert.equal(parseAgentScreen(name.startsWith('claude') ? 'claude' : 'codex', [...read(name), '● User answered: 清空回收站', '']).choice, null, name);
+    const padded = Object.freeze(read(name).map(row => row.replace(/\r$/, '') + '   \r'));
+    assert.deepEqual(parseAgentScreen(name.startsWith('claude') ? 'claude' : 'codex', padded).choice, parse(name), name);
+  }
+});
+
+test('answering in keys: the cursor moves from where the CLI has it', () => {
+  const single = parse('claude-question');
+  assert.deepEqual(questionKeys(single, { type: 'choose', option: 1 }), [DOWN, ENTER]);
+  assert.deepEqual(questionKeys(single, { type: 'answer', option: 2, text: '先别动，晚点再说' }), [DOWN, DOWN, '先别动，晚点再说', ENTER]);
+  assert.deepEqual(questionKeys(single, { type: 'choose', option: 3 }), [DOWN, DOWN, DOWN, ENTER], 'Chat about this is under the rule');
+  assert.deepEqual(questionKeys(single, { type: 'switch', direction: 1 }), ['\x1b[C']);
+  assert.deepEqual(questionKeys(single, { type: 'cancel' }), ['\x1b']);
+
+  const multi = parse('claude-question-multi-checked');
+  assert.deepEqual(questionStops(multi), [{ option: 0 }, { option: 1 }, { option: 2 }, { option: 3 }, { submit: true }, { option: 4 }]);
+  assert.deepEqual(questionKeys(multi, { type: 'toggle', option: 0 }), [UP, ' ']);
+  assert.deepEqual(questionKeys(multi, { type: 'submit' }), [DOWN, DOWN, DOWN, ENTER]);
+  assert.deepEqual(questionKeys(multi, { type: 'answer', option: 3, text: 'logs' }), [DOWN, DOWN, 'logs'], 'typing ticks the own answer; Submit sends it');
+  assert.deepEqual(questionKeys(multi, { type: 'choose', option: 4 }), [DOWN, DOWN, DOWN, DOWN, ENTER]);
+  // An own answer already typed is replaced, not appended to.
+  assert.deepEqual(questionKeys(parse('claude-question-typed'), { type: 'answer', option: 3, text: 'tmp' }), ['\x7f'.repeat(3), 'tmp']);
+
+  const review = parse('claude-question-review');
+  assert.deepEqual(questionKeys(review, { type: 'choose', option: 0 }), [ENTER]);
+
+  const question = parse('codex-question');
+  assert.deepEqual(questionKeys(question, { type: 'choose', option: 1 }), [DOWN, ENTER]);
+  assert.deepEqual(questionKeys(question, { type: 'answer', option: 2, text: '都不要清理' }), [DOWN, DOWN, '\t', '都不要清理', ENTER]);
+  assert.deepEqual(questionKeys(parse('codex-question-notes'), { type: 'answer', option: 1, text: '先备份' }), ['先备份', ENTER], 'notes already open on the highlighted option');
+  assert.deepEqual(questionKeys(question, { type: 'toggle', option: 0 }), [], 'Codex questions have no ticks');
+  assert.deepEqual(questionKeys(question, { type: 'answer', option: 0, text: '  ' }), [], 'nothing to send');
+});

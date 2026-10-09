@@ -236,3 +236,42 @@ test('renderer stops an old PTY watcher when the terminal session changes', t =>
   harness.tick(1000);
   assert.deepEqual(harness.render('a', 'new-session').entries, []);
 });
+
+test('a Claude dialog in a tall terminal shows itself, not the welcome banner above a run of blank rows', () => {
+  // Claude Code 2.1 /add-dir in a 45-row terminal: banner at the top, the dialog under its overline (which carries
+  // the effort indicator set into it) at the bottom.
+  const rows = [
+    ' ▐▛███▛█   Claude Code v2.1.294', '▝▜██████▀  Opus 5.5 with xhigh effort · Claude Pro', ' ▝▝   ▝▝   ~/demo',
+    ...Array(24).fill(''),
+    '▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ◉ xhigh · /effort ▔',
+    '   Add directory to workspace', '', '   Claude Code will be able to read files in this directory.', '', '',
+    '   Enter the path to the directory:', '   ╭──────────────────────╮', '   │ Directory path…      │', '   ╰──────────────────────╯', '',
+    '   Tab to complete · Enter to add · Esc to cancel',
+  ];
+  const panel = extractCliPanelRows('claude', rows, inspect('claude', rows), '/add-dir');
+  assert.equal(panel[0], '   Add directory to workspace');
+  assert.equal(panel.at(-1), '   Tab to complete · Enter to add · Esc to cancel', 'keyboard hints stay');
+  assert.ok(!panel.some(row => row.includes('Claude Code v2')), 'no banner');
+  assert.ok(!panel.some((row, index) => !row.trim() && !panel[index - 1]?.trim()), 'blank rows never run together');
+});
+
+test('a Claude command still in the composer (its hooks running) shows no panel, and the banner never heads one', () => {
+  const banner = [' ▐▛███▛█   Claude Code v2.1.294', '▝▜██████▀  Opus 5.5 with xhigh effort · Claude Pro', ' ▝▝   ▝▝   ~/demo', ''];
+  // Enter was pressed; Claude still shows /btw in its input while UserPromptSubmit hooks run.
+  const waiting = [...banner, ...Array(10).fill(''), ...input('claude', '/btw')];
+  assert.deepEqual(extractCliPanelRows('claude', waiting, inspect('claude', waiting), '/btw'), []);
+  // A dialog drawn straight under the banner, with neither an echo nor an overline above it.
+  const dialog = [...banner, '   Select export method', '   1. Copy to clipboard', '   2. Save to file', '', '   Esc to cancel'];
+  const panel = extractCliPanelRows('claude', dialog, inspect('claude', dialog), '/export');
+  assert.equal(panel[0], '   Select export method');
+  assert.ok(!panel.some(row => row.includes('Claude Code v2')));
+});
+
+test('Claude is not idle while its spinner runs, even with an empty input; a finished turn summary is not a spinner', () => {
+  const hooks = ['❯ /release-notes', '', '✶ Osmosing… (running UserPromptSubmit hooks… 1/2 · 0s)', '', ...input('claude')];
+  assert.equal(isCliIdle('claude', hooks, inspect('claude', hooks)), false);
+  const thinking = ['· Beboppin\'… (3s · thinking with xhigh effort)', ...input('claude')];
+  assert.equal(isCliIdle('claude', thinking, inspect('claude', thinking)), false);
+  const done = ['❯ fix it', '⏺ Fixed.', '✻ Worked for 25s', '', ...input('claude')];
+  assert.equal(isCliIdle('claude', done, inspect('claude', done)), true);
+});

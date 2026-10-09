@@ -2,6 +2,18 @@ import type { AgentScreen, ScreenAgent } from './agent-screen-types.ts';
 import type { ConversationEntry } from './types.ts';
 
 const rule = (row: string) => /^[─╌]{2,}$/.test(row.trim());
+// Claude draws a dialog that takes the input's place under an overline (▔▔▔), with its effort indicator
+// ("◉ xhigh · /effort") set into the same row. Like the composer's rules, that line bounds a panel
+// from above; without it the welcome banner at the top of the screen would head the panel.
+const panelEdge = (row: string) => /^\s*[─╌▔]{8,}(?:\s.*)?$/.test(row.trimEnd()) || rule(row);
+// A tall terminal leaves a dialog far below the screen's first rows: keep one blank row between blocks.
+const squeeze = (rows: string[]) => rows.filter((row, index) => row.trim() || rows[index - 1]?.trim());
+// Claude's welcome banner (logo, "Claude Code v…", model, folder) heads its screen; it is never part of a command.
+const withoutBanner = (agent: ScreenAgent, rows: string[]) => {
+  if (agent !== 'claude') return rows;
+  const at = rows.findIndex(row => /Claude Code v\d/.test(row));
+  return at < 0 || at > 2 ? rows : rows.slice(at + 3);
+};
 const trimRows = (rows: string[]) => {
   const result = rows.map(row => row.replace(/\r$/, ''));
   while (result.length && !result[0].trim()) result.shift();
@@ -31,8 +43,14 @@ export function cliInputArea(agent: ScreenAgent, rows: string[], screen: AgentSc
   return null;
 }
 
+// Claude's live status line while it works: a cycling glyph and a verb ending in "…" ("✶ Osmosing… (running
+// UserPromptSubmit hooks…)"). Claude 2.1 empties its input on Enter and shows this while hooks run, before a command
+// draws anything, so an empty input beside it is not idle. A finished turn's "✻ Worked for 25s" has no ellipsis.
+const claudeWorking = (rows: string[]) => rows.some(row => /^\s*[·✢✳✶✻✽*]\s+\S[^…]*…/.test(row));
+
 export function isCliIdle(agent: ScreenAgent, rows: string[], screen: AgentScreen): boolean {
   if (screen.choice || screen.overlay !== 'none') return false;
+  if (agent === 'claude' && claudeWorking(rows)) return false;
   const input = cliInputArea(agent, rows, screen);
   if (!input?.hasFooter) return false;
   return input.text === '' || (agent === 'claude'
@@ -71,15 +89,18 @@ export function extractCliPanelRows(agent: ScreenAgent, rows: string[], screen: 
     // The composer rules are below the panel, not its upper boundary.
     const boundary = input?.start ?? end;
     for (let index = boundary - 1; index >= 0; index--) {
-      if (rule(rows[index])) { start = index + 1; break; }
+      if (panelEdge(rows[index])) { start = index + 1; break; }
     }
   }
-  // If the command is still in the live composer, do not mirror its echo.
+  // If the command is still in the live composer, do not mirror its echo. Claude keeps a submitted command there
+  // while its hooks run (about a second); above it is only old conversation or the welcome banner, so there is
+  // nothing of the command's to show yet.
   if (input?.text === command.trim()) {
     if (agent === 'claude' && screen.overlay !== 'none') start = input.row + 1;
+    else if (agent === 'claude') return [];
     else end = input.start;
   }
-  return trimRows(rows.slice(start, end));
+  return squeeze(trimRows(withoutBanner(agent, rows.slice(start, end))));
 }
 
 export function extractCliOutputRows(agent: ScreenAgent, rows: string[], screen: AgentScreen, command: string): string[] {

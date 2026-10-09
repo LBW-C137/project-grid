@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalPacket } from './types';
 import { createTerminalLinkProvider } from './terminal-links';
 import { styleTerminal } from './terminal-styling';
-import { terminalTheme } from './terminal-theme';
+import { terminalOptions, terminalTheme } from './terminal-theme';
 import { gpuRenderer, terminalRenderer, useTerminalRenderer } from './terminal-renderer';
 import { registerScreen } from './terminal-screen';
 import '@xterm/xterm/css/xterm.css';
@@ -71,7 +71,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const leaveLink = () => { if (host.current) host.current.removeAttribute('title'); };
     const terminal = new Terminal({
       fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', Menlo, 'Microsoft YaHei UI', 'PingFang SC', monospace",
-      fontSize, lineHeight: 1.3, fontWeight: '400', fontWeightBold: '700', scrollback: 3000, minimumContrastRatio: 7,
+      fontSize, lineHeight: 1.3, ...terminalOptions, scrollback: 3000,
       cursorBlink: true, cursorStyle: 'bar',
       // Decorations (the heading and bullet styling) are still an experimental part of xterm's API.
       allowProposedApi: true, allowTransparency: true,
