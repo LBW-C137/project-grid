@@ -661,6 +661,43 @@
       "electron",
       "node_modules",
       "package.json"
-    ]
+    ],
+    "secondRun": {
+      "run": 37897225888,
+      "head": "2c6695c450ee3cbde874b47b9f2610abaf94c68b",
+      "results": {
+        "linuxSsh": "passed",
+        "linuxX64": "passed",
+        "linuxArm64": "passed",
+        "macos": "failed: PR signing skipped",
+        "windows": "failed: OSC 8 REPORT_LINK hover timeout; workspace permission test not reached",
+        "release": "skipped as expected"
+      },
+      "controlledLinkProbe": {
+        "window": {
+          "width": 1024,
+          "height": 768
+        },
+        "beforePrompt": {
+          "x": 3.5234375,
+          "y": 621
+        },
+        "afterPrompt": {
+          "x": 3.5234375,
+          "y": 603
+        },
+        "shellReadyBefore": false,
+        "shiftPixels": -18,
+        "oldCoordinatesHoveredLink": false,
+        "remeasuredCoordinatesHoveredLink": true,
+        "ctrlClickOpenedPreview": true
+      },
+      "followup": {
+        "desktopSmoke": "passed against independent packaged app",
+        "applicationCode": "unchanged",
+        "macosSigning": "unchanged",
+        "permissionAssertion": "BLOCKED unchanged; CHECKING marker and failure diagnostics added"
+      }
+    }
   }
 }
