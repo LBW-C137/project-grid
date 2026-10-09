@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { IDisposable, Terminal } from '@xterm/xterm';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { keepDomSelectionCleared } from './terminal-selection';
 
 // Which renderer draws the terminals. The GPU renderer (WebGL) draws text from a glyph atlas: a working agent
 // redraws its screen ten times a second, and with the DOM renderer every redraw is rows of HTML to lay out
@@ -59,6 +60,7 @@ function attachGpuRenderer(terminal: Terminal, lost: () => void): IDisposable | 
 // few times, a moment later. Switch it on right after the terminal opens, before any output is parsed: starting
 // it takes the window a moment, and answers the terminal owes the shell must not wait behind that.
 export function gpuRenderer(terminal: Terminal) {
+  keepDomSelectionCleared(terminal);
   let gpu: IDisposable | null = null, wanted = false, retries = 0, timer = 0;
   const attach = () => { timer = 0; if (wanted && !gpu) gpu = attachGpuRenderer(terminal, () => { gpu = null; if (wanted && retries++ < 3) timer = window.setTimeout(attach, 2000); }); };
   return {
