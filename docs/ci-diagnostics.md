@@ -1,0 +1,31 @@
+# PR #2 云端检查诊断
+
+对应 [首次 PR 检查](https://github.com/noeigenstate/project-grid/actions/runs/37887112177)；对照 [同一上游基线 7be8797 的主分支检查](https://github.com/noeigenstate/project-grid/actions/runs/37877212188)。四项失败来自三类问题，不能据此认定新增主题在四个平台运行失败。
+
+## 已核实的结果
+
+| 检查 | 首次 PR 结果 | 原因与范围 |
+| --- | --- | --- |
+| Linux x64 / arm64 | 构建通过，包校验失败 | LICENSE 已正常进入安装包，校验仍期待旧的五项根目录；同一基线 main 两项均以相同原因失败 |
+| macOS Apple silicon | 构建通过，签名校验失败 | electron-builder 日志明确显示 PR 构建默认跳过签名；校验仍执行 codesign --verify --deep --strict。main 的临时签名与校验通过 |
+| Windows x64 | 构建、安装及前面七项桌面检查通过；工作区检查超时 | workspace-smoke.mjs 等待 HTML 预览返回 BLOCKED，首次执行与自动重试均超时。失败截图结果区为空，不能确定是点击、加载还是请求完成的问题 |
+| Linux SSH integration | 通过 | 文件与 SSH/PTY 集成检查通过 |
+| Publish GitHub Release | 跳过 | 工作流仅在版本标签触发时发布，PR 中跳过符合原规则 |
+
+四个平台的单元测试均为 450 项、0 失败：Windows 446 通过/4 跳过；macOS 444 通过/6 跳过；Linux 两架构均 445 通过/5 跳过。平台条件跳过与桌面任务失败是不同状态。
+
+## 本次处理
+
+Linux 的校验白名单补上 LICENSE，继续严格拒绝其他根目录项；不删除许可证、不放宽为忽略未知文件，也不改变实际打包内容。
+
+macOS 签名设置按贡献者选择保持不变。仅记录原因，由维护者决定是否支持 PR 的无证书临时签名；当前未启用 CSC_FOR_PULL_REQUEST、未跳过签名验证、未使用正式证书或任何签名秘密。
+
+Windows 未改动应用权限逻辑、HTML 预览或断言。独立的同一打包版本权限检查返回 BLOCKED；随后六个新建 HTML 预览分别点击检查，均返回 BLOCKED，控制台报告 Permissions policy violation。本机检查验证拒绝行为，但没有复现云端超时，因此尚不能给出其确定根因。
+
+完整工作区复现曾被本机测试专用 Explorer 粘贴助手卡住，随后只结束该助手并由测试清理自身窗口；这次完整复现不能记为通过。权限定向检查使用独立资料，无剪贴板操作。原有用户窗口和会话不用于诊断。
+
+## 后续核对
+
+新的 PR 检查可确认 Linux 校验修正，并再次执行 Windows 原检查。若 Windows 仍在同处失败，应在云端测试中记录 iframe 的 document.readyState、点击处理函数绑定情况、输出内容及页面错误，再区分页面时序和权限请求完成问题；不能以增大超时或删掉 BLOCKED 断言代替诊断。
+
+macOS 在签名设置保持不变的情况下仍可能失败；不能将它描述成已经修复，也不能把构建/单元通过等同于桌面模糊实机验证。

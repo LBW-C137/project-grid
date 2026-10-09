@@ -81,3 +81,7 @@ Remove-Item Env:PROJECT_GRID_APPEARANCE_EXE
 - 原构建存在较大前端分块提示；本贡献不借机重构或变更正式打包、版本号、依赖和发布计划。
 
 功能、推荐配置及 README 素材见 [appearance-increment.md](appearance-increment.md)。
+
+## 首次云端检查
+
+本机验证不等同于云端全绿。首次 CI 的 Linux 白名单、macOS PR 签名与 Windows 权限等待问题及处理范围见 [ci-diagnostics.md](ci-diagnostics.md)；macOS 签名设置保持不变，Windows 根因仍待云端核对。

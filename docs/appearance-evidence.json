@@ -533,5 +533,134 @@
     "Original physical pointer disappearance not fully reproduced",
     "Package audit covers independent whitelist build, not production release configuration",
     "Baseline suite precedes final targeted appearance changes; followups and final packaged matrix recorded separately"
-  ]
+  ],
+  "cloudCiDiagnosis": {
+    "originalPrRun": 37887112177,
+    "baseMainRun": 37877212188,
+    "cloudUnit": {
+      "windows": {
+        "total": 450,
+        "passed": 446,
+        "skipped": 4,
+        "failed": 0
+      },
+      "macos": {
+        "total": 450,
+        "passed": 444,
+        "skipped": 6,
+        "failed": 0
+      },
+      "linuxX64": {
+        "total": 450,
+        "passed": 445,
+        "skipped": 5,
+        "failed": 0
+      },
+      "linuxArm64": {
+        "total": 450,
+        "passed": 445,
+        "skipped": 5,
+        "failed": 0
+      }
+    },
+    "linux": "Same failure on main: LICENSE missing from expected root whitelist; strict check corrected",
+    "macos": "PR signing skipped by electron-builder; configuration deliberately unchanged",
+    "windows": "Cloud BLOCKED wait timed out twice; exact root cause not reproduced",
+    "localMediaProbe": [
+      {
+        "before": {
+          "ready": "complete",
+          "handler": "function",
+          "secure": true
+        }
+      },
+      {
+        "console": "Permissions policy violation: microphone is not allowed in this document."
+      },
+      {
+        "after": {
+          "ready": "complete",
+          "handler": "function",
+          "result": "BLOCKED",
+          "clicks": 1
+        }
+      }
+    ],
+    "localRepeatedMediaProbe": [
+      {
+        "console": "Permissions policy violation: microphone is not allowed in this document."
+      },
+      {
+        "run": 0,
+        "state": {
+          "ready": "complete",
+          "handler": "function",
+          "result": "BLOCKED"
+        }
+      },
+      {
+        "console": "Permissions policy violation: microphone is not allowed in this document."
+      },
+      {
+        "run": 1,
+        "state": {
+          "ready": "complete",
+          "handler": "function",
+          "result": "BLOCKED"
+        }
+      },
+      {
+        "console": "Permissions policy violation: microphone is not allowed in this document."
+      },
+      {
+        "run": 2,
+        "state": {
+          "ready": "complete",
+          "handler": "function",
+          "result": "BLOCKED"
+        }
+      },
+      {
+        "console": "Permissions policy violation: microphone is not allowed in this document."
+      },
+      {
+        "run": 3,
+        "state": {
+          "ready": "complete",
+          "handler": "function",
+          "result": "BLOCKED"
+        }
+      },
+      {
+        "console": "Permissions policy violation: microphone is not allowed in this document."
+      },
+      {
+        "run": 4,
+        "state": {
+          "ready": "complete",
+          "handler": "function",
+          "result": "BLOCKED"
+        }
+      },
+      {
+        "console": "Permissions policy violation: microphone is not allowed in this document."
+      },
+      {
+        "run": 5,
+        "state": {
+          "ready": "complete",
+          "handler": "function",
+          "result": "BLOCKED"
+        }
+      }
+    ],
+    "localPackageRoots": [
+      "LICENSE",
+      "assets",
+      "dist",
+      "electron",
+      "node_modules",
+      "package.json"
+    ]
+  }
 }
