@@ -27,7 +27,6 @@
 /* Rows answer the pointer the same way everywhere: a wash of light, a small step to the right, a press. */
 :is(.git-file, .activity-item, .recent-open, .tree-row) { transition: background .16s ease, transform .16s cubic-bezier(.2, .8, .2, 1); }
 :is(button.git-file, .recent-open):hover { transform: translateX(2px); }
-.activity-item:hover { background: rgba(255, 255, 255, .07); }
 :is(button.git-file, .tree-row, .recent-open):active { transform: scale(.985); }
 .git-hunk { transition: border-color .18s ease, box-shadow .18s ease; }
 .git-hunk:hover { border-color: rgba(220, 237, 255, .3); box-shadow: 0 6px 20px -10px rgba(2, 14, 26, .7); }
@@ -41,7 +40,7 @@
 .status-button:hover .status-dot { transform: scale(1.25); }.status-dot { transition: transform .18s cubic-bezier(.2, .8, .2, 1); }
 .setting-row { transition: background .18s ease; border-radius: 4px; }
 .setting-row:hover { background: rgba(255, 255, 255, .035); }
-:is(.setting-row select, .search-input, .announce-options input) { transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
+:is(.setting-row select, .search-input) { transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
 .setting-row select:hover { border-color: #b8d7ef80; }
 
 /* Things that appear, arrive: panes slide in from their edge, messages rise, dialogs dim the window gently. */

@@ -153,7 +153,7 @@ try {
   // An agent's terminal opens in the reading view by default; switch only if it shows the terminal.
   if (!await page.locator('.project-panel.is-focused .reading-view').count()) await page.getByRole('button', { name: '阅读视图：按文档排版显示对话', exact: true }).click();
   await page.locator('.reading-view .reading-markdown h2').waitFor();
-  await page.locator('.activity-pane .overview-stats').waitFor();
+  await page.locator('.activity-pane .activity-round').waitFor();
   await page.mouse.move(800, 2); await page.waitForTimeout(600);
   await shot('reading-view.jpg');
 

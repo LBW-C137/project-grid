@@ -13,7 +13,6 @@ import { applyMotion } from './shared/motion';
 import { setTerminalRenderer } from './features/terminal/terminal-renderer';
 import { terminalFontFamily } from './features/terminal/terminal-font';
 import { VoiceOverlay } from './features/voice/VoiceButton';
-import { announce } from './features/notices/announce';
 import { applyLanguage, t } from './shared/i18n';
 import { actionFor, applyShortcuts, editingKeyInField, shortcut } from './features/shortcuts/shortcuts';
 import { quickDictation } from './features/voice/voice-input';
@@ -174,7 +173,6 @@ export function App() {
     document.addEventListener('focusin', remember);
     return () => document.removeEventListener('focusin', remember);
   }, []);
-  useEffect(() => api?.onAnnounce(({ name, task, summary }) => { const settings = settingsRef.current; if (settings?.announce) announce(name, task || '', settings, summary || ''); }), []);
   useEffect(() => {
     if (!api) return;
     const offState = api.onState(setWorkspace);
@@ -313,7 +311,7 @@ export function App() {
                 hidden={focusedId ? focusedId !== project.id : !visibleIds.has(project.id)} focused={focusedId === project.id && !previewFile}
                 navTarget={projectSwitch?.id === project.id ? projectSwitch.sequence : undefined}
                 navPosition={projectSwitch?.id === project.id && switchPosition > 0 ? t('{position} / {total}', { position: switchPosition, total: navigation.current.length }) : undefined}
-                fontSize={settings.fontSize} codexDirect={settings.codexDirect} now={now} activityOpen={settings.activityPane} onToggleActivity={() => setPreference({ activityPane: !settings.activityPane })} onFocus={focusProject} onAction={perform} onError={reportError} onOpenLink={openLinkInPopup} onRevealProject={revealProject}
+                fontSize={settings.fontSize} now={now} activityOpen={settings.activityPane} onToggleActivity={() => setPreference({ activityPane: !settings.activityPane })} onFocus={focusProject} onAction={perform} onError={reportError} onOpenLink={openLinkInPopup} onRevealProject={revealProject}
                 dragging={reorder.drag?.id === project.id} /> </div>)}
               {reorder.drag && <div className="reorder-hint" role="status">{t('拖动项目排序 · 松开完成')}<span>{t('Esc 取消')}</span></div>}
             </div>

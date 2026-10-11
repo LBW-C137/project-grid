@@ -1,10 +1,16 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import { User } from '@phosphor-icons/react';
 import type { PendingPrompt } from './pending-prompts';
 import { t } from '../../shared/i18n';
 import './pending-prompts.css';
 
 // What the user wrote, folded to three lines when it runs longer (a pasted log, a long brief), with a button to read
 // all of it. Whether it runs longer is measured on the laid-out text, so a long line that wraps counts too.
+// Your messages are headed by a person, the agent's by its own mark.
+export function UserAvatar() {
+  return <span className="reading-user-avatar" role="img" aria-label={t('你')}><User size={15} weight="fill" /></span>;
+}
+
 export function UserText({ text }: { text: string }) {
   const node = useRef<HTMLParagraphElement>(null);
   const [open, setOpen] = useState(false), [long, setLong] = useState(false);
@@ -34,7 +40,7 @@ export function PendingPromptEntries({ prompts, undelivered = () => false, onRes
   return prompts.map(prompt => {
     const lost = undelivered(prompt);
     return <div key={prompt.id} className={`reading-user reading-pending${prompt.sending ? ' is-sending' : ''}${lost ? ' is-undelivered' : ''}`}>
-      <span>{t('你')}</span><UserText text={prompt.text} />{prompt.images && <UserImages images={prompt.images} />}{prompt.sending && <small role="status">{t('发送中')}</small>}
+      <UserAvatar /><UserText text={prompt.text} />{prompt.images && <UserImages images={prompt.images} />}{prompt.sending && <small role="status">{t('发送中')}</small>}
       {lost && <div className="reading-undelivered" role="alert"><small>{t('未送达：助手没有收到这条消息')}</small>
         <button type="button" className="text-button" onClick={() => onResend?.(prompt)}>{t('重新发送')}</button>
         <button type="button" className="text-button" onClick={() => onDiscard?.(prompt)}>{t('移除')}</button></div>}

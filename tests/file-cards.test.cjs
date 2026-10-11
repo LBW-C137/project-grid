@@ -5,7 +5,6 @@ const os = require('node:os');
 const path = require('node:path');
 const { createFileCards, cardKind } = require('../electron/features/files/file-cards.cjs');
 const { brief, ConversationLog, claudeConversation, codexConversation } = require('../electron/conversation.cjs');
-const { CodexEvents } = require('../electron/features/agents/codex-direct.cjs');
 const { ActionLog } = require('../electron/agent-actions.cjs');
 const { PreviewResources } = require('../electron/preview-resources.cjs');
 
@@ -165,7 +164,7 @@ test('outside absolute paths, sibling prefixes and external junctions show a cle
   for (const file of [path.join(outside, 'page.html'), 'linked/page.html', '../outside.html']) await assert.rejects(card(project, file), /文件在项目目录之外/);
 });
 
-test('Claude transcripts, Codex rollouts and app-server changes keep the cwd of each written file', async () => {
+test('Claude transcripts and Codex rollouts keep the cwd of each written file', async () => {
   const { project, previews } = fixture(), cwd = path.join(project.path, 'docs');
   const card = createFileCards({ previews, capture: async () => 'picture' });
   const claude = new ConversationLog();
@@ -176,9 +175,6 @@ test('Claude transcripts, Codex rollouts and app-server changes keep the cwd of 
   codexConversation(codex, { type: 'turn_context', payload: { cwd } }, project.path);
   codexConversation(codex, { type: 'response_item', payload: { type: 'custom_tool_call', name: 'apply_patch', call_id: 'patch', input: '*** Update File: guide.md\n' } }, project.path);
   assert.equal((await card(project, codex.list[0].tool.written[0])).path, 'docs/guide.md');
-  const direct = new ConversationLog(), events = new CodexEvents({ conversation: direct, actions: new ActionLog(), cwd });
-  events.notify('item/completed', { item: { id: 'change', type: 'fileChange', status: 'completed', changes: [{ path: 'guide.md', kind: { type: 'update' } }] } });
-  assert.equal((await card(project, direct.list[0].tool.written[0])).path, 'docs/guide.md');
 });
 
 test('Codex shell edits honor workdir rather than the session root', async () => {

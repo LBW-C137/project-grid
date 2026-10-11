@@ -6,7 +6,7 @@ const { registerTerminalIpc } = require('../electron/features/terminal/ipc.cjs')
 
 // Exercise the IPC handler with an isolated session, without loading Electron.
 function terminalWriter(agent, activity = 'idle') {
-  const calls = { prompts: [], completion: [], forwarded: [], state: 0, speech: 0, polls: 0 };
+  const calls = { prompts: [], completion: [], forwarded: [], state: 0, polls: 0 };
   const promptQueue = new PromptQueue();
   const submit = promptQueue.submit.bind(promptQueue);
   promptQueue.submit = (text, working) => { calls.prompts.push([text, working]); submit(text, working); };
@@ -20,7 +20,7 @@ function terminalWriter(agent, activity = 'idle') {
   registerTerminalIpc({
     handle: () => {}, listen: (channel, handler) => { if (channel === 'terminal:write') write = handler; }, getSession: () => session,
     getProjectById: () => project, expectCompletion: id => calls.completion.push(id),
-    scheduleState: () => { calls.state++; }, warmSpeech: () => { calls.speech++; },
+    scheduleState: () => { calls.state++; },
     pollAfterSubmission: (target, isCurrent) => { assert.equal(target, session); assert.equal(isCurrent(), true); calls.polls++; },
     now: () => 1234,
     applyActivity: (_project, s, snapshot) => { calls.interrupted = snapshot; s.codexActivity = snapshot.state; },
@@ -67,7 +67,6 @@ test('local submissions never queue prompts or change activity and completion fo
     assert.deepEqual(calls.prompts, []);
     assert.deepEqual(calls.completion, []);
     assert.equal(calls.state, 0);
-    assert.equal(calls.speech, 0);
     assert.deepEqual(calls.forwarded, ['/model\r', '/status\r!ls\r', '  /model\r', '/custom-prompt\r']);
   }
 });
@@ -83,7 +82,6 @@ test('mixed submissions queue each real prompt and mark working even when comman
     assert.equal(session.activityInputAt, 1234);
     assert.deepEqual(calls.completion, ['project']);
     assert.equal(calls.state, 1);
-    assert.equal(calls.speech, 1);
     assert.deepEqual(calls.forwarded, [data]);
     session.promptQueue.reset();
   }
@@ -96,7 +94,6 @@ test('typed text arms completion on submission; a line of unknown text (a menu c
   assert.equal(typed.session.codexActivity, 'working');
   assert.deepEqual(typed.calls.completion, ['project']);
   assert.equal(typed.calls.state, 1);
-  assert.equal(typed.calls.speech, 1);
   typed.session.promptQueue.reset();
   // Codex's update prompt answered with the arrows, a /model picker, a line recalled from history: the agent's own
   // records tell whether a round started.

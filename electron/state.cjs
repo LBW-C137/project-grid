@@ -2,7 +2,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { normalizeSSH } = require('./ssh-config.cjs');
-const SUMMARY_PRESETS = require('./summary-presets.json');
 const { MODELS: VOICE_MODELS, DEFAULT_MODEL: DEFAULT_VOICE_MODEL } = require('./voice.cjs');
 
 // Local folders once opened as projects, newest first, so a removed project can be added again in one click.
@@ -17,10 +16,10 @@ function cleanHistory(input) {
 }
 
 // Which coding agent a terminal restores (Codex unless recorded as Claude Code), whether its last Claude turn was
-// left unfinished, and whether Codex ran connected directly (no terminal). Only non-default values are stored.
-const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'claude' } : {}), ...(restore?.interrupted === true ? { interrupted: true } : {}), ...(restore?.direct === true ? { direct: true } : {}) });
+// left unfinished. Only non-default values are stored.
+const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'claude' } : {}), ...(restore?.interrupted === true ? { interrupted: true } : {}) });
 
-const defaults = { codexDirect: false, surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', autoSave: true, activityPane: true, notifications: true, sound: true, announce: true, announcePhrase: '', language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', restoreSessions: true, focusAnimation: 'smooth', theme: 'daylight', voiceModel: DEFAULT_VOICE_MODEL };
+const defaults = { surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', autoSave: true, activityPane: true, notifications: true, sound: true, language: 'zh', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', restoreSessions: true, focusAnimation: 'smooth', theme: 'daylight', voiceModel: DEFAULT_VOICE_MODEL };
 
 // Keyboard shortcuts the user changed, by action; defaults live in the window (src/features/shortcuts/shortcuts.ts).
 // "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
@@ -29,18 +28,6 @@ const SHORTCUT = /^(?:(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:F(?:[1-9]|1[0-2]))|(?=
 function cleanShortcuts(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
   return Object.fromEntries(SHORTCUT_ACTIONS.filter(action => typeof input[action] === 'string' && SHORTCUT.test(input[action])).map(action => [action, input[action]]));
-}
-
-// What the spoken notice says and who writes it. fast: the prompt's first sentence, at once (the default).
-// agent: the round's own CLI sums it up. cloud / local: a model reached over HTTP. Only the provider, the
-// address and the model name are kept here; an API key is stored encrypted elsewhere (summary-models.cjs).
-function cleanEndpoint(input, target) {
-  const preset = SUMMARY_PRESETS[target].find(item => item.id === input?.provider) || SUMMARY_PRESETS[target][0];
-  const text = (value, limit) => typeof value === 'string' ? value.replace(/[\0-\x1f\x7f]/g, '').trim().slice(0, limit) : null;
-  return { provider: preset.id, protocol: preset.id === 'custom' && input?.protocol === 'anthropic' ? 'anthropic' : preset.protocol, baseUrl: text(input?.baseUrl, 300) || preset.baseUrl, model: text(input?.model, 120) ?? preset.model };
-}
-function cleanSummarySettings(input) {
-  return { mode: ['fast', 'agent', 'cloud', 'local'].includes(input?.mode) ? input.mode : 'fast', cloud: cleanEndpoint(input?.cloud, 'cloud'), local: cleanEndpoint(input?.local, 'local') };
 }
 
 function cleanSettings(input = {}) {
@@ -59,7 +46,6 @@ function cleanSettings(input = {}) {
     glassBackground: input.glassBackground === 'desktop' ? 'desktop' : 'theme',
     glassTransparency: Number.isInteger(input.glassTransparency) && input.glassTransparency >= 0 && input.glassTransparency <= 100 ? input.glassTransparency : defaults.glassTransparency,
     terminalRenderer: input.terminalRenderer === 'dom' ? 'dom' : 'gpu',
-    summary: cleanSummarySettings(input.summary),
     // The offline recognizer for dictation (voice.cjs).
     voiceModel: Object.hasOwn(VOICE_MODELS, input.voiceModel) ? input.voiceModel : defaults.voiceModel,
     shortcuts: cleanShortcuts(input.shortcuts),
@@ -69,8 +55,7 @@ function cleanSettings(input = {}) {
     // The app version whose usage guide was last shown; a newer version shows it again.
     guideVersion: typeof input.guideVersion === 'string' && /^\d+\.\d+\.\d+(-[\w.-]+)?$/.test(input.guideVersion) ? input.guideVersion : '',
     // Spoken completion phrase; empty uses the built-in phrases. {项目} or {project} is the project name.
-    announcePhrase: typeof input.announcePhrase === 'string' ? input.announcePhrase.replace(/[\0-\x1f\x7f]/g, ' ').trim().slice(0, 80) : defaults.announcePhrase,
-    ...Object.fromEntries(['notifications', 'sound', 'announce', 'closeToTray', 'explorerCollapsed', 'restoreSessions', 'autoSave', 'activityPane', 'codexDirect'].map(key => [key, typeof input[key] === 'boolean' ? input[key] : defaults[key]])),
+    ...Object.fromEntries(['notifications', 'sound', 'closeToTray', 'explorerCollapsed', 'restoreSessions', 'autoSave', 'activityPane'].map(key => [key, typeof input[key] === 'boolean' ? input[key] : defaults[key]])),
   };
 }
 
@@ -171,7 +156,6 @@ class WorkspaceStore {
     else if (/^[a-f\d-]{36}$/i.test(patch.threadId || '')) next.threadId = patch.threadId;
     if (patch.agent === 'codex' || patch.agent === 'claude') { delete next.agent; delete next.interrupted; Object.assign(next, agentFields({ ...record.restore, agent: patch.agent })); }
     if (typeof patch.interrupted === 'boolean') { delete next.interrupted; Object.assign(next, agentFields({ interrupted: patch.interrupted })); }
-    if (typeof patch.direct === 'boolean') { delete next.direct; Object.assign(next, agentFields({ direct: patch.direct })); }
     const wasClosed = project.primaryTerminalClosed;
     if (record === project) {
       if (patch.terminal === true) project.primaryTerminalClosed = false;

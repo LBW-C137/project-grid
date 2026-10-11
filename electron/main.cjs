@@ -10,12 +10,9 @@ const { createGitRuntime } = require('./features/git/runtime.cjs');
 const { registerGitIpc } = require('./features/git/ipc.cjs');
 const { registerUpdatesIpc } = require('./features/updates/ipc.cjs');
 const { registerAgentsIpc } = require('./features/agents/ipc.cjs');
-const { registerDirectIpc } = require('./features/agents/direct-ipc.cjs');
-const { CodexDirect } = require('./features/agents/codex-direct.cjs');
 const { folderHistory, launchCommand } = require('./features/agents/launch.cjs');
 const { READING_NOTE } = require('./features/agents/reading-note.cjs');
 const { setThumbnailer, isGeneratedImage } = require('./conversation.cjs');
-const { registerNoticesIpc } = require('./features/notices/ipc.cjs');
 const { registerVoiceIpc } = require('./features/voice/ipc.cjs');
 const { createIpcAdapter } = require('./shared/ipc.cjs');
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, Notification, clipboard, shell, protocol, safeStorage, session: electronSession, net: electronNet } = require('electron');
@@ -57,15 +54,12 @@ const { TerminalTitleTracker } = require('./terminal-title.cjs');
 const { FileOperations } = require('./file-operations.cjs');
 const { ClipboardWrites } = require('./clipboard-writes.cjs');
 const { VoiceManager } = require('./voice.cjs');
-const { SpeechManager } = require('./speech.cjs');
 const { summarizeTask } = require('./task-summary.cjs');
 const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
-const { summarizeRound, claudeReply, codexReply } = require('./round-summary.cjs');
 const { ConversationLog, claudeConversation, codexConversation } = require('./conversation.cjs');
 const { conversationBatchDelay, pollAfterSubmission } = require('./conversation-timing.cjs');
 const { listAgentCommands, isLocalAgentCommand } = require('./agent-commands.cjs');
 const { claudeConfigDir, findClaudeSession, listClaudeSessions } = require('./claude-sessions.cjs');
-const { modelSummary, listModels, connection, SecretStore, TARGETS: SUMMARY_TARGETS } = require('./summary-models.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
@@ -114,7 +108,7 @@ let zshStartup;
 let activeTerminal = null;
 let activeFileTree = null;
 let fileOperations, filesIpc;
-let voiceManager, speechManager, summarySecrets;
+let voiceManager;
 let attentionTimer;
 const { allowEditorClose, affectsEditor, getEditorFile, registerEditorIpc } = createEditorGuard({ getWindow: () => window, showWindow, send, randomUUID, dialog, t });
 const clipboardWrites = new ClipboardWrites();
@@ -142,10 +136,7 @@ function publicState() {
           // What the round was asked to do, in a few words, for the activity overview.
           task: s?.codexActive ? s.lastTask || '' : '',
           // The prompts sent and not finished yet: the ones being worked on, then the ones waiting.
-          prompts: s?.codexActive ? s.promptQueue.list() : [],
-          // Codex connected directly: no terminal; the reading view is the whole card, with the question or approval
-          // Codex waits on and the model it runs.
-          direct: !!s?.direct, card: s?.direct ? s.card || null : null, agentInfo: s?.direct ? { model: s.info?.model || '', effort: s.info?.effort || '' } : null };
+          prompts: s?.codexActive ? s.promptQueue.list() : [] };
       });
       const first = terminals[0];
       const activeCodex = terminals.filter(item => item.codexActive);
@@ -254,25 +245,7 @@ function showWindow(id) {
   if (id) send('project:focus', id);
 }
 
-// task: a short name for what the round worked on, from its prompt (empty when unknown).
-// The agent's final words of the round are kept for the spoken summary; a new round forgets them.
-function noteReply(s, reply) { if (reply?.reset) s.lastReply = ''; else if (reply?.text) s.lastReply = reply.text.slice(-8000); }
-// A sentence saying what the round achieved, for the spoken notice, written the way the settings choose:
-// not at all (fast, the default: the plain notice is spoken at once), by the round's own CLI, or by a
-// cloud or local model over HTTP. Empty when nothing usable comes back; the plain notice is spoken then.
-async function roundSummary(project, s) {
-  const mode = store.settings.summary.mode;
-  if (mode === 'fast' || !s || project.kind === 'ssh') return '';
-  // Claude's transcript is read on a timer; read it to the end so the final reply is in hand.
-  if (s.agent === 'claude') await s.activityMonitor?.poll();
-  const material = { language: store.settings.language, task: s.lastTask || '', reply: s.lastReply || '' };
-  if (!material.reply.trim()) return '';
-  if (mode === 'agent') return summarizeRound({ agent: s.agent, ...material, directory: path.join(app.getPath('userData'), 'summaries') });
-  return modelSummary({ target: mode, entry: store.settings.summary[mode], apiKey: summarySecrets.get(mode), ...material, fetcher: (url, options) => electronNet.fetch(url, options) });
-}
-
-// s: the terminal whose round finished, when known.
-function notifyCompletion(project, task = '', s = null) {
+function notifyCompletion(project) {
   if (!window.isFocused()) {
     window.flashFrame(true); clearTimeout(attentionTimer);
     attentionTimer = setTimeout(() => { if (window && !window.isDestroyed()) window.flashFrame(false); }, 9000);
@@ -288,11 +261,6 @@ function notifyCompletion(project, task = '', s = null) {
     note.on('click', () => showWindow(project.id));
     note.on('failed', () => {});
     note.show();
-  }
-  // Spoken with the system voice in the window, which knows the chosen language and phrase.
-  if (store.settings.announce) {
-    const notice = { projectId: project.id, name: project.name, task };
-    roundSummary(project, s).catch(() => '').then(summary => send('completion:announce', summary ? { ...notice, summary } : notice));
   }
 }
 
@@ -342,13 +310,13 @@ function followClaude(project, s, event) {
   if (s.claudeTranscript?.filename !== file) {
     s.claudeTranscript = new TranscriptTail(file, { onHistory: ready => {
       if (ready) s.conversation.endHistory();
-      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.lastReply = ''; }
+      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); }
     } });
     s.activityMonitor?.stop();
     const tail = s.claudeTranscript;
     s.activityMonitor = monitorActivity(async () => { await tail.read(record => {
       if (sessions.get(s.terminalId) !== s || s.claudeTranscript !== tail) return;
-      noteReply(s, claudeReply(record)); claudeConversation(s.conversation, record, project.path); describeActions(s, project.path, claudeRecord(s.actions, record, project.path));
+      claudeConversation(s.conversation, record, project.path); describeActions(s, project.path, claudeRecord(s.actions, record, project.path));
     }); return null; }, () => {});
   } else void s.activityMonitor?.poll();
 }
@@ -366,9 +334,6 @@ async function followClaudeSession(project, s, id) {
   return true;
 }
 
-// A round being worked on ends with a spoken notice: load the voice now, so it is ready by then.
-const roundsWorking = () => [...sessions.values()].some(s => s.codexActive && s.codexActivity === 'working');
-function warmSpeech() { if (store.settings.announce) speechManager?.warm().catch(() => {}); }
 
 // One place turns an agent's turn state into lights and completion alerts, for Codex and Claude alike.
 function applyActivity(project, s, snapshot) {
@@ -382,12 +347,12 @@ function applyActivity(project, s, snapshot) {
   if (task) s.lastTask = task;
   if (s.agent === 'codex') store.setRestore(s.terminalId, { threadId: snapshot.threadId });
   s.codexActivity = snapshot.state;
-  if (snapshot.state === 'working') { store.expectCompletion(project.id); warmSpeech(); }
+  if (snapshot.state === 'working') store.expectCompletion(project.id);
   if (['complete', 'interrupted'].includes(snapshot.state) && (s.agent === 'claude' || project.kind === 'ssh')) s.promptQueue.finish(snapshot.updatedAt);
   if (snapshot.state === 'complete' && snapshot.turnId) {
     s.lastCompletedAt = snapshot.updatedAt;
     if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
-    if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project, s.lastTask || '', s);
+    if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project);
   } else if (snapshot.state === 'interrupted') store.expectCompletion(project.id, false);
   broadcast();
 }
@@ -464,10 +429,10 @@ function onEvent(event) {
     const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0,
       onHistory: ready => {
         if (ready) s.conversation.endHistory();
-        else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.lastReply = ''; }
+        else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); }
       },
       onRecord: record => {
-        noteReply(s, codexReply(record)); codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
+        codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
         if (record?.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload?.type)) s.promptQueue.finish(Date.parse(record.timestamp) || Date.now());
       } });
     s.activityMonitor = monitorActivity(
@@ -674,60 +639,6 @@ function startTerminal(id) {
   broadcast();
 }
 
-// Codex connected directly (Settings › 编码助手): no shell and no screen to read. Its app-server reports the
-// conversation, the steps and when a round starts and ends; the session keeps the fields a terminal's agent has, so
-// the lights, the activity pane, completion alerts and restoring work the same.
-function startDirect(id, threadId = store.findTerminal(id)?.record.restore?.threadId || null) {
-  const project = findProject(id);
-  if (project.kind === 'ssh') throw new Error('SSH 项目暂不支持 Codex 直连。');
-  const old = sessions.get(id);
-  if (old && old.status !== 'exited') return;
-  if (old) disposeTerminal(id);
-  if (!fs.existsSync(project.path)) throw new Error('项目目录不存在，请重新添加。');
-  const cwd = store.findTerminal(id)?.record.restore?.cwd || project.path;
-  const s = { terminalId: id, projectId: project.id, sessionId: randomUUID(), status: 'starting', ready: true, direct: true, shellKind: 'codex',
-    codexActive: true, agent: 'codex', codexActivity: 'unknown', activitySince: Date.now(), activityInputAt: 0, card: null, info: {},
-    seq: 0, chunks: [], bytes: 0, flush() {}, error: null, submissions: new SubmissionTracker(), gate: { input() {}, output() {}, dispose() {} } };
-  s.actions = new ActionLog(change => publishAction(s, change));
-  s.promptQueue = new PromptQueue(() => { if (sessions.get(id) === s) scheduleState(); });
-  s.conversation = new ConversationLog(change => {
-    publishConversation(s, change);
-    const entry = change.entry;
-    if (entry?.role === 'user' && entry.at >= s.activitySince - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
-    if (entry?.role === 'assistant' && entry.text) noteReply(s, { text: entry.text });
-  });
-  const live = () => sessions.get(id) === s;
-  s.codex = new CodexDirect({ cwd, env: createTerminalEnvironment(withoutAppImage(process.env), ''), conversation: s.conversation, actions: s.actions, version: app.getVersion(), instructions: READING_NOTE,
-    turn: (state, turnId) => {
-      if (!live()) return;
-      if (state !== 'working') s.promptQueue.finish(Date.now());
-      applyActivity(project, s, { threadId: s.codex.threadId, turnId: state === 'complete' ? turnId : null, state, updatedAt: Date.now(), prompt: s.lastPrompt });
-    },
-    card: card => { if (!live()) return; s.card = card; s.needsInput = card ? { message: card.kind === 'question' ? t('等待你回答问题') : t('等待你确认'), since: Date.now() } : null; broadcast(); },
-    info: info => {
-      if (!live()) return;
-      s.info = { ...s.info, ...info };
-      if (info.threadId) store.setRestore(id, { codex: true, direct: true, threadId: info.threadId });
-      scheduleState();
-    },
-    exit: error => { if (!live() || s.status === 'exited') return; s.status = 'exited'; s.codexActive = false; s.codexActivity = 'unknown'; s.card = null; s.error = quitting ? null : error?.message || null; broadcast(); } });
-  s.terminal = { write() {}, resize() {}, kill: () => s.codex.dispose() };
-  sessions.set(id, s);
-  store.setRestore(id, { terminal: true, codex: true, direct: true });
-  startupErrors.delete(id);
-  s.codex.start(threadId).then(() => { if (live()) { s.status = 'shell'; broadcast(); } }, error => {
-    if (!live()) return;
-    s.status = 'exited'; s.codexActive = false; s.error = t('无法启动 Codex 直连：{message}', { message: error.message }); s.codex.dispose(); broadcast();
-  });
-  captureBranch(project);
-  broadcast();
-}
-// A terminal remembered as Codex connected directly comes back that way while the setting is on.
-function startSession(id) {
-  const restore = store.findTerminal(id)?.record.restore;
-  return store.settings.codexDirect && restore?.direct ? startDirect(id) : startTerminal(id);
-}
-
 function disposeTerminal(id) {
   const s = sessions.get(id);
   if (!s) return;
@@ -789,11 +700,7 @@ function registerIpc() {
     getActiveFileTree: () => activeFileTree, setActiveFileTree: value => { activeFileTree = value; }, setActiveTerminal: value => { activeTerminal = value; }, send });
   registerGitIpc({ handle, findProject, projectGit, setBranch, affectsEditor, allowEditorClose, getWindow: () => window, dialog, t });
   registerVoiceIpc({ handle, voiceManager });
-  registerNoticesIpc({ handle, speechManager, summarySecrets, agents, getSettings: () => store.settings,
-    summaryDirectory: () => path.join(app.getPath('userData'), 'summaries'), fetcher: (url, options) => electronNet.fetch(url, options),
-    summarizeRound, modelSummary, listModels, connection, SUMMARY_TARGETS });
   registerEditorIpc({ handle, listen });
-  registerDirectIpc({ handle, findProject, getSession: id => sessions.get(id), startDirect: (id, threadId) => startDirect(id, threadId) });
   // A new project's card offers Claude Code and Codex, fresh or continuing this folder's latest conversation.
   const folderOf = id => store.findTerminal(id)?.record.restore?.cwd || findProject(id).path;
   handle('project:card', (id, file) => fileCard(findProject(id), file, folderOf(id)));
@@ -815,10 +722,10 @@ function registerIpc() {
     launchPlans.set(id, { agent, command: launchCommand(agent, history), threadId: history?.id || null });
     startTerminal(id); broadcast(); return true;
   });
-  registerTerminalIpc({ handle, listen, findProject, getSession: id => sessions.get(id), hasSession: id => sessions.has(id), startTerminal: startSession,
+  registerTerminalIpc({ handle, listen, findProject, getSession: id => sessions.get(id), hasSession: id => sessions.has(id), startTerminal,
     addTerminal: id => store.addTerminal(id), removeTerminal: id => store.removeTerminal(id), confirmTerminalClose, forgetRestorePlan: id => restorePlans.delete(id),
     disposeTerminal, clearStartupError: id => startupErrors.delete(id), broadcast, getProjectById: id => store.projects.find(p => p.id === id),
-    acknowledgeProject: id => store.acknowledge(id), expectCompletion: id => store.expectCompletion(id), scheduleState, warmSpeech, applyActivity, pollAfterSubmission, send,
+    acknowledgeProject: id => store.acknowledge(id), expectCompletion: id => store.expectCompletion(id), scheduleState, applyActivity, pollAfterSubmission, send,
     getActiveTerminal: () => activeTerminal, setActiveTerminal: value => { activeTerminal = value; }, setActiveFileTree: value => { activeFileTree = value; } });
   registerClipboardIpc({ handle, clipboardWrites, clipboard });
   registerWindowIpc({ handle, listen, getWindow: () => window, requestQuit });
@@ -861,15 +768,10 @@ if (!app.requestSingleInstanceLock()) {
       loginShellPath(process.platform === 'linux' ? { shell: process.env.SHELL || findShell('bash') || '/bin/bash', env: withoutAppImage(process.env) } : undefined).then(value => { if (value) process.env.PATH = mergePath(value, process.env.PATH); agents.changed(); }).catch(() => {});
     }
     store = new WorkspaceStore(path.join(app.getPath('userData'), 'workspace.json'));
-    summarySecrets = new SecretStore(path.join(app.getPath('userData'), 'summary-keys.json'), safeStorage);
     voiceManager = new VoiceManager({ directory: voiceDirectory(), model: store.settings.voiceModel, fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('voice:state', state) });
     // Download the offline model in the background after installation so dictation works on first use.
     // Waits for startup and session restore first; isolated test profiles skip the 239 MB download.
-    speechManager = new SpeechManager({ directory: voiceDirectory(), fetcher: (url, options) => electronNet.fetch(url, options), changed: state => send('speech:state', state), busy: roundsWorking });
     if (!process.env.AGENTRIX_DATA_DIR) setTimeout(() => { if (!quitting) voiceManager.prepare().catch(() => {}); }, 8000);
-    // The natural voice for spoken notices downloads once, after voice input, while announcing is on.
-    // Its model is loaded only while a round is being worked on (warmSpeech), not for an idle window.
-    if (!process.env.AGENTRIX_DATA_DIR) setTimeout(() => { if (!quitting && store.settings.announce) speechManager.prepare().then(() => { if (roundsWorking()) return speechManager.warm(); }).catch(() => {}); }, 20000);
     fileOperations = new FileOperations({ integrationDir, cacheRoot: path.join(app.getPath('userData'), 'file-clipboard'), remote: remoteFor, clipboardWrites,
       trash: filename => shell.trashItem(filename),
       confirmDelete: async (project, paths) => (await dialog.showMessageBox(window, { type: 'question', title: t('删除文件'), message: t('删除 {count} 个文件或文件夹？', { count: paths.length }),
@@ -988,7 +890,7 @@ if (!app.requestSingleInstanceLock()) {
         if (record.restore === null || record.restore.codex) restorePlans.set(record.id, { codex: record.restore?.codex === true, cwd: record.restore?.cwd });
         const timer = setTimeout(() => {
           if (quitting || !store.settings.restoreSessions || !store.findTerminal(record.id) || record.restore?.terminal === false) return;
-          try { startSession(record.id); } catch (error) { restorePlans.delete(record.id); startupErrors.set(record.id, error.message); broadcast(); }
+          try { startTerminal(record.id); } catch (error) { restorePlans.delete(record.id); startupErrors.set(record.id, error.message); broadcast(); }
         }, index * 300);
         timer.unref?.();
       });
@@ -1002,7 +904,7 @@ app.on('before-quit', event => {
   // On macOS the Dock's Quit and logging out reach here directly; they ask about running terminals like ⌘Q.
   if (process.platform === 'darwin' && !quitting && window && !window.isDestroyed()) { event.preventDefault(); showWindow(); requestQuit().catch(report); return; }
   clearTimeout(attentionTimer);
-  voiceManager?.close(); speechManager?.close(); fileOperations?.cancel();
+  voiceManager?.close(); fileOperations?.cancel();
   quitting = true;
   updateManager?.dispose();
   clearTimeout(stateTimer);

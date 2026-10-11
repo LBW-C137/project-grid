@@ -1,7 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { ConversationLog, codexConversation, generatedImage, isGeneratedImage, setThumbnailer } = require('../electron/conversation.cjs');
-const { CodexEvents } = require('../electron/features/agents/codex-direct.cjs');
 const { ActionLog } = require('../electron/agent-actions.cjs');
 
 const saved = 'C:\\Users\\me\\.codex\\generated_images\\01a123e3-8a13-7942-bb51-447487989afc\\exec-f90e4bcb-0fdf-4441-aae9-03dfb167f4eb.png';
@@ -34,17 +33,4 @@ test('only pictures under a generated_images folder can be shown or opened', () 
   assert.equal(isGeneratedImage('C:\\Windows\\System32\\calc.exe'), false);
   assert.equal(isGeneratedImage('C:\\Users\\me\\.codex\\generated_images\\thread\\run.bat'), false);
   assert.equal(isGeneratedImage('generated_images/thread/exec-1.png'), false, 'relative paths are refused');
-});
-
-test('Codex connected directly shows its generated pictures the same way', t => {
-  setThumbnailer(() => 'data:image/jpeg;base64,THUMB');
-  t.after(() => setThumbnailer(() => null));
-  const conversation = new ConversationLog(), actions = new ActionLog(() => {});
-  const events = new CodexEvents({ conversation, actions, cwd: 'C:\\work', now: () => 5 });
-  events.notify('item/started', { item: { type: 'imageGeneration', id: 'ig1', status: 'inProgress' } });
-  assert.equal(conversation.list[0].tool.done, false, 'the picture being drawn is a running step, so the view can show its progress');
-  events.notify('item/completed', { item: { type: 'imageGeneration', id: 'ig1', status: 'completed', revisedPrompt: 'A pink circle', result: 'iVBOR', savedPath: saved } });
-  const picture = conversation.list.find(entry => entry.generated);
-  assert.deepEqual([picture.id, picture.role, picture.images[0], picture.generated.prompt], ['g:ig1', 'assistant', 'data:image/jpeg;base64,THUMB', 'A pink circle']);
-  assert.equal(conversation.list.find(entry => entry.tool).tool.done, true, 'the step ends with the picture');
 });

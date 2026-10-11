@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
-import { ArrowDown, CaretDown, CaretRight, CircleNotch, Image as ImageIcon, PaperPlaneRight, Stop, X } from '@phosphor-icons/react';
+import { ArrowDown, CaretDown, CaretUp, CheckCircle, CircleNotch, FileText, Globe, Image as ImageIcon, MagnifyingGlass, PaperPlaneRight, PencilSimple, Plugs, Robot, Sparkle, Stop, TerminalWindow, Wrench, X, XCircle, type Icon } from '@phosphor-icons/react';
 import type { AgentCommand, ConversationEntry, ProjectTerminal } from '../../shared/types';
 import { actionText, stepVerb } from '../agents/ActivityPane';
 import { dictateInto } from '../voice/voice-input';
@@ -24,14 +24,14 @@ import { useStickToBottom } from './useStickToBottom';
 import { conversationKey, useReadingConversation } from './useReadingConversation';
 import { blocks, useVisibleTail } from './useVisibleTail';
 import './reading.css';
+import './reading-flow.css';
 import { currentLanguage, t } from '../../shared/i18n';
 import { useMentions } from './useMentions';
 import { parseMarkdown, parsedMarkdown } from './markdown-parse';
 import { MentionPalette } from './MentionPalette';
 import { isTypedCommand, sameMessage, type PendingPrompt } from './pending-prompts';
 import { usePendingPrompts } from './usePendingPrompts';
-import { PendingPromptEntries, UserImages, UserText } from './PendingPromptEntries';
-import { ReadingDirectCard } from './ReadingDirectCard';
+import { PendingPromptEntries, UserAvatar, UserImages, UserText } from './PendingPromptEntries';
 import { FileCards, previewable } from './FileCards';
 import { replyFiles } from './reply-files';
 import { showPopup } from '../files/file-popup';
@@ -42,12 +42,6 @@ const history = new Map<string, string[]>();
 // The entries on screen when /clear (or Codex's /new) was sent from here, per conversation. The agent starts a new
 // conversation at once, but its file only appears with the next message; until then these stay hidden.
 const cleared = new Map<string, ReadonlySet<string>>();
-// The commands Codex connected directly takes from the reading view; everything else is in its terminal mode.
-const DIRECT_COMMANDS: AgentCommand[] = [
-  { name: '/new', description: '开始新对话', source: 'builtin', view: 'reading' },
-  { name: '/clear', description: '清空对话并开始新对话', source: 'builtin', view: 'reading' },
-  { name: '/compact', description: '压缩上下文', source: 'builtin', view: 'reading' },
-];
 const clears = (agent: ProjectTerminal['agent'], text: string) => (agent === 'claude' ? /^\/clear(?:\s|$)/ : /^\/(?:clear|new)(?:\s|$)/).test(text.trim());
 // What the agent wrote, laid out as Markdown. Only plain structure survives: no raw HTML, no images (an
 // answer has no business loading anything), and links open outside through the window's link handler.
@@ -125,11 +119,11 @@ function GeneratedImage({ src, path, prompt }: { src: string; path: string; prom
   </figure>;
 }
 
-// A reply, with the local pictures, pages and videos it names shown under it (the agents are told they can show one
-// this way: electron/features/agents/reading-note.cjs).
-function AssistantReply({ entry, projectId, onError }: { entry: ConversationEntry; projectId: string; onError: (message: string) => void }) {
+// A reply, headed by the agent's own mark as its CLI writes it (Claude's ✻, Codex's •), with the local pictures, pages
+// and videos it names shown under it (the agents are told they can show one this way: reading-note.cjs).
+function AssistantReply({ entry, agent, projectId, onError }: { entry: ConversationEntry; agent: 'claude' | 'codex'; projectId: string; onError: (message: string) => void }) {
   const named = useMemo(() => entry.text ? replyFiles(entry.text) : [], [entry.text]);
-  return <div className="reading-assistant">{entry.text ? <Markdown text={entry.text} /> : null}
+  return <div className={`reading-assistant is-${agent}${entry.text ? ' has-mark' : ''}`}>{entry.text ? <><i className="reading-agent-mark" aria-hidden="true">{agent === 'claude' ? '✻' : '•'}</i><Markdown text={entry.text} /></> : null}
     {named.length > 0 && <FileCards projectId={projectId} files={named} renderMarkdown={text => <Markdown text={text} />} onError={onError} quiet />}
     {entry.generated && entry.images?.[0] && <GeneratedImage src={entry.images[0]} {...entry.generated} />}</div>;
 }
@@ -148,6 +142,23 @@ function ImageProgress({ step }: { step: string }) {
   </div>;
 }
 
+type ConversationEntryTool = NonNullable<ConversationEntry['tool']>;
+// What a group of steps did, by kind, in the order the kinds first came: "读取 2 个文件 · 运行 1 条命令".
+const GROUP_PARTS: Record<ConversationEntryTool['kind'], string> = {
+  read: '读取 {count} 个文件', edit: '编辑 {count} 个文件', command: '运行 {count} 条命令', search: '搜索 {count} 处', web: '访问 {count} 个网页',
+  skill: '使用 {count} 个技能', mcp: '调用 {count} 个 MCP 工具', agent: '派出 {count} 个子代理', other: '调用 {count} 个工具',
+};
+const STEP_ICONS: Record<ConversationEntryTool['kind'], Icon> = { read: FileText, edit: PencilSimple, command: TerminalWindow, search: MagnifyingGlass, web: Globe, skill: Sparkle, mcp: Plugs, agent: Robot, other: Wrench };
+export function groupSummary(entries: readonly ConversationEntry[]) {
+  const counts = new Map<ConversationEntryTool['kind'], number>();
+  // An edit counts the files it changed (its target names them, "a、b"), every other step counts once.
+  for (const entry of entries) if (entry.tool) {
+    const files = entry.tool.kind === 'edit' ? Math.max(1, entry.tool.written?.length || entry.tool.target.split('、').filter(Boolean).length) : 1;
+    counts.set(entry.tool.kind, (counts.get(entry.tool.kind) || 0) + files);
+  }
+  return [...counts].map(([kind, count]) => t(GROUP_PARTS[kind], { count })).join(' · ');
+}
+
 function ToolGroup({ entries, live, projectId, onError }: { entries: ConversationEntry[]; live: boolean; projectId: string; onError: (message: string) => void }) {
   const running = entries.some(entry => !entry.tool?.done);
   const [open, setOpen] = useState(false);
@@ -157,18 +168,32 @@ function ToolGroup({ entries, live, projectId, onError }: { entries: Conversatio
   const drawing = entries.find(entry => !entry.tool?.done && /image_?gen/i.test(`${entry.tool?.tool} ${entry.tool?.target}`));
   // The documents, pages and videos these steps finished writing, each once.
   const files = useMemo(() => [...new Set(entries.flatMap(entry => entry.tool?.done && !entry.tool.failed ? entry.tool.written ?? [] : []))].filter(previewable), [entries]);
-  return <div className={`reading-tools ${running ? 'is-running' : ''}`}>
+  const Lead = STEP_ICONS[entries[0]?.tool?.kind ?? 'other'];
+  return <div className={`reading-tools${running ? ' is-running' : ''}${shown ? ' is-open' : ''}${failed ? ' has-failed' : ''}`}>
     <button type="button" className="reading-tools-head" aria-expanded={shown} onClick={() => setOpen(!open)}>
-      {running ? <CircleNotch size={13} className="loading-spinner" /> : shown ? <CaretDown size={12} /> : <CaretRight size={12} />}
-      <span>{entries.length === 1 ? actionText(entries[0].tool!) : t('调用了 {count} 个工具', { count: entries.length })}</span>
+      <StepState running={running} failed={failed > 0} />
+      <Lead size={16} weight="duotone" className="reading-tools-lead" />
+      <span>{groupSummary(entries)}</span>
       {failed > 0 && <em>{t('{count} 个失败', { count: failed })}</em>}
+      {shown ? <CaretUp size={13} weight="bold" className="reading-tools-caret" /> : <CaretDown size={13} weight="bold" className="reading-tools-caret" />}
     </button>
-    {shown && <ul>{entries.map(entry => <li key={entry.id} className={`${entry.tool!.done ? '' : 'is-running'} ${entry.tool!.failed ? 'is-failed' : ''} reading-tool-${entry.tool!.kind}`}>
-      <b>{stepVerb(entry.tool!)}</b><code title={entry.tool!.target}>{entry.tool!.target}</code>{entry.tool!.detail && <small>{entry.tool!.detail}</small>}
-    </li>)}</ul>}
+    {shown && <ul className="reading-tools-tree">{entries.map(entry => {
+      const tool = entry.tool!, Step = STEP_ICONS[tool.kind];
+      return <li key={entry.id} className={`${tool.done ? '' : 'is-running'} ${tool.failed ? 'is-failed' : ''} reading-tool-${tool.kind}`}>
+        <StepState running={!tool.done} failed={tool.failed} filled />
+        <Step size={16} className="reading-tool-icon" />
+        <b>{stepVerb(tool)}</b><code title={tool.target}>{tool.target}</code>{tool.detail && <small>{tool.detail}</small>}
+      </li>;
+    })}</ul>}
     {drawing && <ImageProgress step={drawing.id} />}
     {files.length > 0 && <FileCards projectId={projectId} files={files} renderMarkdown={text => <Markdown text={text} />} onError={onError} />}
   </div>;
+}
+// A step's state: a ring while it runs, a check when it is done, a cross when it failed.
+function StepState({ running, failed, filled = false }: { running: boolean; failed: boolean; filled?: boolean }) {
+  if (running) return <CircleNotch size={17} weight="bold" className="reading-step-state is-running loading-spinner" aria-label={t('进行中')} />;
+  return failed ? <XCircle size={17} weight="fill" className="reading-step-state is-failed" aria-label={t('失败')} />
+    : <CheckCircle size={17} weight={filled ? 'fill' : 'regular'} className="reading-step-state" aria-label={t('已完成')} />;
 }
 
 // The agent's conversation laid out for reading: your prompts, its answers as Markdown with copyable code,
@@ -195,19 +220,16 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const sendSession = useRef(terminal.sessionId); sendSession.current = terminal.sessionId;
   const visibleScreen = useScreen(terminal.id);
   const screen = useMemo(() => parseAgentScreen(terminal.agent === 'claude' ? 'claude' : 'codex', visibleScreen?.rows ?? []), [terminal.agent, visibleScreen]);
-  // Codex connected directly: no screen to read; its questions and approvals come as a card, its state with the session.
-  const direct = !!terminal.direct, directCard = direct ? terminal.card ?? null : null;
   // The CLI signing in before its input exists (a link to open, a code to paste): a popup, never a stuck welcome.
   const signIn = useMemo(() => {
     const kind = terminal.agent === 'claude' ? 'claude' : 'codex';
-    return terminal.codexActive && !direct && visibleScreen && !screen.choice && !hasCliInput(kind, visibleScreen.rows, screen) ? signInScreen(kind, visibleScreen.rows) : null;
-  }, [terminal.agent, terminal.codexActive, direct, visibleScreen, screen]);
-  const directDown = direct && terminal.status === 'exited', directStarting = direct && terminal.status === 'starting';
-  const choiceKey = screen.choice ? choiceIdentity(screen.choice) : directCard ? JSON.stringify(directCard) : null;
+    return terminal.codexActive && visibleScreen && !screen.choice && !hasCliInput(kind, visibleScreen.rows, screen) ? signInScreen(kind, visibleScreen.rows) : null;
+  }, [terminal.agent, terminal.codexActive, visibleScreen, screen]);
+  const choiceKey = screen.choice ? choiceIdentity(screen.choice) : null;
   const [sessionsOpen, setSessionsOpen] = useState(false);
   useEffect(() => { setSessionsOpen(false); }, [terminal.id, terminal.sessionId, terminal.agent]);
   const welcomeIsStarting = useWelcomeStarting(terminal.agentStartedAt, screen);
-  const hasChoice = screen.choice !== null || sessionsOpen || !!directCard, choiceVisible = useRef(hasChoice); choiceVisible.current = hasChoice;
+  const hasChoice = screen.choice !== null || sessionsOpen, choiceVisible = useRef(hasChoice); choiceVisible.current = hasChoice;
   const mounted = useRef(true);
   const choiceHost = useRef<HTMLDivElement>(null), restoreComposer = useRef(false), wasChoice = useRef(false);
   const [draft, setDraft] = useState('');
@@ -217,7 +239,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   // A command whose dialog did not close when its popup was put away; the next message closes it first.
   const leftOpen = useRef<string | null>(null);
   // Images pasted for the next message. The agent holds them itself; this only counts them.
-  const [images, setImages] = useState<string[]>([]), originals = useRef(new Map<string, string>());
+  const [images, setImages] = useState<string[]>([]);
   const scroller = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null);
   const cli = useReadingCli(terminal.id, terminal.sessionId, terminal.agent === 'claude' ? 'claude' : 'codex', input, autoFocus);
   // A question's own key hint with no card read from it (the question is taller than the view, or its hint wrapped):
@@ -225,7 +247,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const unreadQuestion = !screen.choice && !!visibleScreen?.rows.some(row => /\benter to submit (?:answer|all)\b/i.test(row) || /^\s*Enter to select\b.*\bEsc to cancel\b/i.test(row));
   useEffect(() => { if (unreadQuestion && !cli.busy) onShowTerminal(); }, [unreadQuestion, cli.busy]);
   // A slash command never holds the message box; only a question or permission on screen does.
-  const inputBlocked = hasChoice || unreadQuestion || directDown || directStarting;
+  const inputBlocked = hasChoice || unreadQuestion;
   const conversation = conversationKey(terminal.id, terminal.sessionId);
   const { stuck, unseen, toBottom, ready, holdPosition } = useStickToBottom(scroller, content, visibleEntries, conversation);
   useLayoutEffect(() => { if (caret.current !== null) { input.current?.setSelectionRange(caret.current, caret.current); caret.current = null; } });
@@ -250,14 +272,13 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   }, [terminal.id]);
   useEffect(() => {
     setCommands([]);
-    if (direct) { setCommands(DIRECT_COMMANDS); return; }
     if (!requested) return;
     let active = true;
     void window.agentrix.terminalCommands(terminal.id).then(result => {
       if (active) { setCommands(result.ok ? result.value : []); if (!result.ok) onError(result.error); }
     }).catch(error => { if (active) onError(String(error)); });
     return () => { active = false; };
-  }, [terminal.id, terminal.agent, requested, direct]);
+  }, [terminal.id, terminal.agent, requested]);
   const matches = useMemo(() => {
     const query = draft.slice(1).toLowerCase(), name = (command: AgentCommand) => command.name.slice(1).toLowerCase();
     return commands.filter(command => name(command).includes(query)).sort((a, b) => Number(!name(a).startsWith(query)) - Number(!name(b).startsWith(query)));
@@ -311,22 +332,6 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     }
     return false;
   };
-  // Codex connected directly takes the message (or one of its commands) over its protocol: nothing is typed.
-  const deliverDirect = async (text: string) => {
-    const command = /^\/\S+/.exec(text)?.[0];
-    if (command && !images.length) {
-      const result = await window.agentrix.agentCommand(terminal.id, command);
-      if (!result.ok) { onError(result.error); return; }
-      history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50)); edit(''); toBottom();
-      return;
-    }
-    const shown = images, pendingId = echo(text, shown);
-    edit(''); setImages([]); toBottom();
-    const result = await window.agentrix.agentSend(terminal.id, text, shown.map(small => originals.current.get(small) ?? small));
-    if (result.ok) originals.current.clear();
-    if (!result.ok) { cancelEcho(pendingId); if (mounted.current) { edit(text); setImages(shown); } onError(result.error); return; }
-    if (text) history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50));
-  };
   // Escape (or a click beside it) with a command's popup open puts it away at once and closes what the command opened
   // (a dialog, a pager, a side conversation) rather than interrupting the round, pressing again while the dialog only
   // left an inner mode (Claude's /config search). Putting it away never asks anything of the reader: a dialog still
@@ -339,11 +344,10 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (key === '\x03') { window.agentrix.writeTerminal(terminal.id, key); return; }
     leftOpen.current = await closeDialog(agentKind, command, false) ? null : command;
   };
-  const interrupt = () => { if (direct) void window.agentrix.agentInterrupt(terminal.id).then(result => { if (!result.ok) onError(result.error); }); else window.agentrix.writeTerminal(terminal.id, '\x1b'); };
+  const interrupt = () => window.agentrix.writeTerminal(terminal.id, '\x1b');
   // The CLI recognises slash commands and shell mode from typed keys, not bracketed paste.
   const deliver = async (text: string) => {
     if (inputBlocked || (!text && !images.length) || !terminal.sessionId) return;
-    if (direct) { await deliverDirect(text); return; }
     if (usesSessionPicker(terminal, text)) { choiceVisible.current = true; restoreComposer.current = document.activeElement === input.current; edit(''); setSessionsOpen(true); return; }
     const typed = isTypedCommand(text), sessionId = terminal.sessionId, agentKind = terminal.agent === 'claude' ? 'claude' : 'codex';
     // What the CLI shows above its input before the command is typed, to tell its output from what was there.
@@ -407,9 +411,9 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   const resent = useRef(new Map<string, number>());
   const [idleSince, setIdleSince] = useState(() => Date.now()), [, setTick] = useState(0);
   useEffect(() => { if (!working) setIdleSince(Date.now()); }, [working]);
-  const stalled = pending.filter(prompt => !prompt.sending), idle = !working && !cli.busy && !hasChoice && !direct && Date.now() - idleSince >= 5000;
+  const stalled = pending.filter(prompt => !prompt.sending), idle = !working && !cli.busy && !hasChoice && Date.now() - idleSince >= 5000;
   useEffect(() => {
-    if (!stalled.length || working || cli.busy || hasChoice || direct) return;
+    if (!stalled.length || working || cli.busy || hasChoice) return;
     const wait = idleSince + 5000 - Date.now();
     if (wait > 0) { const timer = setTimeout(() => setTick(tick => tick + 1), wait + 50); return () => clearTimeout(timer); }
     for (const prompt of stalled) {
@@ -440,28 +444,25 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (data.getData('text/plain') || ![...data.items].some(item => item.kind === 'file' && item.type.startsWith('image/'))) return;
     event.preventDefault();
     if (!terminal.codexActive || !terminal.sessionId) { onError(t('启动 Codex 或 Claude Code 后才能粘贴图片。')); return; }
-    // Codex connected directly gets the picture with the message itself.
-    if (!direct) window.agentrix.writeTerminal(terminal.id, terminal.agent === 'claude' ? '\x1bv' : '\x16');
-    // The agent takes the picture from the clipboard; a copy is kept here to show in the message.
-    // Shown small (a 4K screenshot decoded at full size costs tens of megabytes per copy); Codex connected directly is
-    // sent the picture itself, kept beside its thumbnail.
+    window.agentrix.writeTerminal(terminal.id, terminal.agent === 'claude' ? '\x1bv' : '\x16');
+    // The agent takes the picture from the clipboard; a copy is kept here to show in the message, small (a 4K
+    // screenshot decoded at full size costs tens of megabytes per copy).
     const file = [...data.items].find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) { onError(t('图片太大（超过 25 MB），请压缩后再粘贴。')); return; }
     // A picture this window cannot decode still went to the agent: it is listed as it came.
-    void thumbnail(file).catch(() => dataUrl(file)).then(async small => {
-      if (direct) originals.current.set(small, await dataUrl(file));
+    void thumbnail(file).catch(() => dataUrl(file)).then(small => {
       setImages(list => [...list, small].slice(-4));
     }).catch(() => onError(t('无法读取这张图片。')));
   };
   // The attached pictures wait in the CLI's own input as "[Image #1]" placeholders, which Ctrl+U clears with them.
   const removeImages = () => {
-    if (!direct) window.agentrix.writeTerminal(terminal.id, '');
-    originals.current.clear(); setImages([]); input.current?.focus();
+    window.agentrix.writeTerminal(terminal.id, '');
+    setImages([]); input.current?.focus();
   };
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
-    if (event.key === 'Tab' && event.shiftKey) { event.preventDefault(); if (!direct) window.agentrix.writeTerminal(terminal.id, '\x1b[Z'); return; }
+    if (event.key === 'Tab' && event.shiftKey) { event.preventDefault(); window.agentrix.writeTerminal(terminal.id, '\x1b[Z'); return; }
     if (mentions.keys(event)) return;
     if (palette) {
       if (event.key === 'Escape') { event.preventDefault(); setDismissed(true); return; }
@@ -489,24 +490,20 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); }
   };
   // What the agent is doing, written at the end of the conversation the way its CLI writes it, never in a corner.
-  const status = directDown ? <div className="reading-status is-down" role="status"><span>{terminal.error ? t(terminal.error) : t('Codex 已断开。')}</span>
-      <button type="button" className="text-button" onClick={() => void window.agentrix.agentStart(terminal.id).then(result => { if (!result.ok) onError(result.error); })}>{t('重新连接')}</button></div>
-    : directCard ? <div className="reading-status" role="status">{directCard.kind === 'question' ? t('等待你回答问题') : t('等待你确认')}</div>
-    : screen.choice?.kind === 'question' ? <div className="reading-status" role="status">{t('等待你回答问题')}</div>
+  const status = screen.choice?.kind === 'question' ? <div className="reading-status" role="status">{t('等待你回答问题')}</div>
     : terminal.needsInput !== null ? <div className="reading-status" role="status">{t('等待你确认：{message}', { message: terminal.needsInput })}</div>
     : working || pending.some(prompt => prompt.sending) ? <WorkingLine key={terminal.sessionId} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} label={terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })} />
     : null;
   let body: ReactNode;
   if (!entries.length && !pending.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} commands={commands} complete={complete} disabled={inputBlocked}
-    screen={direct ? { ...screen, status: { ...screen.status, model: terminal.agentInfo?.model || null, effort: terminal.agentInfo?.effort || null } } : screen}
-    starting={direct ? directStarting : welcomeIsStarting} names={direct ? DIRECT_COMMANDS.map(command => command.name) : undefined} />;
+    screen={screen} starting={welcomeIsStarting} />;
   else body = <>
     {tail.earlier > 0 && <button type="button" className="text-button reading-earlier" onClick={tail.showEarlier}>{t('显示更早的对话（{count}）', { count: tail.earlier })}</button>}
     {tail.visible.map((block, index) => block.kind === 'tools'
     ? <ToolGroup key={block.id} entries={block.entries} live={index === tail.visible.length - 1} projectId={projectId} onError={onError} />
     : block.entry.role === 'user'
-      ? <div key={block.entry.id} className="reading-user"><span>{t('你')}</span><UserText text={block.entry.text || ''} />{block.entry.images && <UserImages images={block.entry.images} />}</div>
-      : <AssistantReply key={block.entry.id} entry={block.entry} projectId={projectId} onError={onError} />)}
+      ? <div key={block.entry.id} className="reading-user"><UserAvatar /><UserText text={block.entry.text || ''} />{block.entry.images && <UserImages images={block.entry.images} />}</div>
+      : <AssistantReply key={block.entry.id} entry={block.entry} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} projectId={projectId} onError={onError} />)}
   </>;
   return <div className="reading-view" onClick={event => {
     const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
@@ -526,9 +523,6 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     </div>
     {images.length > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: images.length })}<UserImages images={images} />
       <button type="button" className="reading-attachments-remove" onClick={removeImages} title={t('移除图片')} aria-label={t('移除图片')}><X size={12} weight="bold" /></button></div>}
-    {directCard && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
-      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
-    }}><ReadingDirectCard key={choiceKey} card={directCard} terminalId={terminal.id} onError={onError} /></div>}
     {screen.choice && !sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}>{screen.choice.kind === 'question'

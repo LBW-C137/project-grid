@@ -21,7 +21,8 @@ function pendingMarkup(prompts) {
   const mod = new Module(filename, module);
   mod.filename = filename; mod.paths = Module._nodeModulePaths(path.dirname(filename));
   const originalRequire = mod.require.bind(mod);
-  mod.require = name => name.endsWith('/i18n') ? { t: text => en[text] ?? text } : name.endsWith('.css') ? {} : originalRequire(name);
+  const icon = props => React.createElement('svg', { className: props.className });
+  mod.require = name => name.endsWith('/i18n') ? { t: text => en[text] ?? text } : name.endsWith('.css') ? {} : name === '@phosphor-icons/react' ? new Proxy({}, { get: () => icon }) : originalRequire(name);
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText, filename);

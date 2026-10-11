@@ -399,9 +399,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 /* Spoken completion notice: the phrase and preview sit under its switch, indented to the text column. */
 .setting-group { border-bottom: 1px solid #dcedff19; }
 .setting-group > .setting-row { border-bottom: 0; }
-.announce-options { display: flex; gap: 8px; align-items: center; margin: -6px 0 16px 34px; }
-.announce-options input { flex: 1; min-width: 0; padding: 7px 11px; border: 1px solid #e4f1ff32; border-radius: 5px; color: #eef6ff; background: #0b1b298a; font-size: 12px; }
-.announce-options input::placeholder { color: #a5bbd1; }
 .editor-message { padding: 7px 18px; color: #bcf1d5; font-size: 11px; background: #17372c99; }
 .editor-error { color: #ffcfb4; background: #463022dd; }
 .explorer-context-menu { max-height: calc(100vh - 16px); overflow-y: auto; min-width: 250px; }
@@ -473,29 +470,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .panel-header .icon-button.is-active { color: #f1f7ff; background: #edfbff1f; }
 .project-panel.has-activity .panel-terminal-area { margin-right: 340px; }
 .activity-pane { position: absolute; top: var(--panel-header-height); right: 0; bottom: 0; width: 340px; z-index: 1; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid rgba(220, 237, 255, .14); background: rgba(4, 16, 26, var(--glass-alpha, .3)); border-radius: 0 0 calc(var(--glass-radius) - 1px) 0; text-shadow: var(--text-shadow); }
-.activity-header { display: flex; align-items: baseline; gap: 8px; padding: 11px 14px 7px; font-size: 12px; }.activity-header span { color: #a9bfd6; font-size: 11px; }
-.activity-now { display: flex; align-items: center; gap: 7px; margin: 0 10px 8px; padding: 7px 10px; border-radius: 4px; font-size: 12px; color: #d6e6f5; background: rgba(255, 255, 255, .06); }
-.activity-now > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.activity-now.is-working { color: #cfe9ff; background: rgba(73, 191, 255, .14); }.activity-now.is-editing { color: #ffe3b8; background: rgba(255, 176, 72, .16); }
-.activity-list { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 14px; }
-.activity-empty { margin: 8px 6px; font-size: 11px; line-height: 1.7; color: #a9bfd6; }
 /* A step: time, a tag for its kind and what it is on the first line; what that is or did below. */
-.activity-item { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: baseline; column-gap: 7px; min-width: 0; padding: 5px 6px; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #c9d9ea; }
-.activity-item time { color: #8ea6c1; font-size: 11px; font-variant-numeric: tabular-nums; }
-.activity-tag { padding: 0 5px; border-radius: 4px; font-size: 10.5px; line-height: 17px; color: #bcd3ea; background: rgba(255, 255, 255, .08); white-space: nowrap; }
-.activity-skill .activity-tag { color: #f5d38a; background: rgba(245, 190, 80, .14); }
-.activity-mcp .activity-tag { color: #d3b8ff; background: rgba(170, 130, 255, .16); }
-.activity-edit .activity-tag { color: #9ee6c0; background: rgba(80, 210, 150, .14); }
-.activity-command .activity-tag { color: #9fd0ff; background: rgba(80, 160, 255, .14); }
-.activity-agent .activity-tag { color: #ffc0a8; background: rgba(255, 140, 100, .14); }
-.activity-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.activity-title.is-code { font: 400 11.5px/1.6 var(--font-mono); }
-.activity-item em { color: #ffb1ac; font-size: 11px; font-style: normal; }
-.activity-item.is-running { background: rgba(255, 255, 255, .06); }
-.activity-item.is-running .activity-tag { animation: activity-live 1.2s ease-in-out infinite; }
-@keyframes activity-live { 50% { opacity: .45; } }
-.activity-item.is-failed .activity-title { color: #ffc9c5; }
-.activity-item p { grid-column: 2 / -1; margin: 1px 0 0; font-size: 11px; line-height: 1.5; color: #a9bfd6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 1000px) { .project-panel.has-activity .panel-terminal-area { margin-right: 0; } .activity-pane { display: none; } }
 
 /* The tutorial in the window: four shades leave only the step's target usable, a ring marks it and a bubble says what to do. */
@@ -510,13 +485,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .tour-arrow-up::before { display: block; top: -7px; transform: rotate(45deg); }.tour-arrow-down::before { display: block; bottom: -7px; transform: rotate(225deg); }
 
 /* Spoken summary settings: the chosen mode, then the connection of a cloud or local model as a small form. */
-.summary-fields { display: grid; gap: 10px; padding: 4px 0 12px 31px; }
-.summary-fields > label { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; font-size: 12px; }
-.summary-fields :is(input, select) { width: 100%; min-width: 0; padding: 7px 10px; border: 1px solid #bfd7ef45; border-radius: 4.5px; color: #eef6ff; background: #0b1b2966; font: inherit; font-size: 12px; }
-.summary-fields select { background: #14283a; }
-.summary-fields input:focus { outline: none; border-color: #b8d7efb0; box-shadow: 0 0 0 3px #c5e6ff14; }
-.summary-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }.summary-inline input { flex: 1; }.summary-inline .button { flex: none; }
-.summary-hint { margin: 0; font-size: 11px; line-height: 1.6; color: var(--theme-muted, #c9dbea); }.summary-hint code { margin-left: 4px; padding: 1px 6px; border-radius: 2.5px; background: #0b1b2966; user-select: text; }
 .summary-test { display: flex; align-items: center; gap: 10px; padding: 0 0 14px 31px; border-bottom: 1px solid #dcedff19; min-height: 30px; }
 .summary-status { min-width: 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }.summary-status.is-ok { color: #a8edc6; }.summary-status.is-error { color: #ffbbb6; }.summary-status.is-busy { color: #c9dbea; }
 .summary-settings > .setting-row { align-items: flex-start; }.summary-settings > .setting-row select { flex: none; width: 250px; max-width: 46%; }
@@ -565,23 +533,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 /* One column no wider than the pane: a long step or
    prompt is cut with an ellipsis instead of widening the column past the window. */
 /* The live feed takes the height; the prompts being worked on below take what they need, up to two fifths. */
-.activity-split { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) fit-content(40%); grid-template-columns: minmax(0, 1fr); }
-.activity-live, .activity-overview { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.activity-overview { border-top: 1px solid rgba(220, 237, 255, .12); background: rgba(4, 14, 24, .14); }
-.activity-section-title { margin: 0; padding: 9px 14px 6px; font-size: 11px; font-weight: 600; letter-spacing: .4px; color: #9fb5ce; }
-.overview-body { flex: 1; min-height: 0; overflow: auto; padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; }
-.overview-task.is-quiet { font-weight: 500; color: #a9bfd6; }
-.overview-prompts { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
-.overview-prompts li { display: grid; gap: 2px; padding: 6px 8px; border-radius: 3.5px; background: rgba(255, 255, 255, .04); border-left: 2px solid rgba(255, 255, 255, .14); }
-.overview-prompts li.is-working { background: rgba(90, 170, 255, .12); border-left-color: #7cc0ff; }
-.overview-prompts li span { font-size: 10.5px; color: #8ea6c1; }
-.overview-prompts li.is-working span { color: #9fd0ff; font-weight: 600; }
-.overview-prompts li p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #e7f1fa; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.overview-task { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.5; color: #f1f7ff; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.overview-stats > div { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border-radius: 4px; background: rgba(255, 255, 255, .05); min-width: 0; }
-.overview-stats b { font-size: 14px; font-weight: 600; color: #f4faff; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.overview-stats span { font-size: 11px; color: #9fb5ce; }.overview-stats .is-failed b { color: #ffb1ac; }
 
 /* Working has one vivid blue edge above the masked rim and a wash below the text.
    Both stay steady through hover and focus; only a finished round breathes. */

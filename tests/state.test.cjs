@@ -181,12 +181,10 @@ test('saved forest and other theme choices survive loading and unrelated setting
 });
 
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { codexDirect: false, fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', focusAnimation: 'smooth', theme: 'daylight', language: 'zh', surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', announcePhrase: '', notifications: true, sound: false, announce: true, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice',
-    summary: { mode: 'fast', cloud: { provider: 'openai', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }, local: { provider: 'ollama', protocol: 'openai', baseUrl: 'http://localhost:11434/v1', model: 'qwen2.5:1.5b' } } });
-  const summary = cleanSettings({ summary: { mode: 'local', local: { provider: 'vllm', baseUrl: ' http://10.0.0.5:8000/v1 ', model: 'Qwen/Qwen2.5-1.5B-Instruct' }, cloud: { provider: 'custom', protocol: 'anthropic', baseUrl: 'https://gateway.example/api', model: '' } } }).summary;
-  assert.deepEqual(summary, { mode: 'local', cloud: { provider: 'custom', protocol: 'anthropic', baseUrl: 'https://gateway.example/api', model: '' }, local: { provider: 'vllm', protocol: 'openai', baseUrl: 'http://10.0.0.5:8000/v1', model: 'Qwen/Qwen2.5-1.5B-Instruct' } });
-  assert.equal(cleanSettings({ summary: { mode: 'shout', cloud: { provider: 'nope', protocol: 'anthropic' } } }).summary.mode, 'fast');
-  assert.equal(cleanSettings({ summary: { cloud: { provider: 'openai', protocol: 'anthropic' } } }).summary.cloud.protocol, 'openai', 'only a custom endpoint chooses its protocol');
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', focusAnimation: 'smooth', theme: 'daylight', language: 'zh', surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', notifications: true, sound: false, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice' });
+  // The spoken notice is gone: its old settings are dropped.
+  const old = cleanSettings({ announce: true, announcePhrase: '{项目}', summary: { mode: 'local' } });
+  assert.equal('announce' in old || 'announcePhrase' in old || 'summary' in old, false);
   assert.equal(cleanSettings({ autoSave: false }).autoSave, false);
   assert.equal(cleanSettings({ voiceModel: 'toString' }).voiceModel, 'sensevoice', 'only a listed recognizer can be chosen');
   assert.equal(cleanSettings({ surface: 'solid' }).surface, 'solid'); assert.equal(cleanSettings({ surface: 'paper' }).surface, 'glass');
@@ -199,9 +197,6 @@ test('settings reject invalid layout and font values', () => {
   assert.equal(cleanSettings({ guideVersion: '<script>' }).guideVersion, '', 'only a version number marks the guide as seen');
   assert.deepEqual(cleanSettings({ shortcuts: { search: 'Ctrl+Shift+K', addProject: 'A', voice: 'Alt+V', overview: 'F6', settings: 'Ctrl+rm', nextProject: 'Ctrl+Tab', unknown: 'Ctrl+Q' } }).shortcuts, { search: 'Ctrl+Shift+K', voice: 'Alt+V', overview: 'F6', nextProject: 'Ctrl+Tab' }, 'only valid combinations for known actions are kept');
   assert.equal(cleanSettings({ language: 'en' }).language, 'en');
-  assert.equal(cleanSettings({ announce: 'loud' }).announce, true);
-  assert.equal(cleanSettings({ announcePhrase: '  {项目}\n做完了  ' }).announcePhrase, '{项目} 做完了', 'phrases are one trimmed line');
-  assert.equal(cleanSettings({ announcePhrase: 'x'.repeat(200) }).announcePhrase.length, 80);
   assert.equal(cleanSettings({ focusAnimation: 'invalid' }).focusAnimation, 'smooth');
   assert.equal(cleanSettings({ focusAnimation: 'system' }).focusAnimation, 'system');
   assert.equal(cleanSettings({ focusAnimation: 'off' }).focusAnimation, 'off');

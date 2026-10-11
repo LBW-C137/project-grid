@@ -191,7 +191,7 @@ Markdown（`.md`、`.markdown`、`.mdown`、`.mkd`）提供「编辑 / 预览」
 待查看状态不会因搜索、窗口失去焦点或关闭到托盘而消失；在该项目的终端里发送新指令即视为已查看，不再显示「几轮未查看」。每次提交新指令后，只接受一次完成提醒；没有新提交时，后台返回不同 thread-id / turn-id 也不会重复提醒。
 完成时光从边缘向终端内部缓缓呼吸 3 次（每次 3 秒）后停止，之后保持一层静态柔光直到查看。查看、切换窗口、终端刷新和重启软件不会重新启用旧提醒；输入但尚未发送的草稿也不会。自动恢复被打断的任务并发送“继续”时，允许新的完成提醒；只打开已完成的历史会话则保持安静。
 
-工作中边框与状态灯保持常亮、不闪烁；只有新完成时才呼吸。已查看的本轮完成显示绿色常亮。开启「语音播报」后，完成时还会用本地自然女声说出哪个项目完成了什么（取自这一轮指令的第一句）；女声模型约 74 MB，下载完成前用 Windows 自带语音。点击标题栏、右上角等待状态或展开图标可进入项目。
+工作中边框与状态灯保持常亮、不闪烁；只有新完成时才呼吸。已查看的本轮完成显示绿色常亮。点击标题栏、右上角等待状态或展开图标可进入项目。
 
 **Codex 会话中**表示 CLI 仍在终端里运行，不代表模型在每一秒都在生成。状态只描述当前任务轮次，不再标记整个项目是否开发完成，也不从回复文字推测状态。
 
@@ -221,20 +221,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=0.7.7`：安装指定版本。
+- `AGENTRIX_VERSION=0.7.8`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 0.7.7：
+例如，安装 0.7.8：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=0.7.7 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=0.7.8 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-0.7.7-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-0.7.8-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：

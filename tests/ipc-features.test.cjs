@@ -16,34 +16,6 @@ test('voice registrar delegates the original arguments and results', async () =>
   assert.deepEqual(calls, [['getState'], ['prepare'], ['warm'], ['transcribe', 'audio']]);
 });
 
-test('notices registrar keeps keys private, validates targets and reads live settings', async () => {
-  const h = handlers(), calls = [], keys = { cloud: 'secret', local: '' };
-  let settings = { language: 'en', summary: { cloud: { model: 'first' } } };
-  require('../electron/features/notices/ipc.cjs').registerNoticesIpc({ ...h,
-    speechManager: { getState: () => 'state', prepare: () => 'prepare', speak: text => text },
-    summarySecrets: { has: target => !!keys[target], get: target => keys[target], set: (target, key) => { keys[target] = key; } },
-    agents: { getState: () => ({ claude: { installed: true } }) }, getSettings: () => settings,
-    summaryDirectory: () => '/summaries', fetcher: () => {}, SUMMARY_TARGETS: ['cloud', 'local'],
-    connection: (target, entry, apiKey) => ({ target, entry, apiKey }),
-    listModels: options => { calls.push(options); return ['model']; },
-    modelSummary: options => { calls.push(options); return 'summary'; },
-    summarizeRound: options => { calls.push(options); return 'agent summary'; },
-  });
-  assert.deepEqual(h.handles.get('summary:state')(), { keys: { cloud: true, local: false } });
-  assert.deepEqual(h.handles.get('summary:set-key')('local', 'local secret'), { keys: { cloud: true, local: true } });
-  assert.throws(() => h.handles.get('summary:set-key')('invalid', 'key'), /无效的模型类型/);
-  assert.throws(() => h.handles.get('summary:models')('invalid'), /无效的模型类型/);
-  await assert.rejects(h.handles.get('summary:test')('invalid'), /无效的模型类型/);
-  settings = { language: 'zh', summary: { cloud: { model: 'second' } } };
-  assert.deepEqual(await h.handles.get('summary:models')('cloud'), ['model']);
-  assert.equal(calls.at(-1).entry.model, 'second');
-  const result = await h.handles.get('summary:test')('cloud');
-  assert.equal(result.text, 'summary'); assert.equal(typeof result.ms, 'number');
-  assert.equal(calls.at(-1).language, 'zh'); assert.equal(calls.at(-1).apiKey, 'secret');
-  assert.equal((await h.handles.get('summary:test')('agent')).text, 'agent summary');
-  assert.equal(calls.at(-1).agent, 'claude'); assert.equal(calls.at(-1).directory, '/summaries');
-});
-
 test('updates latch precedes editor confirmation and resets on cancellation and errors', async () => {
   const h = handlers(), calls = [];
   let resolveEditor, quitting = false, response = 0, fail = false;

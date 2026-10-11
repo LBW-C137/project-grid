@@ -65,7 +65,7 @@ try{
  await page.getByRole('button',{name:'切换到终端',exact:true}).click();await page.getByRole('button',{name:'阅读视图：按文档排版显示对话',exact:true}).click();
  await page.locator('.reading-markdown h1').waitFor();await capture('reading.png');
  const heading=await page.locator('.reading-markdown h1').evaluate(n=>getComputedStyle(n).color);assert.equal(heading,monoTheme === 'mono-amber-dark' ? 'rgb(241, 242, 244)' : 'rgb(23, 25, 29)');
- const activityShadow=await page.locator('.activity-now').evaluate(node=>getComputedStyle(node).boxShadow);
+ const activityShadow=await page.locator('.activity-tasks').evaluate(node=>getComputedStyle(node).boxShadow);
  const channels=activityShadow.match(/rgba?\((\d+), (\d+), (\d+)/)?.slice(1).map(Number);
  assert.ok(channels && Math.max(...channels)-Math.min(...channels)<12, 'working activity keeps a neutral outline: '+activityShadow);
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setFullScreen(true));

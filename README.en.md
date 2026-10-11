@@ -31,7 +31,7 @@
 <table>
   <tr>
     <td width="33%" valign="top"><h3>🧩 Many at once</h3>Every project is a card with a real terminal. Codex and Claude Code work at the same time, local and SSH projects on the same grid.</td>
-    <td width="33%" valign="top"><h3>💡 Lights up when done</h3>It reads the agents' own session records: 🔵 working, 🩷 done and waiting, 🟢 seen. One alert per round, read out loud if you like.</td>
+    <td width="33%" valign="top"><h3>💡 Lights up when done</h3>It reads the agents' own session records: 🔵 working, 🩷 done and waiting, 🟢 seen. One alert per round, with a system notification.</td>
     <td width="33%" valign="top"><h3>📖 Terminal as a document</h3>Answers laid out as documents, tool calls folded to a line, slash commands, permissions and questions as popups and cards you click.</td>
   </tr>
   <tr>
@@ -48,7 +48,7 @@ For forty years editors were built around **a file and a cursor**. Now that AI w
 | | A few terminals in an IDE | Agentrix |
 | --- | --- | --- |
 | **Several projects at once** | Switch windows, keep it all in your head | One grid, every state at a glance |
-| **Is it done?** | Watch the terminal until it goes quiet | Read from its session records; it lights up and tells you |
+| **Is it done?** | Watch the terminal until it goes quiet | Read from its session records; it lights up and notifies you |
 | **What did it say?** | Box art in a terminal | A laid-out document, with its pictures and pages shown |
 | **What did it change?** | Run `git diff` yourself | Hunk by hunk, kept or reverted in one click |
 | **Telling it what to do** | Type | Type, or just say it |
@@ -76,7 +76,7 @@ flowchart LR
 <img src="docs/images/overview.jpg" alt="Overview: six projects; working cards glow blue, finished ones pink, viewed ones green; Codex and Claude Code side by side" width="100%" />
 
 - 🔵 **Blue**: working, leave it be
-- 🩷 **Breathing pink, spoken alert**: this round is done and waiting for you
+- 🩷 **Breathing pink, a notification**: this round is done and waiting for you
 - 🟢 **Green**: seen, ready for the next instruction
 
 State comes from the rounds Codex and Claude Code record themselves, not from guessing how long the terminal has been quiet: a sub-agent finishing doesn't count, a command exiting doesn't count; only the end of the main round does, and each instruction alerts once. Drag cards to reorder, expand one from its header and shrink it back without losing the session or an unsent draft, and split a project into several terminals.
@@ -105,7 +105,7 @@ When a round ends, open a changed file from the Git tab and see it the way `git 
 
 <img src="docs/images/voice.jpg" alt="Voice input: a navy glass microphone window in the middle of the card, with sound waves that follow your voice" width="100%" />
 
-Press <kbd>Ctrl</kbd>+<kbd>T</kbd> and talk to the current terminal; Enter sends. Recognition runs offline on your machine, **audio never leaves it**, and no API key is needed; a high-accuracy model for mixed Chinese and English is available. When a round ends a natural voice reads out the result, or the agent sums it up in a sentence, or a cloud or local model (Ollama, vLLM) does.
+Press <kbd>Ctrl</kbd>+<kbd>T</kbd> and talk to the current terminal; Enter sends. Recognition runs offline on your machine, **audio never leaves it**, and no API key is needed; a high-accuracy model for mixed Chinese and English is available.
 
 ### 🔑 From install to sign-in, all in the window
 
@@ -164,7 +164,7 @@ A specific version, manual installs, and terminal and shortcut details for macOS
 <details>
 <summary><strong>Is my code or data uploaded?</strong></summary>
 
-Agentrix itself **collects nothing and sends no analytics**. It only contacts GitHub (update checks) and Hugging Face or its mirror (the first download of the offline voice model). Only if you choose a cloud model for spoken summaries is a round's final reply sent to the provider you picked. Codex and Claude Code talk to their own services exactly as they do in any terminal.
+Agentrix itself **collects nothing and sends no analytics**. It only contacts GitHub (update checks) and Hugging Face or its mirror (the first download of the offline speech recognition model). Codex and Claude Code talk to their own services exactly as they do in any terminal.
 
 </details>
 
@@ -186,7 +186,6 @@ No. The hooks for completion alerts and the note that the reading view shows pic
 
 - [ ] A side panel listing each requirement and bug with its status and fix attempts
 - [ ] A development overview: tokens, cost and time for each requirement and bug
-- [ ] Voice choice and voice cloning for spoken results
 - [ ] The reading view for more CLIs (OpenCode, Gemini CLI and others)
 - [ ] WSL workspaces
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleNotch, Lightning, Terminal as TerminalIcon } from '@phosphor-icons/react';
+import { CircleNotch, Terminal as TerminalIcon } from '@phosphor-icons/react';
 import type { AgentsState, Result } from '../../shared/types';
 import { relativeTime } from '../../shared/time';
 import { t } from '../../shared/i18n';
@@ -11,13 +11,13 @@ const AGENTS: { agent: Agent; name: string; mark: string }[] = [{ agent: 'claude
 
 // A project with no terminal yet: pick the agent to work with, fresh or continuing this folder's latest conversation
 // with it. An agent not installed yet is installed by the same click (Node.js first, when even npm is missing), then
-// started. A plain terminal (for other CLIs) and, when enabled, Codex without a terminal stay one click away.
-export function AgentLauncher({ terminalId, codexDirect, onAction }: {
-  terminalId: string; codexDirect: boolean; onAction: <T,>(promise: Promise<Result<T>>) => Promise<T | undefined>;
+// started. A plain terminal (for other CLIs) stays one click away.
+export function AgentLauncher({ terminalId, onAction }: {
+  terminalId: string; onAction: <T,>(promise: Promise<Result<T>>) => Promise<T | undefined>;
 }) {
   const [history, setHistory] = useState<History | null>(null);
   const [mode, setMode] = useState<'new' | 'continue' | null>(null);
-  const [starting, setStarting] = useState<Agent | 'terminal' | 'direct' | null>(null);
+  const [starting, setStarting] = useState<Agent | 'terminal' | null>(null);
   const [agents, setAgents] = useState<AgentsState | null>(null);
   useEffect(() => {
     let active = true;
@@ -36,12 +36,11 @@ export function AgentLauncher({ terminalId, codexDirect, onAction }: {
     return () => { active = false; };
   }, [terminalId]);
   const known = !!history && !!(history.claude || history.codex), chosen = mode ?? 'new';
-  const start = async (what: Agent | 'terminal' | 'direct') => {
+  const start = async (what: Agent | 'terminal') => {
     if (starting) return;
     setStarting(what);
     // Once started, the terminal (or the reading view) takes this card's place; a failure leaves it to try again.
     if (what === 'terminal') await onAction(window.agentrix.startTerminal(terminalId));
-    else if (what === 'direct') await onAction(window.agentrix.agentStart(terminalId));
     else if (missing(what) && !agents?.npm) await onAction(window.agentrix.openNode());
     else {
       const installed = missing(what) ? await onAction(window.agentrix.installAgent(what)) : agents;
@@ -71,7 +70,6 @@ export function AgentLauncher({ terminalId, codexDirect, onAction }: {
     {agents?.error && <p className="agent-launcher-error" role="alert">{agents.error}</p>}
     <div className="agent-launcher-more">
       <button type="button" className="text-button" disabled={!!starting} onClick={() => void start('terminal')}><TerminalIcon size={13} />{t('只打开终端')}</button>
-      {codexDirect && <button type="button" className="text-button" disabled={!!starting} title={t('不经过终端，阅读视图直接与 Codex 对话')} onClick={() => void start('direct')}><Lightning size={13} weight="fill" />{t('直连 Codex')}</button>}
     </div>
   </div>;
 }

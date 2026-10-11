@@ -124,7 +124,6 @@ test('a single-poll Claude history stays private until caught up, then streams n
 test('a Claude window keeps recent replies and actions and ignores tool results with excluded calls', async t => {
   const { HISTORY_WINDOW } = require('../electron/transcript-window.cjs');
   const { ConversationLog, claudeConversation } = require('../electron/conversation.cjs');
-  const { claudeReply } = require('../electron/round-summary.cjs');
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-claude-cut-'));
   t.after(() => fs.rm(folder, { recursive: true, force: true }));
   const file = path.join(folder, 'session.jsonl'), log = new ActionLog(), conversation = new ConversationLog();
@@ -133,12 +132,9 @@ test('a Claude window keeps recent replies and actions and ignores tool results 
     claude('assistant', [{ type: 'text', text: 'Recent reply' }], { uuid: 'reply' }),
     use('recent', 'Bash', { command: 'npm test' }), result('recent')];
   await fs.writeFile(file, records.map(record => JSON.stringify(record) + '\n').join(''));
-  let reply = '';
   await new TranscriptTail(file).read(record => {
     claudeRecord(log, record, cwd); claudeConversation(conversation, record, cwd);
-    const value = claudeReply(record); if (value?.reset) reply = ''; else if (value?.text) reply = value.text;
   });
-  assert.equal(reply, 'Recent reply');
   assert.deepEqual(log.list.map(action => [action.id, action.done]), [['recent', true]]);
   assert.deepEqual(conversation.list.map(entry => entry.role), ['assistant', 'tool']);
   assert.equal(conversation.list[0].text, 'Recent reply'); assert.equal(conversation.list[1].tool.done, true);

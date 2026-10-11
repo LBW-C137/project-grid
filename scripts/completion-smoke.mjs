@@ -70,21 +70,21 @@ try {
   // Expanded, the pane beside the terminal lists the steps, newest first, and the running edit is marked.
   await page.getByRole('button', { name: '全屏查看 Parent task status', exact: true }).click();
   const pane = page.locator('.activity-pane'); await pane.waitFor();
-  // The round's numbers sit at the top of the pane; below the live feed, only the prompts being worked on.
-  const overview = pane.locator('.activity-overview'); await overview.waitFor();
-  await waitFor(async () => (await pane.locator('.overview-stats > div').first().locator('b').innerText()) === '2', 'the pane counts the calls');
+  // The prompts being worked on head the pane, the round's numbers follow in one line, then the live feed.
+  const overview = pane.locator('.activity-tasks'); await overview.waitFor();
+  await waitFor(async () => (await pane.locator('.activity-round-figures b').innerText()) === '2 步', 'the pane counts the calls');
   assert.equal(await overview.locator('code').count(), 0, 'no list of changed files below the feed');
   await waitFor(async () => await pane.locator('.activity-item').count() === 2, 'activity pane lists the steps');
   // A step names what it really is, newest first: its kind, the file or the command itself, and what it did.
   const feedItem = index => pane.locator('.activity-item').nth(index).evaluate(item => ['.activity-tag', '.activity-title', 'p'].map(selector => item.querySelector(selector)?.textContent));
-  assert.deepEqual(await feedItem(0), ['文件', 'login.ts', '修改 src/login.ts'], 'the edit names its file and what happened to it');
-  assert.deepEqual(await feedItem(1), ['命令', 'npm test', '运行测试'], 'the command shows as typed');
+  assert.deepEqual(await feedItem(0), ['文件', 'login.ts', '文件 · 修改 src/login.ts'], 'the edit names its file and what happened to it');
+  assert.deepEqual(await feedItem(1), ['命令', 'npm test', '命令 · 运行测试'], 'the command shows as typed');
   assert.ok((await pane.locator('.activity-item').first().getAttribute('class')).includes('is-running'), 'the running edit is marked');
   // The overview lists the prompts: the one being worked on, then one sent while it works.
   await input('给登录页加上验证码。然后跑一下测试\r');
-  const prompts = () => overview.locator('.overview-prompts li').evaluateAll(items => items.map(item => `${item.classList.contains('is-working') ? 'working' : 'queued'}:${item.querySelector('p').textContent}`));
+  const prompts = () => overview.locator('.activity-prompts li').evaluateAll(items => items.map(item => `${item.classList.contains('is-working') ? 'working' : 'queued'}:${item.querySelector('p').textContent}`));
   await waitFor(async () => JSON.stringify(await prompts()) === JSON.stringify(['working:first instruction', 'queued:给登录页加上验证码。然后跑一下测试']), 'prompt list shows the working and the waiting prompt');
-  assert.ok((await pane.locator('.activity-now').getAttribute('class')).includes('is-editing'));
+  assert.equal(await overview.locator('li.is-working .activity-progress').count(), 1, 'the prompt being worked on has its moving bar');
   await page.waitForFunction(() => !document.querySelector('[data-focus-motion]')); await page.screenshot({ path: path.join(output, 'activity-pane.png') });
   // While Codex runs, its conversation shows as a document by default; the header toggle shows the terminal.
   const reading = page.locator('.project-panel .reading-view');
@@ -98,17 +98,16 @@ try {
   await page.getByRole('button', { name: '切换到终端', exact: true }).click();
   await waitFor(async () => !await reading.count(), 'the toggle shows the terminal');
   await page.getByRole('button', { name: '阅读视图：按文档排版显示对话', exact: true }).click(); await reading.waitFor();
-  // The overview has no progress or per-kind bars, and a long step is cut inside the pane instead of widening it.
-  assert.equal(await overview.locator('.overview-progress, .overview-kinds').count(), 0, 'no bars in the overview');
+  // A long step is cut inside the pane instead of widening it.
   await fs.appendFile(transcript, JSON.stringify({ type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'custom_tool_call_output', call_id: 'call-2', output: [] } }) + '\n'
     + step('call-3', 'apply_patch\n*** Begin Patch\n*** Update File: src/' + 'verification-code-'.repeat(12) + 'page.ts\n*** End Patch'));
   await waitFor(async () => await pane.locator('.activity-item').count() === 3, 'the long step is listed');
   const overflow = await pane.evaluate(node => {
     const right = node.getBoundingClientRect().right + 1;
-    return [...node.querySelectorAll('.activity-split, .activity-live, .activity-overview, .overview-stats, .overview-prompts, .activity-item')].filter(item => item.getBoundingClientRect().right > right).map(item => item.className);
+    return [...node.querySelectorAll('.activity-card, .activity-prompts, .activity-round-figures, .activity-item')].filter(item => item.getBoundingClientRect().right > right).map(item => item.className);
   });
   assert.deepEqual(overflow, [], 'nothing in the activity pane reaches past its edge');
-  const heights = await pane.evaluate(node => ['.activity-live', '.activity-overview'].map(selector => Math.round(node.querySelector(selector).getBoundingClientRect().height)));
+  const heights = await pane.evaluate(node => ['.activity-live', '.activity-tasks'].map(selector => Math.round(node.querySelector(selector).getBoundingClientRect().height)));
   assert.ok(heights[0] > heights[1], `the live feed takes most of the height: ${heights}`);
   await page.screenshot({ path: path.join(output, 'activity-pane-long-step.png') });
   await page.getByRole('button', { name: '隐藏活动栏', exact: true }).click(); await waitFor(async () => !await pane.count(), 'activity pane can be hidden');
@@ -124,11 +123,6 @@ try {
   await waitFor(async () => (await state()).unread === 1, 'parent completes');
   await waitFor(async () => JSON.stringify((await state()).terminals[0].prompts.map(item => item.text)) === JSON.stringify(['稍后补上文档']), 'finished prompts leave the list; the waiting one stays');
   assert.equal(await notices(), 1);
-  // The finished round is also announced once, in Mandarin, naming the project.
-  await waitFor(async () => (await page.evaluate(() => window.spokenNotices.length)) === 1, 'completion is announced');
-  const spoken = (await page.evaluate(() => window.spokenNotices))[0];
-  assert.ok(spoken.text.includes(project.name) && spoken.text.includes('给登录页加上验证码') && !spoken.text.includes('跑一下测试') && spoken.lang === 'zh-CN', `the notice says which project finished what: ${JSON.stringify(spoken)}`);
-  console.log(`Spoken notice: ${JSON.stringify(spoken)}`);
   await page.evaluate(id => window.agentrix.acknowledge(id), project.id);
   await waitFor(async () => page.locator('.project-panel').evaluate(node => node.classList.contains('round-complete')), 'viewed automatic completion is steady green');
   assert.equal(await page.locator('.status-badge').innerText(), '本轮已完成');
@@ -150,7 +144,7 @@ try {
   await fs.appendFile(transcript, record('task_started', 'interrupted') + record('turn_aborted', 'interrupted'));
   await waitFor(async () => (await state()).codexActivity === 'interrupted', 'interruption is distinct from completion');
   assert.equal(await notices(), 2);
-  assert.equal(await page.evaluate(() => window.spokenNotices.length), 2, 'only real completions are spoken; child, stale and interrupted turns stay silent');
+  assert.equal(await page.evaluate(() => window.spokenNotices.length), 0, 'completions are not spoken (spoken notices are removed for now)');
   console.log('PASS: real parent lifecycle owns working/completed/interrupted status; child and stale callbacks never finish the current task');
   await application.close(); application = null;
   await launch(); await notify(child, 'after-restart');

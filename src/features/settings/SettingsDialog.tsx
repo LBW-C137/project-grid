@@ -1,42 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ArrowsOutSimple, Terminal as TerminalIcon, Check, Power, ArrowCounterClockwise, Monitor, Cpu, Info, SpeakerHigh, Globe, Microphone, Waveform, BookOpen, FloppyDisk, Palette, Robot, Keyboard, Lightning } from '@phosphor-icons/react';
-import type { AgentsState, AppUpdateState, Settings, SpeechState, Workspace } from '../../shared/types';
+import { Bell, ArrowsOutSimple, Terminal as TerminalIcon, Check, Power, ArrowCounterClockwise, Monitor, Cpu, Info, SpeakerHigh, Globe, Microphone, BookOpen, FloppyDisk, Palette, Robot, Keyboard } from '@phosphor-icons/react';
+import type { AgentsState, AppUpdateState, Settings, Workspace } from '../../shared/types';
 import { themes } from '../../shared/themes';
 import { VoiceModelSetting } from '../voice/VoiceButton';
-import { announce, announcementVoice, onVoicesReady } from '../notices/announce';
 import { currentLanguage, t } from '../../shared/i18n';
 import { shortcut } from '../shortcuts/shortcuts';
 import { ShortcutSettings } from '../shortcuts/ShortcutSettings';
 import { AgentsSettings } from '../agents/AgentsSettings';
-import { SummarySettings } from '../notices/SummarySettings';
 import { isMac, isLinux } from '../../shared/platform';
 import { recommendedAppearance } from '../../shared/theme-presets';
 import { TerminalFontSettings } from './TerminalFontSettings';
 
-const api = window.agentrix;
-
-// Spoken completion notice: on/off, an optional own phrase, and a preview in the chosen voice.
-function AnnounceSettings({ settings, update }: { settings: Settings; update: (patch: Partial<Settings>) => void }) {
-  const [voice, setVoice] = useState<string | null>(null);
-  const [speech, setSpeech] = useState<SpeechState | null>(null);
-  const [phrase, setPhrase] = useState(settings.announcePhrase);
-  useEffect(() => onVoicesReady(() => setVoice(announcementVoice(settings.language)?.name.replace(/^Microsoft\s+/, '').replace(/\s+(Desktop|-).*$/, '') || null)), [settings.language]);
-  useEffect(() => { void api.getSpeechState().then(result => { if (result.ok) setSpeech(result.value); }); return api.onSpeechState(setSpeech); }, []);
-  const example = settings.language === 'zh' ? '{项目}，{任务}，完成。' : '{project}: {task}, done.';
-  const savePhrase = () => { if (phrase.trim() !== settings.announcePhrase) update({ announcePhrase: phrase }); };
-  const status = speech?.ready ? t('一轮完成时由本地自然女声播报哪个项目完成了什么')
-    : speech?.phase === 'downloading' ? t('自然女声下载中 {percent}%，下载前先用系统语音', { percent: speech.percent })
-    : voice ? t('一轮完成时由 {voice} 播报；可下载更自然的本地女声（约 74 MB）', { voice }) : t('一轮完成时播报项目名（系统中未找到对应语言的语音）');
-  return <div className="setting-group">
-    <label className="setting-row"><span><Waveform size={19} /><span><b>{t('语音播报')}</b><small title={speech?.error ? t(speech.error) : undefined}>{status}</small></span></span><input type="checkbox" checked={settings.announce} onChange={event => { update({ announce: event.target.checked }); if (event.target.checked && !speech?.ready) void api.prepareSpeech(); }} /></label>
-    {settings.announce && <SummarySettings settings={settings} update={update} />}
-    {settings.announce && <div className="announce-options">
-      <input aria-label={t('播报语')} placeholder={t('留空使用简短的默认播报，如：{example}', { example })} value={phrase} maxLength={80} onChange={event => setPhrase(event.target.value)} onBlur={savePhrase} onKeyDown={event => { if (event.key === 'Enter') savePhrase(); }} />
-      {!speech?.ready && speech?.phase !== 'downloading' && <button type="button" className="button secondary small" onClick={() => void api.prepareSpeech()}>{t('下载自然女声')}</button>}
-      <button type="button" className="button secondary small" onClick={() => { savePhrase(); announce(t('示例项目'), t('给登录页加上验证码'), { ...settings, announcePhrase: phrase.trim() }); }}>{t('试听')}</button>
-    </div>}
-  </div>;
-}
 export function SettingsDialog({ settings, desktopGlass, localShell, agents, onAgents, initialSection, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, onGuide, close, update, quit }: {
   localShell: Workspace['localShell']; agents: AgentsState | null; onAgents: (state: AgentsState) => void; initialSection: string;
   desktopGlass?: Workspace['desktopGlass']; settings: Settings; close: () => void; update: (patch: Partial<Settings>) => void; quit: () => void; onGuide: () => void;
@@ -48,7 +22,7 @@ export function SettingsDialog({ settings, desktopGlass, localShell, agents, onA
   // One category at a time: the sidebar chooses it and the pane beside it shows only that category.
   const sections = [
     { id: 'appearance', title: t('外观'), hint: t('主题、语言、材质与动画'), icon: <Palette size={17} /> },
-    { id: 'notifications', title: t('提醒'), hint: t('通知、声音与语音播报'), icon: <Bell size={17} /> },
+    { id: 'notifications', title: t('提醒'), hint: t('系统通知与提示音'), icon: <Bell size={17} /> },
     { id: 'terminal', title: t('终端与编辑'), hint: t('终端、会话恢复与编辑器'), icon: <TerminalIcon size={17} /> },
     { id: 'agents', title: t('编码助手'), hint: t('Codex 与 Claude Code'), icon: <Robot size={17} /> },
     { id: 'shortcuts', title: t('键盘快捷键'), hint: t('查看和修改快捷键'), icon: <Keyboard size={17} /> },
@@ -83,7 +57,7 @@ export function SettingsDialog({ settings, desktopGlass, localShell, agents, onA
           <span className="theme-name">{t(theme.name)}</span><small>{t(theme.description)}</small>
         </label>)}
       </div></fieldset>
-      <label className="setting-row"><span><Globe size={19} /><span><b>{t('语言')}</b><small>{t('界面、提示与语音播报的语言')}</small></span></span><select aria-label={t('语言')} value={settings.language} onChange={event => update({ language: event.target.value as Settings['language'] })}><option value="zh">中文</option><option value="en">English</option></select></label>
+      <label className="setting-row"><span><Globe size={19} /><span><b>{t('语言')}</b><small>{t('界面与提示的语言')}</small></span></span><select aria-label={t('语言')} value={settings.language} onChange={event => update({ language: event.target.value as Settings['language'] })}><option value="zh">中文</option><option value="en">English</option></select></label>
       <label className="setting-row"><span><Monitor size={19} /><span><b>{t('界面材质')}</b><small>{t('实色：面板不透明，文字用 ClearType 渲染，最锐利，也更省显卡；玻璃：透出壁纸')}</small></span></span><select aria-label={t('界面材质')} value={settings.surface} onChange={event => update({ surface: event.target.value as Settings['surface'] })}><option value="glass">{t('液态玻璃')}</option><option value="solid">{t('实色（更清晰）')}</option></select></label>
       {settings.surface === 'glass' && <label className="setting-row"><span><Monitor size={19} /><span><b>{t('玻璃背景')}</b><small>{t('主题背景使用应用内壁纸；桌面背景模糊窗口背后的内容')}</small></span></span><select aria-label={t('玻璃背景')} value={settings.glassBackground} onChange={event => update({ glassBackground: event.target.value as Settings['glassBackground'] })}><option value="theme">{t('主题背景')}</option><option value="desktop" disabled={!desktopGlass?.supported}>{t('桌面背景')}</option></select></label>}
       {settings.surface === 'glass' && settings.glassBackground === 'desktop' && <p className="settings-note">{t(desktopGlass?.restart ? '重新打开应用后启用桌面磨玻璃；切换设置不会中断当前会话。' : desktopGlass?.active ? '窗口背后的内容由系统模糊；每个面板只叠加可调的透明底色。' : '系统磨玻璃暂不可用，继续使用应用内背景。')}{desktopGlass?.compatibility && <> {t('此系统的实验材质支持最大化，暂不支持系统全屏。')}</>}</p>}
@@ -99,7 +73,6 @@ export function SettingsDialog({ settings, desktopGlass, localShell, agents, onA
       <section className="settings-section" id="settings-notifications" aria-label={t('提醒')} hidden={current.id !== 'notifications'}>
       <label className="setting-row"><span><Bell size={19} /><span><b>{t('桌面通知')}</b><small>{t('一轮结束时发送系统通知')}</small></span></span><input type="checkbox" checked={settings.notifications} onChange={e => update({ notifications: e.target.checked })} /></label>
       <label className="setting-row"><span><SpeakerHigh size={19} /><span><b>{t('通知声音')}</b><small>{t('播放系统默认提示音')}</small></span></span><input type="checkbox" checked={settings.sound} onChange={e => update({ sound: e.target.checked })} /></label>
-      <AnnounceSettings settings={settings} update={update} />
       </section>
       <section className="settings-section" id="settings-terminal" aria-label={t('终端与编辑')} hidden={current.id !== 'terminal'}>
       {!isMac && <label className="setting-row"><span><TerminalIcon size={19} /><span><b>{t('终端')}</b><small>{t('新开或重启的本地终端使用；SSH 项目始终使用 Bash')}</small></span></span>{localShell
@@ -112,7 +85,6 @@ export function SettingsDialog({ settings, desktopGlass, localShell, agents, onA
       </section>
       <section className="settings-section" id="settings-agents" aria-label={t('编码助手')} hidden={current.id !== 'agents'}>
       <AgentsSettings agents={agents} onChange={onAgents} />
-      <label className="setting-row"><span><Lightning size={19} /><span><b>{t('Codex 直连（实验）')}</b><small>{t('项目卡片上多一个“直连 Codex”：不经过终端，阅读视图通过 Codex 的协议直接对话，回答逐字出现，确认和提问在卡片里作答')}</small></span></span><input type="checkbox" checked={settings.codexDirect} onChange={event => update({ codexDirect: event.target.checked })} /></label>
       </section>
       {current.id === 'shortcuts' && <ShortcutSettings settings={settings} update={update} />}
       <section className="settings-section" id="settings-about" aria-label={t('更新与关于')} hidden={current.id !== 'about'}>

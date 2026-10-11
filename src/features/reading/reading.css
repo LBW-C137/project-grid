@@ -23,9 +23,6 @@
 .reading-welcome-commands span { font-size: 12px; overflow-wrap: anywhere; }
 
 /* Your prompt: a quiet bubble with an accent edge, set apart from the answers. */
-.reading-user { align-self: stretch; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 9px 12px; border-radius: 5px; background: rgba(255, 255, 255, .07); box-shadow: inset 3px 0 0 var(--theme-accent, #8fcbff); }
-.reading-user > span { font-size: 11px; font-weight: 600; color: var(--theme-accent, #8fcbff); padding-top: 2px; }
-.reading-user > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #f4f9ff; }
 
 /* The answer, as Markdown. */
 .reading-markdown { overflow-wrap: anywhere; }
@@ -55,18 +52,6 @@
 .reading-plain { margin: 0; white-space: pre-wrap; }
 
 /* Tool calls: one line that unfolds, so the answers stay in view. */
-.reading-tools { border-radius: 0; background: none; }
-.reading-tools-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 0; border-radius: inherit; background: transparent; color: #9fb5ce; font-size: 12px; text-align: left; }
-.reading-tools-head > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reading-tools-head:hover { background: rgba(255, 255, 255, .05); color: #dce9f5; }
-.reading-tools-head em { margin-left: auto; font-style: normal; color: #ffb1ac; }
-.reading-tools.is-running .reading-tools-head { color: #b9e1ff; }
-.reading-tools ul { margin: 0; padding: 0 10px 8px 30px; list-style: none; display: flex; flex-direction: column; gap: 3px; }
-.reading-tools li { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; font-size: 12px; }
-.reading-tools li b { font-weight: 600; color: #b9cbdc; }
-.reading-tools li code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 11.5px/1.6 var(--font-mono); color: #dce9f5; }
-.reading-tools li small { grid-column: 2; color: #8ea6c1; font-size: 11px; }
-.reading-tools li.reading-tool-edit b { color: #ffcf8f; }.reading-tools li.is-failed code { color: #ffb1ac; }.reading-tools li.is-running b { color: #9cdfff; }
 
 /* The agent's state, as the last line of the conversation. */
 .reading-status { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 6px; font-size: 13px; line-height: 1.5; color: #9fb5ce; min-width: 0; }

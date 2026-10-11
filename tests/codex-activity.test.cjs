@@ -109,12 +109,11 @@ test('a single-poll Codex history publishes only its final conversation snapshot
 test('a turn started before the window stays unknown despite later activity and completion records', async t => {
   const { ActionLog, codexRecord } = require('../electron/agent-actions.cjs');
   const { ConversationLog, codexConversation } = require('../electron/conversation.cjs');
-  const { codexReply } = require('../electron/round-summary.cjs');
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-cut-turn-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));
   await fs.mkdir(path.join(home, 'sessions'));
   const thread = randomUUID(), file = path.join(home, 'sessions', `rollout-${thread}.jsonl`);
-  const actions = new ActionLog(), conversation = new ConversationLog(), replies = [];
+  const actions = new ActionLog(), conversation = new ConversationLog();
   const item = payload => line({ type: 'response_item', payload });
   await fs.writeFile(file, line({ type: 'session_meta', payload: { id: thread, cwd: home, source: 'cli' } })
     + event('task_started', 'cut-turn')
@@ -126,14 +125,13 @@ test('a turn started before the window stays unknown despite later activity and 
     + event('task_complete', 'cut-turn'));
   const reader = new CodexActivityReader(home, home, 0, {
     threadId: () => thread,
-    onRecord: record => { codexRecord(actions, record, home); codexConversation(conversation, record, home); replies.push(codexReply(record)); },
+    onRecord: record => { codexRecord(actions, record, home); codexConversation(conversation, record, home); },
   });
   const snapshot = await reader.read();
   assert.equal(snapshot.state, 'unknown'); assert.equal(snapshot.turnId, null); assert.equal(snapshot.updatedAt, 0);
   assert.equal(snapshot.prompt, undefined, 'a prompt outside the window is not recovered');
   assert.deepEqual(actions.list, [], 'orphan results do not invent actions');
   assert.deepEqual(conversation.list.map(entry => entry.text), ['Window answer']);
-  assert.ok(replies.every(reply => reply === null));
   await fs.appendFile(file, line({ type: 'event_msg', payload: { type: 'user_message', message: 'New prompt' } })
     + event('task_started', 'live-turn')
     + item({ type: 'function_call', name: 'exec_command', call_id: 'live', arguments: '{"cmd":"npm test"}' })

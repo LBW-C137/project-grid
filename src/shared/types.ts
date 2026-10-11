@@ -16,15 +16,8 @@ export type Project = {
 };
 // A document, page or video an agent wrote, as its card in the reading view shows it.
 export type FileCard = { kind: 'markdown'; path: string; excerpt: string } | { kind: 'html'; path: string; picture: string | null } | { kind: 'video'; path: string; url: string } | { kind: 'image'; path: string; picture: string; remote?: boolean };
-// A question or approval Codex, connected directly, waits on: the reading view shows it as a card.
-export type DirectCard = { kind: 'approval'; subject: 'command' | 'files'; title: string; detail: string; options: ('accept' | 'acceptForSession' | 'decline')[] }
-  | { kind: 'question'; questions: { id: string; header: string; question: string; other: boolean; secret: boolean; options: { label: string; description: string }[] }[] };
-export type ProjectTerminal = { direct?: boolean; card?: DirectCard | null; agentInfo?: { model: string; effort: string } | null; agentStartedAt?: number | null; action: AgentActionBrief | null; task: string; prompts: PendingPrompt[]; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; needsInput: string | null; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
-// A model reached over HTTP for the spoken summary. The API key is not part of the settings.
-export type SummaryEndpoint = { provider: string; protocol: 'openai' | 'anthropic'; baseUrl: string; model: string };
-type SummaryKeys = { keys: { cloud: boolean; local: boolean } };
-export type Settings = { codexDirect: boolean; surface: 'glass' | 'solid'; glassBackground: 'theme' | 'desktop'; glassTransparency: number | null; terminalRenderer: 'gpu' | 'dom'; summary: { mode: 'fast' | 'agent' | 'cloud' | 'local'; cloud: SummaryEndpoint; local: SummaryEndpoint }; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; terminalFontWeight: 400 | 500 | 600; terminalFontFamily: string; terminalCjkFontFamily: string; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: ThemeId; announce: boolean; announcePhrase: string; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal' | 'removeProject', string>>; guideVersion: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; voiceModel: string };
-export type SpeechState = { phase: 'missing' | 'downloading' | 'ready' | 'error'; ready: boolean; percent: number; error: string | null; downloadBytes: number };
+export type ProjectTerminal = { agentStartedAt?: number | null; action: AgentActionBrief | null; task: string; prompts: PendingPrompt[]; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; needsInput: string | null; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
+export type Settings = { surface: 'glass' | 'solid'; glassBackground: 'theme' | 'desktop'; glassTransparency: number | null; terminalRenderer: 'gpu' | 'dom'; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; terminalFontWeight: 400 | 500 | 600; terminalFontFamily: string; terminalCjkFontFamily: string; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: ThemeId; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal' | 'removeProject', string>>; guideVersion: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; voiceModel: string };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type SSHInfo = { hosts: string[]; configFile: string; configExists: boolean; sshPath: string; source: string };
 export type SSHAuthPrompt = { id: string; host: string; message: string; kind: 'secret' | 'confirm' };
@@ -78,15 +71,6 @@ type Bridge = {
   openDownloadPage(): Promise<Result<void>>;
   onUpdateState(callback: (state: AppUpdateState) => void): () => void;
   addProjects(): Promise<Result<string[]>>;
-  onAnnounce(callback: (event: { projectId: string; name: string; task: string; summary?: string }) => void): () => void;
-  getSpeechState(): Promise<Result<SpeechState>>;
-  summaryState(): Promise<Result<SummaryKeys>>;
-  setSummaryKey(target: 'cloud' | 'local', key: string): Promise<Result<SummaryKeys>>;
-  summaryModels(target: 'cloud' | 'local'): Promise<Result<string[]>>;
-  testSummary(mode: 'agent' | 'cloud' | 'local'): Promise<Result<{ text: string; ms: number }>>;
-  prepareSpeech(): Promise<Result<SpeechState>>;
-  speak(text: string): Promise<Result<{ samples: Float32Array<ArrayBuffer>; sampleRate: number }>>;
-  onSpeechState(callback: (state: SpeechState) => void): () => void;
   getRecentProjects(): Promise<Result<RecentProject[]>>;
   addRecentProject(folder: string): Promise<Result<string>>;
   forgetRecentProject(folder: string): Promise<Result<RecentProject[]>>;
@@ -142,15 +126,10 @@ type Bridge = {
   restartTerminal(id: string): Promise<Result<boolean>>;
   attachTerminal(id: string): Promise<Result<TerminalSnapshot>>;
   terminalCommands(id: string): Promise<Result<AgentCommand[]>>;
-  agentStart(id: string): Promise<Result<boolean>>;
   agentImage(file: string): Promise<Result<{ url: string; width: number; height: number }>>;
   fileCard(id: string, file: string): Promise<Result<FileCard>>;
   agentHistory(id: string): Promise<Result<{ claude: { id: string; at: number } | null; codex: { id: string; at: number } | null }>>;
   agentLaunch(id: string, agent: 'claude' | 'codex', mode: 'new' | 'continue'): Promise<Result<boolean>>;
-  agentSend(id: string, text: string, images?: string[]): Promise<Result<boolean>>;
-  agentInterrupt(id: string): Promise<Result<boolean>>;
-  agentAnswer(id: string, answer: { decision?: string; answers?: Record<string, string | string[]> }): Promise<Result<boolean>>;
-  agentCommand(id: string, name: string): Promise<Result<boolean>>;
   agentSessions(id: string): Promise<Result<AgentSession[]>>;
   followAgentSession(id: string, sessionId: string): Promise<Result<boolean>>;
   writeTerminal(id: string, data: string): void;

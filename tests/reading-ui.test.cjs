@@ -34,7 +34,9 @@ function loadUI(name, overrides = {}) {
   mod.require = name => {
     const key = name.startsWith('.') ? './' + path.basename(name) : name;
     if (Object.hasOwn(overrides, key)) return overrides[key];
-    if (name === '@phosphor-icons/react') return { CircleNotch: props => React.createElement('svg', { className: props.className }) };
+    if (name.endsWith('.css')) return {};
+    // Every icon renders as a plain svg carrying its class name.
+    if (name === '@phosphor-icons/react') return new Proxy({}, { get: () => props => React.createElement('svg', { className: props.className }) });
     if (key === './i18n') return { currentLanguage: () => 'en', t: (text, values = {}) => (en[text] ?? text).replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match) };
     if (key === './choice-keys') return require('../src/features/reading/choice-keys.ts');
     if (key === './reading-sessions') return require('../src/features/reading/reading-sessions.ts');

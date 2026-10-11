@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { CircleNotch } from '@phosphor-icons/react';
+import { CheckCircle, CircleNotch, Timer, XCircle } from '@phosphor-icons/react';
 import type { AgentAction, AgentActionPacket, AgentActionBrief, Project, ProjectTerminal } from '../../shared/types';
 import { t } from '../../shared/i18n';
+import './activity-pane.css';
 
 // What each kind of step is called, in the card's one-line status and in the activity pane.
 const KIND_LABELS: Record<AgentActionBrief['kind'], string> = { edit: '修改', command: '运行', read: '读取', search: '搜索', web: '访问', skill: '技能', mcp: 'MCP', agent: '子代理', other: '调用' };
@@ -81,53 +82,48 @@ export function ActivityPane({ project, terminal }: { project: Project; terminal
     return () => { active = false; off(); };
   }, [terminal.id, terminal.sessionId]);
   const working = terminal.codexActive && terminal.codexActivity === 'working';
-  const running = working ? [...actions].reverse().find(action => !action.done) : undefined;
-  const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
   const [now, setNow] = useState(Date.now());
   useEffect(() => { if (!working) return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [working]);
-  const done = actions.filter(action => action.done).length, failed = actions.filter(action => action.failed).length;
+  const failed = actions.filter(action => action.failed).length;
   const started = actions[0]?.at, ended = working ? now : actions.at(-1)?.at;
-  const status = !terminal.codexActive ? t('没有运行中的 Codex 或 Claude Code')
-    : running ? t('正在{step}', { step: actionText(running) })
-    : working ? t('{agent} 正在思考', { agent })
-    : terminal.codexActivity === 'complete' ? t('本轮已完成') : t('等待指令');
   return <aside className="activity-pane" aria-label={t('活动')}>
-    <header className="activity-header"><b>{t('活动')}</b><span>{terminal.codexActive ? agent : ''}{actions.length ? ` · ${t('{count} 步', { count: actions.length })}` : ''}</span></header>
-    <div className={`activity-now ${running?.kind === 'edit' ? 'is-editing' : ''} ${working ? 'is-working' : ''}`} role="status" title={status}>
-      {working && <CircleNotch size={14} className="loading-spinner" />}<span>{status}</span>
-    </div>
-    <div className="overview-stats" aria-label={t('本轮概览')}>
-      <div><b>{actions.length}</b><span>{t('工具调用')}</span></div>
-      <div><b>{done}</b><span>{t('已完成')}</span></div>
-      <div className={failed ? 'is-failed' : ''}><b>{failed}</b><span>{t('失败')}</span></div>
-      <div><b>{started && ended ? seconds(ended - started) : '—'}</b><span>{working ? t('已进行') : t('用时')}</span></div>
-    </div>
-    <div className="activity-split">
-    <section className="activity-live" aria-label={t('实时动态')}>
-    <h4 className="activity-section-title">{t('实时动态')}</h4>
-    <div className="activity-list" role="list">
-      {!actions.length && <p className="activity-empty">{!terminal.codexActive
-        ? project.kind === 'ssh' ? t('远程项目暂不显示活动。') : t('在终端里启动 Codex 或 Claude Code 后，这里显示它每一步在做什么：改了哪些文件、运行了什么命令、调用了哪些技能和 MCP 工具。')
-        : t('这一轮还没有调用工具。')}</p>}
-      {[...actions].reverse().map(action => {
-        const { title, note, code } = stepLines(action);
-        return <div key={action.id} role="listitem" title={[title, note].filter(Boolean).join('\n')} className={`activity-item activity-${action.kind} ${action.done ? '' : 'is-running'} ${action.failed ? 'is-failed' : ''}`}>
-          <time>{clock(action.at)}</time><span className="activity-tag">{t(KIND_TAGS[action.kind])}</span>
-          <span className={`activity-title ${code ? 'is-code' : ''}`}>{title}</span>{action.failed && <em>{t('失败')}</em>}
-          {note && <p>{note}</p>}
-        </div>;
-      })}
-    </div>
+    <section className="activity-card activity-tasks" aria-label={t('正在处理的任务')}>
+      <h4 className="activity-card-title">{t('正在处理的任务')}</h4>
+      <PromptList terminal={terminal} />
     </section>
-    <section className="activity-overview" aria-label={t('正在处理的任务')}>
-      <h4 className="activity-section-title">{t('正在处理的任务')}</h4>
-      <div className="overview-body"><PromptList terminal={terminal} /></div>
+    <section className="activity-card activity-round" aria-label={t('本轮概览')}>
+      <h4 className="activity-card-title">{t('活动')}</h4>
+      <span className="activity-round-figures"><b>{t('{count} 步', { count: actions.length })}</b><span>·</span>
+        <span className={failed ? 'is-failed' : ''}>{t('{count} 失败', { count: failed })}</span><span>·</span>
+        <time>{started && ended ? elapsed(ended - started) : '0:00'}</time></span>
+      <Timer size={17} aria-hidden="true" />
     </section>
-    </div>
+    <section className="activity-card activity-live" aria-label={t('实时动态')}>
+      <h4 className="activity-card-title">{t('实时动态')}</h4>
+      <div className="activity-list" role="list">
+        {!actions.length && <p className="activity-empty">{!terminal.codexActive
+          ? project.kind === 'ssh' ? t('远程项目暂不显示活动。') : t('在终端里启动 Codex 或 Claude Code 后，这里显示它每一步在做什么：改了哪些文件、运行了什么命令、调用了哪些技能和 MCP 工具。')
+          : t('这一轮还没有调用工具。')}</p>}
+        {[...actions].reverse().map(action => {
+          const { title, note, code } = stepLines(action);
+          const Mark = action.failed ? XCircle : action.done ? CheckCircle : CircleNotch;
+          return <div key={action.id} role="listitem" title={[title, note].filter(Boolean).join('\n')} className={`activity-item activity-${action.kind} ${action.done ? '' : 'is-running'} ${action.failed ? 'is-failed' : ''}`}>
+            <time>{clock(action.at)}</time>
+            <Mark size={17} weight={action.done ? 'fill' : 'bold'} className={`activity-mark ${action.done ? '' : 'loading-spinner'}`} aria-label={action.failed ? t('失败') : action.done ? t('已完成') : t('进行中')} />
+            <span className={`activity-title ${code ? 'is-code' : ''}`}>{title}</span>
+            <p><span className="activity-tag">{t(KIND_TAGS[action.kind])}</span>{note && <> · {note}</>}</p>
+          </div>;
+        })}
+      </div>
+    </section>
   </aside>;
 }
 
-const seconds = (ms: number) => { const total = Math.max(0, Math.round(ms / 1000)), m = Math.floor(total / 60); return m ? t('{m} 分 {s} 秒', { m, s: total % 60 }) : t('{s} 秒', { s: total }); };
+// How long the round has run, the way a stopwatch shows it: 8:56, or 1:02:07 past an hour.
+const elapsed = (ms: number) => {
+  const total = Math.max(0, Math.round(ms / 1000)), h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, sec = String(total % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+};
 
 // The prompts sent and not finished: the one being worked on first, then those waiting their turn. A prompt
 // leaves the list when the round that worked on it ends.
@@ -135,11 +131,15 @@ function PromptList({ terminal }: { terminal: ProjectTerminal }) {
   const prompts = terminal.prompts || [];
   if (!prompts.length) {
     const text = !terminal.codexActive ? t('还没有开始任务') : terminal.codexActivity === 'complete' && terminal.task ? t('已完成：{task}', { task: terminal.task }) : t('没有待处理的提示');
-    return <p className="overview-task is-quiet" title={text}>{text}</p>;
+    return <p className="activity-task-quiet" title={text}>{text}</p>;
   }
-  return <ol className="overview-prompts" aria-label={t('提示')}>
-    {prompts.map(prompt => <li key={prompt.id} className={prompt.state === 'working' ? 'is-working' : ''} title={prompt.text}>
-      <span>{prompt.state === 'working' ? t('正在处理') : t('排队中')}</span><p>{prompt.text}</p>
-    </li>)}
+  return <ol className="activity-prompts" aria-label={t('提示')}>
+    {prompts.map(prompt => prompt.state === 'working'
+      ? <li key={prompt.id} className="is-working" title={prompt.text}>
+        <span className="activity-prompt-state"><CircleNotch size={20} weight="bold" className="loading-spinner" aria-hidden="true" />{t('正在处理')}</span>
+        <p>{prompt.text}</p>
+        <span className="activity-progress" aria-hidden="true"><i /></span>
+      </li>
+      : <li key={prompt.id} title={prompt.text}><span className="activity-prompt-state">{t('排队中')}</span><p>{prompt.text}</p></li>)}
   </ol>;
 }

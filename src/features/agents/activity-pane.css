@@ -1,0 +1,54 @@
+/* The activity pane as three frosted cards: the task being worked on (a ring, the prompt, a moving bar), the round in
+   one line (steps · failures · time), and the live feed (time, a check or a ring, the step, what it is). */
+.activity-pane {
+  --flow-card: var(--card-fill, rgba(255, 255, 255, .07)); --flow-line: var(--card-line, rgba(255, 255, 255, .13)); --flow-inset: rgba(0, 0, 0, .2);
+  --flow-ink: var(--ink, #f2f7fc); --flow-muted: var(--ink-secondary, #b9c8d8); --flow-faint: var(--ink-faint, rgba(255, 255, 255, .5));
+  --flow-ok: var(--accent-green, #3ddc97); --flow-fail: #ff7b72;
+  gap: 10px; padding: 10px;
+}
+:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .activity-pane {
+  --flow-card: var(--theme-hover); --flow-line: var(--theme-line); --flow-inset: var(--theme-hover);
+  --flow-ink: var(--theme-ink); --flow-muted: var(--theme-muted); --flow-faint: var(--theme-muted); --flow-ok: var(--theme-ink); --flow-fail: var(--mono-alert-ink);
+}
+.activity-card { flex: none; min-width: 0; border-radius: var(--card-radius, 12px); background: var(--flow-card); box-shadow: inset 0 0 0 1px var(--flow-line); }
+.activity-card-title { margin: 0; padding: 11px 14px 8px; font-size: 12.5px; font-weight: 600; color: var(--flow-ink); }
+
+/* The task being worked on, and those waiting their turn. */
+.activity-tasks { padding-bottom: 10px; }
+.activity-prompts { display: grid; gap: 6px; margin: 0; padding: 0 10px; list-style: none; }
+.activity-prompts li { display: grid; gap: 4px; padding: 8px 12px; border-radius: 10px; background: var(--flow-inset); }
+.activity-prompts li p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--flow-ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.activity-prompt-state { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--flow-muted); }
+.activity-prompts li.is-working { gap: 8px; padding: 12px 14px; }
+.activity-prompts li.is-working .activity-prompt-state { font-size: 13px; font-weight: 600; color: var(--flow-ok); }
+.activity-prompts li.is-working .activity-prompt-state svg { color: var(--flow-ok); }
+.activity-progress { position: relative; height: 6px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, .1); }
+.activity-progress i { position: absolute; inset: 0 auto 0 0; width: 45%; border-radius: inherit; background: var(--flow-ok); animation: activity-progress 2.2s cubic-bezier(.45, 0, .25, 1) infinite; }
+@keyframes activity-progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(230%); } }
+.activity-task-quiet { margin: 0 14px; font-size: 12.5px; line-height: 1.6; color: var(--flow-muted); overflow-wrap: anywhere; }
+
+/* The round in one line. */
+.activity-round { display: flex; align-items: center; gap: 10px; padding-right: 14px; }
+.activity-round .activity-card-title { flex: 1; padding: 12px 14px; }
+.activity-round-figures { display: flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--flow-muted); font-variant-numeric: tabular-nums; }
+.activity-round-figures b { font-weight: 600; color: var(--flow-ok); }
+.activity-round-figures .is-failed { color: var(--flow-fail); }
+.activity-round-figures time { font-weight: 600; color: var(--flow-ink); }
+.activity-round > svg { flex: none; color: var(--flow-muted); }
+
+/* The live feed fills what is left. */
+.activity-live { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.activity-list { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 10px; }
+.activity-empty { margin: 4px 8px; font-size: 12px; line-height: 1.7; color: var(--flow-muted); }
+.activity-item { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; column-gap: 9px; padding: 6px 8px; border-radius: 8px; }
+.activity-item:hover { background: rgba(255, 255, 255, .06); }
+.activity-item time { font-size: 11.5px; color: var(--flow-ok); font-variant-numeric: tabular-nums; }
+.activity-mark { color: var(--flow-ok); }
+.activity-item.is-running .activity-mark { color: var(--flow-muted); }
+.activity-item.is-failed .activity-mark { color: var(--flow-fail); }
+.activity-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 500; color: var(--flow-ink); }
+.activity-title.is-code { font: 500 12px/1.5 var(--font-mono); }
+.activity-item.is-failed .activity-title { color: var(--flow-fail); }
+.activity-item p { grid-column: 3; margin: 1px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.5; color: var(--flow-faint); }
+.activity-tag { color: var(--flow-muted); }
+@media (prefers-reduced-motion: reduce) { .activity-progress i { animation: none; width: 100%; opacity: .5; } }

@@ -62,14 +62,11 @@
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .project-panel .status-dot { box-shadow: none; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.error-toast, .danger-text, .git-error, .summary-status.is-error, .activity-item.is-failed code, .activity-title em) { color: var(--mono-alert-ink); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.error-toast) { background: rgba(255, 107, 0, .075); border-color: rgba(255, 107, 0, .3); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.activity-item.is-running, .reading-user) { background: var(--theme-hover); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .activity-pane { background: rgba(244, 246, 248, var(--glass-alpha, .94)); border-color: var(--theme-line); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.summary-status.is-ok, .voice-model-status.is-ready) { color: var(--theme-ink); }
 
 /* Reading is a document, not a second set of agent brand colours. */
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-view { background: rgba(250, 251, 252, var(--glass-alpha, .52)); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-user { box-shadow: inset 3px 0 0 #34383e; }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-user > span { color: var(--theme-muted); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-markdown :is(h1, h2, h3, h4, h5, h6) { color: var(--theme-ink); border-left-color: #34383e; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-markdown strong { color: var(--theme-ink); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-markdown ul > li::before { width: 5px; height: 5px; top: .75em; background: #34383e; box-shadow: none; }
@@ -127,14 +124,10 @@
 @media (prefers-reduced-transparency: reduce) {
   :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .app-shell .project-panel { background: var(--glass-solid); backdrop-filter: none; }
 }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.overview-task, .overview-stats b, .reading-composer textarea, .reading-composer, .reading-welcome h2, .split-status, .split-status.working, .split-status.complete) { color: var(--theme-ink); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.overview-stats span, .terminal-split-footer, .reading-choice-context, .reading-choice-hint) { color: var(--theme-muted); }
+:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.reading-composer textarea, .reading-composer, .reading-welcome h2, .split-status, .split-status.working, .split-status.complete) { color: var(--theme-ink); }
+:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.terminal-split-footer, .reading-choice-context, .reading-choice-hint) { color: var(--theme-muted); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.reading-composer, .reading-composer textarea, .reading-choice-context) { background: var(--glass-strong); border-color: var(--theme-line); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer :where(*) { color: inherit; border-color: var(--theme-line); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .overview-stats > div { background: var(--theme-hover); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .overview-stats .is-failed b { color: var(--mono-alert-ink); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .activity-now { color: var(--theme-ink); background: var(--theme-hover); border-color: var(--theme-line); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .activity-now:is(.is-working, .is-editing) { color: var(--theme-ink); background: var(--theme-hover); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer { color: var(--theme-ink); box-shadow: inset 0 0 0 1px var(--theme-line); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer:focus-within { box-shadow: inset 0 0 0 1px #515760, 0 0 0 3px rgba(23, 25, 29, .06); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer .reading-send:not(:disabled) { color: #ffffff; background: #17191d; }
@@ -166,8 +159,6 @@
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .app-shell :is(.project-panel, .focus-sidebar, .file-preview) { backdrop-filter: var(--liquid-backdrop); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .terminal-host .xterm-screen { filter: none; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .project-panel .panel-header .panel-name { color: var(--theme-ink); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.reading-tools-head, .reading-tools.is-running .reading-tools-head) { color: var(--theme-ink); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-user > span { background: var(--theme-hover); box-shadow: inset 0 0 0 1px var(--theme-line); color: var(--theme-muted); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-question-actions .button.primary { background: var(--theme-button); color: var(--theme-button-ink); box-shadow: none; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .explorer-title::before { background: var(--theme-ink); box-shadow: none; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"])[data-surface="solid"] .app-shell :is(.project-panel, .focus-sidebar, .file-preview) { backdrop-filter: none; }
@@ -185,7 +176,6 @@
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-question-input input:focus { box-shadow: inset 0 0 0 1px var(--theme-ink); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.reading-question-option, .reading-question-input).is-checked .reading-question-mark { color: var(--theme-button-ink); background: var(--theme-button); }
 
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .activity-now:is(.is-working, .is-editing) { box-shadow: inset 0 0 0 1px var(--theme-line); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer .reading-send:not(:disabled) { box-shadow: none; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .app-shell.titlebar-auto .titlebar { background: var(--glass-strong); box-shadow: inset 0 -1px 0 var(--theme-line); }
 /* The slash command list in the reading view sits in the page like the menus do over it. */

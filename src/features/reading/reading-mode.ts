@@ -45,8 +45,6 @@ export function agentExited(terminal: ProjectTerminal) {
 }
 // One handoff per permission notice; a manual toggle cancels its return trip.
 export function syncReading(terminal: ProjectTerminal) {
-  // Codex connected directly asks in the reading view itself; it has no terminal to hand off to.
-  if (terminal.direct) return;
   agentExited(terminal);
   if (terminal.needsInput !== null && terminal.codexActive) {
     if (inputSeen.has(terminal.id)) return;

@@ -1,6 +1,6 @@
 const { isLocalCommand, isTerminalResponse } = require('../../terminal-input.cjs');
 
-function registerTerminalIpc({ handle, listen, findProject, getSession, hasSession, startTerminal, addTerminal, removeTerminal, confirmTerminalClose, forgetRestorePlan, disposeTerminal, clearStartupError, broadcast, getProjectById, acknowledgeProject, expectCompletion, scheduleState, warmSpeech, applyActivity, pollAfterSubmission, send, getActiveTerminal, setActiveTerminal, setActiveFileTree, now = () => Date.now(), platform = process.platform }) {
+function registerTerminalIpc({ handle, listen, findProject, getSession, hasSession, startTerminal, addTerminal, removeTerminal, confirmTerminalClose, forgetRestorePlan, disposeTerminal, clearStartupError, broadcast, getProjectById, acknowledgeProject, expectCompletion, scheduleState, applyActivity, pollAfterSubmission, send, getActiveTerminal, setActiveTerminal, setActiveFileTree, now = () => Date.now(), platform = process.platform }) {
   handle('terminal:start', startTerminal);
   handle('terminal:add', id => {
     const project = findProject(id);
@@ -30,9 +30,8 @@ function registerTerminalIpc({ handle, listen, findProject, getSession, hasSessi
   function writeTerminal(id, data, answer = false) {
     if (typeof data !== 'string' || data.length > 1024 * 1024) return;
     const s = getSession(id);
-    if (s && s.status !== 'exited' && !s.direct && answer === true) { s.gate.input(data); return; }
-    // A Codex session connected directly has no terminal: its messages go through agent:send.
-    if (s && s.status !== 'exited' && !s.direct) {
+    if (s && s.status !== 'exited' && answer === true) { s.gate.input(data); return; }
+    if (s && s.status !== 'exited') {
       const submitted = s.submissions.write(data);
       // A line of unknown text (arrows, then Enter) is as often a choice in a menu (Codex's update prompt, a /model
       // picker) as a prompt recalled from history: the agent's own records report a round it really starts.
@@ -43,7 +42,7 @@ function registerTerminalIpc({ handle, listen, findProject, getSession, hasSessi
       if (prompts.length && s.codexActive) {
         expectCompletion(s.projectId);
         s.codexActivity = 'working'; s.activityInputAt = now();
-        scheduleState(); warmSpeech();
+        scheduleState();
       }
       // Escape on its own interrupts a working Claude Code turn. It runs no hook then, writes nothing to its transcript
       // and only puts the prompt back in its input, so this key is the only sign the round has ended. While Claude asks
