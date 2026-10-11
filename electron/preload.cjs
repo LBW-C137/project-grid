@@ -79,6 +79,8 @@ contextBridge.exposeInMainWorld('agentrix', {
   onState: callback => listen('workspace:changed', callback),
   onTerminalData: callback => listen('terminal:data', callback),
   onFocusProject: callback => listen('project:focus', callback),
+  notifyDecision: (projectId, title, kind) => ipcRenderer.invoke('decision:notify', projectId, title, kind),
+  onDecisionShow: callback => listen('decision:show', callback),
   onError: callback => listen('app:error', callback),
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),

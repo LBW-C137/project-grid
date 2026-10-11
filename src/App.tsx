@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { SquaresFour, FolderSimplePlus, MagnifyingGlass, Check, X, Minus, Square, GearSix, CheckCircle, Info, Circle } from '@phosphor-icons/react';
-import type { AgentsState, AppUpdateState, ProjectLocation, Result, Settings, SSHAuthPrompt, Workspace } from './shared/types';
+import { SquaresFour, FolderSimplePlus, MagnifyingGlass, Check, X, Minus, Square, GearSix, CheckCircle, Info, Circle, Tray, CirclesFour, ListChecks } from '@phosphor-icons/react';
+import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SSHAuthPrompt, Workspace } from './shared/types';
 import { ProjectSwitchHud } from './features/workspace/ProjectSwitchHud';
 import { ProjectExplorer } from './features/files/ProjectExplorer';
 import { AddProjectDialog } from './features/workspace/AddProjectDialog';
@@ -22,6 +22,10 @@ import { IconButton } from './shared/IconButton';
 import { showPopup, usePopup } from './features/files/file-popup';
 import { ProjectPanel, isRoundComplete } from './features/workspace/ProjectPanel';
 import { SettingsDialog } from './features/settings/SettingsDialog';
+import { DecisionHome } from './features/home/DecisionHome';
+import { TaskBoard } from './features/home/TaskBoard';
+import { useDecisions, type Decision } from './features/home/decisions';
+import { decisionKind, decisionTitle } from './features/home/DecisionCard';
 const FilePreview = lazy(() => import('./features/files/FilePreview').then(module => ({ default: module.FilePreview })));
 const FilePopup = lazy(() => import('./features/files/FilePopup').then(module => ({ default: module.FilePopup })));
 const GitDiffView = lazy(() => import('./features/git/GitDiffView').then(module => ({ default: module.GitDiffView })));
@@ -44,6 +48,8 @@ function focusOverviewProject(id: string) {
   }
   panel.scrollIntoView({ block: 'nearest' });
 }
+
+const NO_PROJECTS: Project[] = [];
 
 export function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -73,6 +79,9 @@ export function App() {
   useEffect(() => { if (searchOpen) queryInput.current?.focus(); }, [searchOpen]);
   const { root: focusMotionRoot, focusedId, focus: setFocusedId } = useProjectFocusMotion(workspace?.settings.focusAnimation || 'smooth');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The top-level page: the decisions to make (home), the workbench grid, or the task overview. Null until chosen: the
+  // window opens on the page the settings name.
+  const [view, setView] = useState<'decisions' | 'workspace' | 'tasks' | null>(null);
   // The usage guide: welcome page on first use, "what's new" after an update, or opened from settings.
   // tour: the tutorial in the window itself, a bubble at each place to act.
   const [guide, setGuide] = useState<'tour' | 'keys' | 'news' | null>(null);
@@ -114,13 +123,15 @@ export function App() {
     workspace?.projects.map(project => project.id) || [], ids => perform(api.reorderProjects(ids)));
   const focusProject = useCallback(async (id: string) => {
     if (!await allowNavigation()) return false;
+    // A project opens in the workbench, from wherever it was chosen.
+    setView('workspace');
     setPreviewFile(null);
     setFocusedId(id);
     api.focusMode(true);
     perform(api.acknowledge(id));
     return true;
   }, [perform, setFocusedId, allowNavigation]);
-  const returnToGrid = useCallback(async () => { if (!await allowNavigation()) return; setFocusedId(null); setPreviewFile(null); api.focusMode(false); }, [setFocusedId, allowNavigation]);
+  const returnToGrid = useCallback(async () => { if (!await allowNavigation()) return; setView('workspace'); setFocusedId(null); setPreviewFile(null); api.focusMode(false); }, [setFocusedId, allowNavigation]);
   const showProjectLocation = useCallback(async (id: string, result: ProjectLocation | undefined) => {
     if (!result || result.kind === 'external' || !await focusProject(id)) return;
     if (result.kind === 'file') {
@@ -243,6 +254,24 @@ export function App() {
     return () => document.removeEventListener('keydown', handler, true);
   }, [focusedId, returnToGrid, focusProject, perform, reportError, showProjectSwitch, workspace?.settings.explorerCollapsed]);
 
+  // Decisions across every project, for the home page, the count beside its tab and a notice when one arrives.
+  const { decisions, snoozed } = useDecisions(workspace?.projects ?? NO_PROJECTS);
+  const shownView = view ?? workspace?.settings.startView ?? 'workspace';
+  const seenDecisions = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const ids = new Set(decisions.map(decision => decision.id));
+    // What was waiting when the window opened is on the home page already; only new arrivals are announced.
+    if (seenDecisions.current) for (const decision of decisions) {
+      if (seenDecisions.current.has(decision.id) || (shownView === 'decisions' && document.hasFocus())) continue;
+      void api?.notifyDecision(decision.projectId, decisionTitle(decision), t(decisionKind(decision.kind).label));
+    }
+    if (workspace) seenDecisions.current = ids;
+  }, [decisions, shownView, workspace]);
+  useEffect(() => api?.onDecisionShow(() => setView('decisions')), []);
+  // Under a home page the workbench keeps running but takes no keys: a terminal behind it must not get what is typed.
+  useEffect(() => { if (shownView !== 'workspace') (document.activeElement as HTMLElement | null)?.closest('.main-workspace, .project-explorer') && (document.activeElement as HTMLElement).blur(); }, [shownView]);
+  const openDecision = useCallback((decision: Decision) => { void focusProject(decision.projectId); }, [focusProject]);
+
   if (!api) return <div className="startup-message"><SquaresFour size={38} /><h1>Agentrix 是桌面应用</h1><p>请在项目目录运行 npm start，或双击打包后的应用。</p></div>;
   if (!workspace) return <div className="startup-message"><SquaresFour size={34} /><p>{error || t('正在打开工作区…')}</p></div>;
   const { projects, settings } = workspace;
@@ -268,6 +297,11 @@ export function App() {
     {fullScreen && workspace.autoHideTitlebar && <div className="titlebar-reveal" aria-hidden="true" />}
     <div className="titlebar">
       <div className="titlebar-brand"><span className="brand-mark"><i /><i /><i /><i /></span><span>Agentrix</span></div>
+      <nav className="home-nav" aria-label={t('页面')}>
+        <button type="button" aria-current={shownView === 'decisions' ? 'page' : undefined} onClick={() => setView('decisions')}><Tray size={16} />{t('决策')}{decisions.length > 0 && <span className="home-nav-count" aria-label={t('{count} 件待决定', { count: decisions.length })}>{decisions.length}</span>}</button>
+        <button type="button" aria-current={shownView === 'workspace' ? 'page' : undefined} onClick={() => setView('workspace')}><CirclesFour size={16} />{t('工作台')}</button>
+        <button type="button" aria-current={shownView === 'tasks' ? 'page' : undefined} onClick={() => setView('tasks')}><ListChecks size={16} />{t('任务')}</button>
+      </nav>
       {!!projects.length && <div className="workspace-summary" role="status" aria-label={t('工作区概况')}>
         <span>{projects.length === 1 ? t('1 个项目') : t('{count} 个项目', { count: projects.length })}{projects.some(project => project.kind === 'ssh') ? t(' · 含 SSH') : ''}</span>
         {!!unread && <span className="summary-unread"><i className="legend-red" />{t('{count} 待查看', { count: unread })}</span>}
@@ -291,7 +325,7 @@ export function App() {
         onCollapse={() => setPreference({ explorerCollapsed: !settings.explorerCollapsed })}
         onExpandedChange={paths => setExpandedByProject(value => ({ ...value, [focus.id]: paths }))}
         onSelectFile={async path => { if (previewFile?.projectId === focus.id && previewFile.path === path && !previewFile.diff) return; if (await allowNavigation()) setPreviewFile({ projectId: focus.id, path }); }} onReturn={returnToGrid} />}
-      <main className="main-workspace">
+      <main className="main-workspace" inert={shownView !== 'workspace'}>
         <ProjectSwitchHud target={projectSwitch && switchProject && switchPosition > 0 ? { name: switchProject.name, index: orderedProjects.indexOf(switchProject) + 1, position: switchPosition, total: navigation.current.length, sequence: projectSwitch.sequence } : null} />
         {agents && !agents.codex.installed && !agents.claude.installed && !agentsDismissed && <div className="workspace-warning agents-warning"><Info size={15} /><span>{t('未检测到 Codex 或 Claude Code。Agentrix 基于这两个命令行工具工作，安装其中一个后才能使用任务提醒和会话恢复。')}</span><button type="button" className="button secondary small" onClick={() => { setSettingsSection('agents'); setSettingsOpen(true); }}>{t('去安装')}</button><IconButton label={t('关闭提示')} onClick={() => setAgentsDismissed(true)}><X size={14} /></IconButton></div>}
         {workspace.warning && <div className="workspace-warning"><Info size={15} />{t(workspace.warning)}</div>}
@@ -318,6 +352,10 @@ export function App() {
           </>}
         </div>
       </main>
+      {shownView !== 'workspace' && <div className="home-layer">
+        {shownView === 'tasks' ? <TaskBoard projects={projects} decisions={decisions} onOpenProject={id => void focusProject(id)} />
+          : <DecisionHome projects={projects} decisions={decisions} snoozed={snoozed} onOpenProject={id => void focusProject(id)} onOpenDecision={openDecision} onAction={perform} onError={reportError} />}
+      </div>}
     </div>
     {popup && <Suspense fallback={null}><FilePopup target={popup} onError={reportError} /></Suspense>}
     {error && <div className="error-toast" role="alert"><Info size={18} /><span>{error}</span><IconButton label={t('关闭提示')} onClick={() => setError(null)}><X size={16} /></IconButton></div>}

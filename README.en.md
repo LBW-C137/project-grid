@@ -2,8 +2,8 @@
   <a href="https://github.com/noeigenstate/Agentrix/releases/latest"><img src="docs/images/hero.svg" alt="Agentrix: AI agents working in parallel on one grid" width="100%" /></a>
 </p>
 
-<p align="center"><strong>An AI editor built for what comes next: you stop writing every line and start directing a whole grid of AI.</strong></p>
-<p align="center">Codex and Claude Code work on many projects side by side. They build, report and wait for your call.</p>
+<p align="center"><strong>AI development as a closed loop, from goal to delivery: you say what you want, AI does the work, comes to you when a decision is yours, and hands the result over for review.</strong></p>
+<p align="center">Codex and Claude Code work on many projects at once; Agentrix gathers what needs your call in one place and puts what they made in front of you.</p>
 
 <p align="center">
   <a href="https://github.com/noeigenstate/Agentrix/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/Agentrix?style=for-the-badge&color=ff3d8b&label=release" alt="Latest release" /></a>
@@ -45,6 +45,8 @@
 
 For forty years editors were built around **a file and a cursor**. Now that AI writes the code, what you really manage are **tasks and agents**: which one is thinking, which one is done, which one is stuck waiting for you, and what exactly it changed.
 
+**1.0 changes direction**: Agentrix is no longer just a window full of terminals but a complete development loop — **set a goal → AI works in parallel → decisions come to you in one place → the results are put in front of you → keep what you want and ship it**. You own the goals and the judgment; the execution goes to AI.
+
 | | A few terminals in an IDE | Agentrix |
 | --- | --- | --- |
 | **Several projects at once** | Switch windows, keep it all in your head | One grid, every state at a glance |
@@ -70,6 +72,10 @@ flowchart LR
 ```
 
 ## 🚀 Highlights
+
+### 🧭 Decide first, then dive in
+
+Agentrix opens on **Decide**: everything across your projects that needs your call, in one place — approvals, questions, choices, sign-ins — each titled by what it would do ("Run a command: npm run migrate") with the command itself. An answer is sent only when you confirm it, after checking the question has not changed; or put it off, or open the source. Decide · Workbench · Tasks in the title bar switch at any time: the workbench is the project grid, and Tasks shows what each session is doing and waiting on.
 
 ### 🧩 Direct every project from one screen
 

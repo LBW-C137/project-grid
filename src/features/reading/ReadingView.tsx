@@ -34,6 +34,7 @@ import { usePendingPrompts } from './usePendingPrompts';
 import { PendingPromptEntries, UserAvatar, UserImages, UserText } from './PendingPromptEntries';
 import { FileCards, previewable } from './FileCards';
 import { replyFiles } from './reply-files';
+import { onComposerPrefill } from './composer-prefill';
 import { showPopup } from '../files/file-popup';
 
 const purifier = createDOMPurify(window);
@@ -288,6 +289,8 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
   useEffect(() => { setSelection(0); }, [draft, commands]);
   useEffect(() => { if (palette) document.getElementById(optionId(selection))?.scrollIntoView({ block: 'nearest' }); }, [palette, selection]);
   const edit = (value: string) => { setDraft(value); setDismissed(false); historyAt.current = null; };
+  // Text written for this terminal on the home page waits here for the reader to send it.
+  useEffect(() => onComposerPrefill(terminal.id, text => { setDraft(text); setDismissed(true); requestAnimationFrame(() => input.current?.focus()); }), [terminal.id]);
   const complete = (command: AgentCommand) => {
     caret.current = command.name.length + 1; edit(command.name + ' '); input.current?.focus();
   };

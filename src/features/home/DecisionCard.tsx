@@ -1,0 +1,95 @@
+import { useEffect, useRef, useState } from 'react';
+import { ArrowSquareOut, ChatCircleDots, CircleNotch, Clock, ListChecks, ShieldCheck, SignIn, WarningCircle } from '@phosphor-icons/react';
+import type { Decision, DecisionKind } from './decisions';
+import { snooze } from './decisions';
+import { parseAgentScreen } from '../agents/agent-screen';
+import { readScreen } from '../terminal/terminal-screen';
+import { choiceIdentity, selectedChoiceIndex, writeChoiceKeys } from '../reading/choice-keys';
+import { ReadingQuestion } from '../reading/ReadingQuestion';
+import { t } from '../../shared/i18n';
+
+const KINDS: Record<DecisionKind, { label: string; Icon: typeof ShieldCheck }> = {
+  approval: { label: '需要审批', Icon: ShieldCheck }, question: { label: '回答问题', Icon: ChatCircleDots }, choice: { label: '需要选择', Icon: ListChecks },
+  signin: { label: '需要登录', Icon: SignIn }, attention: { label: '需要你处理', Icon: WarningCircle },
+};
+export const decisionKind = (kind: DecisionKind) => KINDS[kind];
+const AGENTS = { claude: 'Claude Code', codex: 'Codex' };
+
+// How long a decision has waited, in the words of a clock on the wall.
+export function waited(since: number, now: number) {
+  const minutes = Math.floor((now - since) / 60000);
+  return minutes < 1 ? t('刚刚') : minutes < 60 ? t('等了 {count} 分钟', { count: minutes }) : t('等了 {count} 小时', { count: Math.floor(minutes / 60) });
+}
+// A permission is named by what it would do: Claude heads it with the kind of step ("Bash command", "Edit file") and
+// the command or file under it; Codex shows the command after "$ ". The CLI's own question ("Do you want to proceed?")
+// says nothing about that.
+const STEPS: Record<string, string> = { 'Bash command': '运行命令', 'Edit file': '修改文件', 'Create file': '新建文件', 'Write file': '写入文件', 'Read file': '读取文件', 'Fetch': '访问网页' };
+function approvalTitle(decision: Decision) {
+  const lines = decision.context.map(line => line.trim()), at = lines.findIndex(line => STEPS[line]);
+  const command = lines.find(line => /^\$\s/.test(line))?.slice(2);
+  if (at >= 0 && lines[at + 1]) return t('{step}：{target}', { step: t(STEPS[lines[at]]), target: lines[at + 1] });
+  return command ? t('{step}：{target}', { step: t('运行命令'), target: command }) : decision.title;
+}
+export function decisionTitle(decision: Decision) {
+  if (decision.kind === 'approval') return approvalTitle(decision);
+  if (decision.kind === 'signin') return t('登录 {agent}', { agent: AGENTS[decision.agent] });
+  if (decision.kind === 'attention') return decision.message || t('{agent} 在等你', { agent: AGENTS[decision.agent] });
+  return decision.title;
+}
+
+// One decision in full: what is asked, where from, what the CLI shows about it, and the answers. Picking an answer only
+// selects it; the button under them sends it, and only while the same choice is still on the agent's screen.
+export function DecisionCard({ decision, now, onOpen, onDone, onError }: {
+  decision: Decision; now: number; onOpen: (decision: Decision) => void; onDone: (message: string) => void; onError: (message: string) => void;
+}) {
+  const [picked, setPicked] = useState<number | null>(null), [state, setState] = useState<'idle' | 'sending' | 'expired'>('idle'), [later, setLater] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  useEffect(() => { setPicked(null); setState('idle'); setLater(false); }, [decision.id]);
+  const { label, Icon } = KINDS[decision.kind];
+  const options = decision.choice?.options ?? [];
+  const send = async () => {
+    if (picked === null || state === 'sending') return;
+    // The answer goes only to the choice it was picked for: read the screen again first.
+    const rows = readScreen(decision.terminalId)?.rows;
+    const current = rows ? parseAgentScreen(decision.agent, rows).choice : null;
+    if (!current || choiceIdentity(current) !== decision.identity) { setState('expired'); return; }
+    setState('sending');
+    try {
+      await writeChoiceKeys(selectedChoiceIndex(current), picked, key => window.agentrix.writeTerminal(decision.terminalId, key), () => alive.current);
+      onDone(t('已回答「{project}」：{answer}', { project: decision.projectName, answer: options[picked]?.label ?? '' }));
+    } catch (error) { if (alive.current) { setState('idle'); onError(String(error)); } }
+  };
+  const putOff = (minutes: number) => { snooze(decision.id, Date.now() + minutes * 60000); setLater(false); onDone(t('已暂缓，{time} 后再提醒；执行仍在等你。', { time: minutes < 60 ? t('{count} 分钟', { count: minutes }) : t('{count} 小时', { count: minutes / 60 }) })); };
+  return <article className={`decision-card is-${decision.kind}`} aria-label={decisionTitle(decision)}>
+    <header className="decision-card-head">
+      <span className="decision-kind"><Icon size={15} weight="fill" />{t(label)}</span>
+      <span className="decision-source">{decision.projectName}{decision.multipleTerminals ? ` · ${decision.terminalTitle}` : ''} · {AGENTS[decision.agent]} · {waited(decision.since, now)}</span>
+    </header>
+    <h2 className="decision-title">{decisionTitle(decision)}</h2>
+    {decision.kind === 'approval' && <p className="decision-why">{t('这一步在等你批准；在你回答之前，它不会继续。')}</p>}
+    {decision.context.length > 0 && decision.kind !== 'question' && <pre className="decision-evidence">{decision.context.join('\n')}</pre>}
+    {decision.kind === 'question' && decision.choice
+      ? <div className="decision-question"><ReadingQuestion key={decision.id} choice={decision.choice} terminalId={decision.terminalId} onError={onError} /></div>
+      : options.length > 0 && <div className="decision-options" role="radiogroup" aria-label={decisionTitle(decision)}>
+        {options.map((option, index) => <label key={option.number} className={`decision-option ${picked === index ? 'is-picked' : ''}`}>
+          <input type="radio" name={`decision-${decision.id}`} checked={picked === index} disabled={state === 'sending'} onChange={() => setPicked(index)} />
+          <span><b>{option.label}</b>{option.detail && <small>{option.detail}</small>}</span>
+        </label>)}
+      </div>}
+    {decision.kind === 'signin' && <p className="decision-why">{t('打开它的阅读视图，在登录窗口里打开登录页或粘贴授权码。')}</p>}
+    {decision.kind === 'attention' && <p className="decision-why">{t('这件事在它的终端里处理：打开来源，看它在问什么。')}</p>}
+    {state === 'expired' && <p className="decision-state is-expired" role="status">{t('这个问题已经变了，没有发送。请看更新后的内容再决定。')}</p>}
+    <footer className="decision-actions">
+      {options.length > 0 && decision.kind !== 'question' && <button type="button" className="button primary" disabled={picked === null || state !== 'idle'} onClick={() => void send()}>
+        {state === 'sending' && <CircleNotch size={14} className="loading-spinner" />}{picked === null ? t('先选一个答案') : t('确认：{answer}', { answer: options[picked].label })}</button>}
+      <button type="button" className="button secondary" onClick={() => onOpen(decision)}><ArrowSquareOut size={15} />{t('打开来源')}</button>
+      <span className="decision-later">
+        <button type="button" className="text-button" aria-expanded={later} onClick={() => setLater(!later)}><Clock size={14} />{t('稍后处理')}</button>
+        {later && <span className="decision-later-menu" role="menu">
+          {[10, 60, 180].map(minutes => <button type="button" role="menuitem" key={minutes} onClick={() => putOff(minutes)}>{minutes < 60 ? t('{count} 分钟后', { count: minutes }) : t('{count} 小时后', { count: minutes / 60 })}</button>)}
+        </span>}
+      </span>
+    </footer>
+  </article>;
+}

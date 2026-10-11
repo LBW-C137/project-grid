@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ArrowsOutSimple, Terminal as TerminalIcon, Check, Power, ArrowCounterClockwise, Monitor, Cpu, Info, SpeakerHigh, Globe, Microphone, BookOpen, FloppyDisk, Palette, Robot, Keyboard } from '@phosphor-icons/react';
+import { Bell, House, ArrowsOutSimple, Terminal as TerminalIcon, Check, Power, ArrowCounterClockwise, Monitor, Cpu, Info, SpeakerHigh, Globe, Microphone, BookOpen, FloppyDisk, Palette, Robot, Keyboard } from '@phosphor-icons/react';
 import type { AgentsState, AppUpdateState, Settings, Workspace } from '../../shared/types';
 import { themes } from '../../shared/themes';
 import { VoiceModelSetting } from '../voice/VoiceButton';
@@ -58,6 +58,7 @@ export function SettingsDialog({ settings, desktopGlass, localShell, agents, onA
         </label>)}
       </div></fieldset>
       <label className="setting-row"><span><Globe size={19} /><span><b>{t('语言')}</b><small>{t('界面与提示的语言')}</small></span></span><select aria-label={t('语言')} value={settings.language} onChange={event => update({ language: event.target.value as Settings['language'] })}><option value="zh">中文</option><option value="en">English</option></select></label>
+      <label className="setting-row"><span><House size={19} /><span><b>{t('启动时打开')}</b><small>{t('决策：先看需要你决定的事；工作台：项目网格')}</small></span></span><select aria-label={t('启动时打开')} value={settings.startView} onChange={event => update({ startView: event.target.value as Settings['startView'] })}><option value="decisions">{t('决策')}</option><option value="workspace">{t('工作台')}</option></select></label>
       <label className="setting-row"><span><Monitor size={19} /><span><b>{t('界面材质')}</b><small>{t('实色：面板不透明，文字用 ClearType 渲染，最锐利，也更省显卡；玻璃：透出壁纸')}</small></span></span><select aria-label={t('界面材质')} value={settings.surface} onChange={event => update({ surface: event.target.value as Settings['surface'] })}><option value="glass">{t('液态玻璃')}</option><option value="solid">{t('实色（更清晰）')}</option></select></label>
       {settings.surface === 'glass' && <label className="setting-row"><span><Monitor size={19} /><span><b>{t('玻璃背景')}</b><small>{t('主题背景使用应用内壁纸；桌面背景模糊窗口背后的内容')}</small></span></span><select aria-label={t('玻璃背景')} value={settings.glassBackground} onChange={event => update({ glassBackground: event.target.value as Settings['glassBackground'] })}><option value="theme">{t('主题背景')}</option><option value="desktop" disabled={!desktopGlass?.supported}>{t('桌面背景')}</option></select></label>}
       {settings.surface === 'glass' && settings.glassBackground === 'desktop' && <p className="settings-note">{t(desktopGlass?.restart ? '重新打开应用后启用桌面磨玻璃；切换设置不会中断当前会话。' : desktopGlass?.active ? '窗口背后的内容由系统模糊；每个面板只叠加可调的透明底色。' : '系统磨玻璃暂不可用，继续使用应用内背景。')}{desktopGlass?.compatibility && <> {t('此系统的实验材质支持最大化，暂不支持系统全屏。')}</>}</p>}

@@ -181,7 +181,7 @@ test('saved forest and other theme choices survive loading and unrelated setting
 });
 
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', focusAnimation: 'smooth', theme: 'daylight', language: 'zh', surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', notifications: true, sound: false, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice' });
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { startView: 'decisions', fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', focusAnimation: 'smooth', theme: 'daylight', language: 'zh', surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', notifications: true, sound: false, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice' });
   // The spoken notice is gone: its old settings are dropped.
   const old = cleanSettings({ announce: true, announcePhrase: '{项目}', summary: { mode: 'local' } });
   assert.equal('announce' in old || 'announcePhrase' in old || 'summary' in old, false);

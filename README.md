@@ -2,8 +2,8 @@
   <a href="https://github.com/noeigenstate/Agentrix/releases/latest"><img src="docs/images/hero.svg" alt="Agentrix：一张网格上并行工作的 AI 助手" width="100%" /></a>
 </p>
 
-<p align="center"><strong>面向未来的 AI 编辑器：你不再逐行写代码，而是指挥一整张网格的 AI。</strong></p>
-<p align="center">Codex 和 Claude Code 在一张网格里同时开发多个项目：它们干活、汇报、等你拍板。</p>
+<p align="center"><strong>从目标到交付的 AI 开发闭环：你说要什么，AI 去做，需要你决定时来找你，做完交给你验收。</strong></p>
+<p align="center">Codex 和 Claude Code 同时开发多个项目；Agentrix 把需要你拍板的事集中到一处，把它们做出的东西摆到你面前。</p>
 
 <p align="center">
   <a href="https://github.com/noeigenstate/Agentrix/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/Agentrix?style=for-the-badge&color=ff3d8b&label=release" alt="Latest release" /></a>
@@ -45,6 +45,8 @@
 
 编辑器围着**文件和光标**设计了四十年。AI 写代码之后，真正要管理的是**任务和助手**：哪个在思考，哪个做完了，哪个卡住在等你，它到底改了什么。
 
+**1.0 是方向上的转变**：Agentrix 不再只是一个能开很多终端的窗口，而是一条完整的开发闭环——**提出目标 → AI 并行执行 → 需要你时集中决策 → 产物摆到面前 → 逐块取舍交付**。你管目标和判断，执行交给 AI。
+
 | | 在 IDE 里开几个终端 | Agentrix |
 | --- | --- | --- |
 | **同时做几个项目** | 来回切窗口，靠记忆 | 一张网格全摆开，状态一目了然 |
@@ -70,6 +72,10 @@ flowchart LR
 ```
 
 ## 🚀 亮点
+
+### 🧭 先决定，再进项目
+
+打开 Agentrix 先看到**决策**首页：所有项目里需要你拍板的事集中在一处——权限审批、提问、选择、登录，标题直接写出它要做什么（“运行命令：npm run migrate”），附上命令原文。选中答案后点确认才发送，发送前会再核对一次问题没变；也可以稍后处理或打开来源。顶栏的「决策 · 工作台 · 任务」随时切换：工作台是项目网格，任务页列出每个会话在做什么、等什么。
 
 ### 🧩 一屏指挥所有项目
 

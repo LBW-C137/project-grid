@@ -713,6 +713,23 @@ function registerIpc() {
     const { width, height } = image.getSize();
     return { url: width > 2400 ? `data:image/jpeg;base64,${image.resize({ width: 2400, quality: 'best' }).toJPEG(90).toString('base64')}` : image.toDataURL(), width, height };
   });
+  // A decision waits on the reader (a permission, a question, a sign-in): with the window in the background, a short
+  // notice names the project and what kind of thing it is, never the command or the answers; a click opens the
+  // decisions. The window itself shows it on the home page and the count beside its tab.
+  handle('decision:notify', (id, title, kind) => {
+    const project = findProject(id);
+    if (!window || window.isDestroyed() || window.isFocused()) return false;
+    window.flashFrame(true); clearTimeout(attentionTimer);
+    attentionTimer = setTimeout(() => { if (window && !window.isDestroyed()) window.flashFrame(false); }, 9000);
+    attentionTimer.unref?.();
+    if (store.settings.notifications && Notification.isSupported()) {
+      const note = new Notification({ title: t('{name} · {kind}', { name: project.name, kind: String(kind).slice(0, 20) }), body: String(title).slice(0, 120), icon: path.join(root, 'assets/icon-alert.png'), silent: !store.settings.sound });
+      note.on('click', () => { showWindow(); send('decision:show'); });
+      note.on('failed', () => {});
+      note.show();
+    }
+    return true;
+  });
   handle('agent:history', id => findProject(id).kind === 'ssh' ? { claude: null, codex: null } : folderHistory(folderOf(id)));
   handle('agent:launch', async (id, agent, mode) => {
     const project = findProject(id);
