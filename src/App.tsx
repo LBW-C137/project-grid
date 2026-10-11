@@ -262,7 +262,8 @@ export function App() {
     const ids = new Set(decisions.map(decision => decision.id));
     // What was waiting when the window opened is on the home page already; only new arrivals are announced.
     if (seenDecisions.current) for (const decision of decisions) {
-      if (seenDecisions.current.has(decision.id) || (shownView === 'decisions' && document.hasFocus())) continue;
+      // Work handed in is announced by the round's own completion notice; announcing it again would ring twice.
+      if (decision.kind === 'review' || seenDecisions.current.has(decision.id) || (shownView === 'decisions' && document.hasFocus())) continue;
       void api?.notifyDecision(decision.projectId, decisionTitle(decision), t(decisionKind(decision.kind).label));
     }
     if (workspace) seenDecisions.current = ids;

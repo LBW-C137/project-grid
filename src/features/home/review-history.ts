@@ -1,0 +1,23 @@
+// Grading a project's work like homework: the assignment and what you sent back since you last passed it. The next
+// time it hands in, the review keeps the assignment's name (not your notes, its latest message), shows which submission
+// this is and your last notes, so you can see whether they were addressed. Passing it starts over. Kept in this
+// window's storage, by project.
+type History = { task?: string; notes: { at: number; text: string }[] };
+const key = (projectId: string) => `agentrix.review.${projectId}`;
+function read(projectId: string): History {
+  try { const value = JSON.parse(localStorage.getItem(key(projectId)) || 'null') as History | null; return value && Array.isArray(value.notes) ? value : { notes: [] }; } catch { return { notes: [] }; }
+}
+function write(projectId: string, history: History) {
+  try { if (history.notes.length) localStorage.setItem(key(projectId), JSON.stringify(history)); else localStorage.removeItem(key(projectId)); } catch { /* a convenience */ }
+}
+
+// Which submission this is (1 for the first), and the notes sent back before it, oldest first.
+export function reviewHistory(projectId: string) {
+  const { task, notes } = read(projectId);
+  return { submission: notes.length + 1, notes, task: notes.length ? task : undefined };
+}
+export function sentBack(projectId: string, task: string | undefined, text: string) {
+  const history = read(projectId);
+  write(projectId, { task: history.task || task, notes: [...history.notes, { at: Date.now(), text }].slice(-20) });
+}
+export function passed(projectId: string) { write(projectId, { notes: [] }); }

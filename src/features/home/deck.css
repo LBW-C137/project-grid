@@ -1,0 +1,56 @@
+/* The decisions as a stack of cards. The front card lies on top; those behind it step down and back; one flipped past
+   lifts away. Cards are dealt in, lean toward the pointer, and a full card grows out of the small one when drawn. */
+.decision-deck-wrap { position: relative; display: flex; align-items: flex-start; gap: 14px; margin-top: 24px; }
+/* As tall as a card and the edges of the two behind it: the page goes on right under the stack. */
+.decision-deck { position: relative; flex: 1; min-width: 0; height: 248px; perspective: 1400px; outline: none; }
+.decision-deck:focus-visible .deck-card.is-front { box-shadow: 0 0 0 2px var(--home-blue), 0 26px 60px -28px rgba(0, 0, 0, .8); }
+.deck-card {
+  --tint: var(--home-blue); --offset: 0;
+  position: absolute; inset: 0 0 auto; display: flex; flex-direction: column; gap: 10px; min-height: 196px; padding: 22px 24px 20px;
+  border: 0; border-radius: 20px; text-align: left; font: inherit; color: var(--home-ink); cursor: pointer; overflow: hidden;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--tint) 18%, var(--home-card)), var(--home-card) 60%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 35%, var(--home-line)), 0 26px 60px -28px rgba(0, 0, 0, .8);
+  transform-origin: 50% 0;
+  transform: translateY(calc(var(--offset) * 22px)) scale(calc(1 - var(--offset) * .05));
+  filter: brightness(calc(1 - var(--offset) * .12));
+  transition: transform .5s cubic-bezier(.2, .8, .2, 1), opacity .4s ease, filter .4s ease, box-shadow .3s ease;
+  animation: deck-deal .55s cubic-bezier(.2, .8, .2, 1) both;
+}
+.deck-card.is-behind { pointer-events: auto; }
+.deck-card.is-behind > :not(.deck-card-head) { opacity: .55; }
+/* Flipped past: lifts up and away over the top. */
+.deck-card.is-past { opacity: 0; pointer-events: none; transform: translateY(-46%) rotateX(38deg) scale(1.03); }
+.deck-card.is-front { transform: translateY(0) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)); }
+.deck-card.is-front:hover { transform: translateY(-5px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 55%, var(--home-line)), 0 34px 70px -26px rgba(0, 0, 0, .85); }
+/* A sweep of light that follows the pointer across the front card. */
+.deck-card.is-front::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s ease;
+  background: radial-gradient(420px circle at var(--shine, 50%) 0%, rgba(255, 255, 255, .14), transparent 60%); }
+.deck-card.is-front:hover::after { opacity: 1; }
+.deck-card.is-approval { --tint: var(--home-amber); }
+.deck-card:is(.is-question, .is-choice) { --tint: var(--home-blue); }
+.deck-card.is-review { --tint: var(--home-pink); }
+.deck-card.is-signin { --tint: var(--home-ok); }
+.deck-card.is-attention { --tint: var(--home-red); }
+.deck-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.deck-kind { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--home-ink); background: color-mix(in srgb, var(--tint) 22%, transparent); }
+.deck-kind svg { color: var(--tint); }
+.deck-source { font-size: 12.5px; color: var(--home-muted); }
+.deck-title { font-size: 21px; font-weight: 600; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.deck-brief { font-size: 14px; line-height: 1.55; color: var(--home-muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.deck-hint { margin-top: auto; align-self: flex-end; font-size: 12px; color: var(--tint); opacity: .85; }
+@keyframes deck-deal { from { opacity: 0; transform: translateY(-70px) rotate(-3deg) scale(.96); } }
+
+.deck-controls { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 40px; }
+.deck-position { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--home-muted); }
+
+/* A card drawn out, in full over the page. */
+.decision-sheet-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 36px 24px; background: rgba(4, 9, 16, .5); backdrop-filter: blur(6px); animation: deck-backdrop .25s ease-out; }
+.decision-sheet { position: relative; width: min(860px, 100%); max-height: 100%; overflow: auto; border-radius: 18px; transform-origin: 0 0; }
+.decision-sheet .decision-card { margin: 0; }
+.decision-sheet-close { position: absolute; top: 14px; right: 14px; z-index: 2; }
+@keyframes deck-backdrop { from { opacity: 0; } }
+
+/* Without motion: no dealing, flipping or leaning. */
+:root:is([data-motion="off"]) :is(.deck-card, .decision-sheet-backdrop) { animation: none; transition: none; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] :is(.deck-card, .decision-sheet-backdrop) { animation: none; transition: none; } }
+@media (max-width: 900px) { .decision-deck { height: 256px; } .deck-title { font-size: 18px; } .deck-controls { display: none; } }

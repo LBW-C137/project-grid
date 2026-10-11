@@ -81,7 +81,7 @@ async function thumbnail(file: Blob) {
 // previous version stays (an answer still streaming) or the text shows plain, and a parse that takes too long leaves
 // it plain rather than freezing the window. One parse per answer runs at a time, always of its latest text.
 const QUICK = 4000;
-function Markdown({ text }: { text: string }) {
+export function Markdown({ text }: { text: string }) {
   const language = currentLanguage(), short = text.length <= QUICK;
   const quick = useMemo(() => short ? safely(() => finish(marked.parse(text, { async: false, gfm: true, breaks: true }) as string)) : undefined, [text, language, short]);
   const [long, setLong] = useState<{ text: string; parsed: string | null } | null>(() => {

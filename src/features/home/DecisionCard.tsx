@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowSquareOut, ChatCircleDots, CircleNotch, Clock, ListChecks, ShieldCheck, SignIn, WarningCircle } from '@phosphor-icons/react';
+import { ArrowSquareOut, ChatCircleDots, CircleNotch, Clock, ListChecks, Package, ShieldCheck, SignIn, WarningCircle } from '@phosphor-icons/react';
 import type { Decision, DecisionKind } from './decisions';
 import { snooze } from './decisions';
 import { parseAgentScreen } from '../agents/agent-screen';
@@ -7,10 +7,11 @@ import { readScreen } from '../terminal/terminal-screen';
 import { choiceIdentity, selectedChoiceIndex, writeChoiceKeys } from '../reading/choice-keys';
 import { ReadingQuestion } from '../reading/ReadingQuestion';
 import { t } from '../../shared/i18n';
+import { ReviewCard } from './ReviewCard';
 
 const KINDS: Record<DecisionKind, { label: string; Icon: typeof ShieldCheck }> = {
   approval: { label: '需要审批', Icon: ShieldCheck }, question: { label: '回答问题', Icon: ChatCircleDots }, choice: { label: '需要选择', Icon: ListChecks },
-  signin: { label: '需要登录', Icon: SignIn }, attention: { label: '需要你处理', Icon: WarningCircle },
+  signin: { label: '需要登录', Icon: SignIn }, attention: { label: '需要你处理', Icon: WarningCircle }, review: { label: '交付审查', Icon: Package },
 };
 export const decisionKind = (kind: DecisionKind) => KINDS[kind];
 const AGENTS = { claude: 'Claude Code', codex: 'Codex' };
@@ -32,9 +33,19 @@ function approvalTitle(decision: Decision) {
 }
 export function decisionTitle(decision: Decision) {
   if (decision.kind === 'approval') return approvalTitle(decision);
+  if (decision.kind === 'review') return decision.title ? t('交付：{task}', { task: decision.title }) : t('{project} 交付了这一轮的工作', { project: decision.projectName });
   if (decision.kind === 'signin') return t('登录 {agent}', { agent: AGENTS[decision.agent] });
   if (decision.kind === 'attention') return decision.message || t('{agent} 在等你', { agent: AGENTS[decision.agent] });
+  if (trustsFolder(decision)) return t('要信任这个文件夹吗？');
   return decision.title;
+}
+// The CLI asking whether to trust the folder it starts in (Claude Code's "Accessing workspace:", Codex's "Do you trust
+// the files in this folder?"): named for what it asks, the folder under it.
+export function trustsFolder(decision: Decision) {
+  return decision.kind === 'choice' && [decision.title, ...(decision.choice?.options ?? []).map(option => option.label)].some(text => /trust (this|the files in this) folder/i.test(text));
+}
+export function trustedFolder(decision: Decision) {
+  return decision.context.map(line => line.trim()).find(line => /^([A-Za-z]:[\\/]|\/|~)/.test(line));
 }
 
 // One decision in full: what is asked, where from, what the CLI shows about it, and the answers. Picking an answer only
@@ -47,6 +58,7 @@ export function DecisionCard({ decision, now, onOpen, onDone, onError }: {
   useEffect(() => () => { alive.current = false; }, []);
   useEffect(() => { setPicked(null); setState('idle'); setLater(false); }, [decision.id]);
   const { label, Icon } = KINDS[decision.kind];
+  if (decision.kind === 'review') return <ReviewCard decision={decision} now={now} kind={<span className="decision-kind"><Icon size={15} weight="fill" />{t(label)}</span>} onOpen={onOpen} onDone={onDone} onError={onError} />;
   const options = decision.choice?.options ?? [];
   const send = async () => {
     if (picked === null || state === 'sending') return;

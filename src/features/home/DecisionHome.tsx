@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, CheckCircle, Circle, CircleNotch, PaperPlaneRight, Sparkle } from '@phosphor-icons/react';
+import { ArrowRight, CheckCircle, CircleNotch, PaperPlaneRight, Sparkle } from '@phosphor-icons/react';
 import type { Project, Result } from '../../shared/types';
 import type { Decision } from './decisions';
-import { DecisionCard, decisionKind, decisionTitle, waited } from './DecisionCard';
+import { DecisionDeck } from './DecisionDeck';
+import { acceptedToday } from './ReviewCard';
 import { prefillComposer } from '../reading/composer-prefill';
 import { t } from '../../shared/i18n';
 import './home.css';
 
-// The home page: what needs you, one decision open in full and the others under it; what is being worked on and what
-// finished for you to look at; and where to say what comes next. Nothing here is solved by looking at it.
+// The home page, for grading the work like a teacher: what needs you, as a stack of cards to flip through and draw
+// from (permissions, questions, work handed in); what is being worked on; and where to say what comes next. Nothing
+// here is solved by looking at it.
 export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOpenDecision, onAction, onError }: {
   projects: readonly Project[]; decisions: readonly Decision[]; snoozed: number;
   onOpenProject: (projectId: string) => void; onOpenDecision: (decision: Decision) => void;
@@ -16,15 +18,13 @@ export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOp
 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(timer); }, []);
-  // The decision open in full stays the one the reader chose while it lasts; a new arrival never replaces it.
-  const [chosen, setChosen] = useState<string | null>(null), [all, setAll] = useState(false), [notice, setNotice] = useState('');
-  const current = decisions.find(decision => decision.id === chosen) ?? decisions[0] ?? null;
-  useEffect(() => { if (current && current.id !== chosen) setChosen(current.id); }, [current, chosen]);
+  const [notice, setNotice] = useState('');
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(timer); }, [notice]);
-  const others = decisions.filter(decision => decision !== current), listed = all ? others : others.slice(0, 3);
   const terminals = projects.flatMap(project => project.terminals.map(terminal => ({ project, terminal })));
   const working = terminals.filter(({ terminal }) => terminal.codexActive && terminal.codexActivity === 'working');
-  const unread = projects.filter(project => project.unread > 0);
+  // What the decisions are, by kind: "1 次审批 · 2 项交付审查".
+  const breakdown = (Object.entries(BREAKDOWN) as [Decision['kind'], string][]).map(([kind, label]) => [label, decisions.filter(decision => decision.kind === kind).length] as const).filter(([, count]) => count > 0);
+  const accepted = useMemo(() => acceptedToday(), [decisions]);
   const headline = decisions.length ? t('{count} 件事需要你决定', { count: decisions.length })
     : working.length ? t('现在没有需要你处理的事') : t('接下来想创造什么？');
   return <div className="home-page decision-home">
@@ -32,28 +32,17 @@ export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOp
       <h1>{headline}</h1>
       <p className="home-counts">
         {working.length > 0 && <span><CircleNotch size={13} className="loading-spinner" />{t('{count} 个会话正在工作', { count: working.length })}</span>}
-        {unread.length > 0 && <span className="is-unread"><Circle size={9} weight="fill" />{t('{count} 个本轮完成，等你查看', { count: unread.length })}</span>}
+        {breakdown.map(([label, count]) => <span key={label} className="home-count-kind">{t(label, { count })}</span>)}
+        {accepted > 0 && <span><CheckCircle size={13} weight="fill" />{t('今天已接受 {count} 项交付', { count: accepted })}</span>}
         {snoozed > 0 && <span>{t('{count} 件已暂缓', { count: snoozed })}</span>}
-        {!decisions.length && !working.length && !unread.length && <span>{t('描述一个目标，选择项目后开始。')}</span>}
+        {!decisions.length && !working.length && <span>{t('描述一个目标，选择项目后开始。')}</span>}
       </p>
     </header>
     {notice && <p className="home-notice" role="status"><CheckCircle size={15} weight="fill" />{notice}</p>}
-    {current && <DecisionCard key={current.id} decision={current} now={now} onOpen={onOpenDecision} onDone={setNotice} onError={onError} />}
-    {others.length > 0 && <section className="home-section" aria-label={t('其他事项')}>
-      <h3>{t('其他事项')}</h3>
-      <ul className="decision-rows">{listed.map(decision => { const { label, Icon } = decisionKind(decision.kind); return <li key={decision.id}>
-        <button type="button" onClick={() => setChosen(decision.id)}>
-          <Icon size={16} weight="fill" className={`decision-row-icon is-${decision.kind}`} aria-label={t(label)} />
-          <b>{decisionTitle(decision)}</b><span>{decision.projectName}</span><small>{waited(decision.since, now)}</small>
-        </button></li>; })}</ul>
-      {others.length > 3 && <button type="button" className="text-button" onClick={() => setAll(!all)}>{all ? t('收起') : t('查看全部（{count}）', { count: others.length })}</button>}
-    </section>}
-    {(working.length > 0 || unread.length > 0) && <section className="home-section" aria-label={t('工作进展')}>
+    {decisions.length > 0 && <DecisionDeck decisions={decisions} now={now} onOpen={onOpenDecision} onDone={setNotice} onError={onError} />}
+    {working.length > 0 && <section className="home-section" aria-label={t('工作进展')}>
       <h3>{t('工作进展')}</h3>
       <ul className="progress-rows">
-        {unread.map(project => <li key={project.id} className="is-unread"><Circle size={9} weight="fill" /><b>{project.name}</b>
-          <span>{t('本轮完成，等你查看')}{project.terminals[0]?.task ? ` · ${project.terminals[0].task}` : ''}</span>
-          <button type="button" className="text-button" onClick={() => onOpenProject(project.id)}>{t('查看')}<ArrowRight size={13} /></button></li>)}
         {working.map(({ project, terminal }) => <li key={terminal.id} className="is-working"><CircleNotch size={13} className="loading-spinner" /><b>{project.name}</b>
           <span>{terminal.prompts.find(prompt => prompt.state === 'working')?.text || terminal.task || t('正在工作')}</span>
           <button type="button" className="text-button" onClick={() => onOpenProject(project.id)}>{t('打开')}<ArrowRight size={13} /></button></li>)}
@@ -62,6 +51,8 @@ export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOp
     <NewWork projects={projects} onOpenProject={onOpenProject} onAction={onAction} onError={onError} />
   </div>;
 }
+
+const BREAKDOWN: Partial<Record<Decision['kind'], string>> = { approval: '{count} 次审批', question: '{count} 个问题', choice: '{count} 个选择', signin: '{count} 个登录', attention: '{count} 件要你处理', review: '{count} 项交付审查' };
 
 // "What next": a goal for a project. It waits in that project's message box to be sent after a look; an agent is started
 // first when none runs there.

@@ -3,6 +3,7 @@ import type { Project, ProjectTerminal } from '../../shared/types';
 import type { Decision } from './decisions';
 import { relativeTime } from '../../shared/time';
 import { t } from '../../shared/i18n';
+import { actionText } from '../agents/ActivityPane';
 import './home.css';
 
 type State = { key: 'deciding' | 'working' | 'unread' | 'done' | 'idle' | 'stopped'; label: string };
@@ -17,8 +18,9 @@ function sessionState(project: Project, terminal: ProjectTerminal, decisions: nu
   return { key: 'idle', label: t('等待指令') };
 }
 
-// The task overview: every session in every project, what it was asked to do, where it stands, what waits after it
-// and how many decisions it waits on. A click opens it in the workbench.
+// The task overview, the way a teacher watches the class: every session in every project, what it was asked to do,
+// the step it is on right now, where it stands, what waits after it and how many decisions it waits on. A click opens
+// it in the workbench.
 export function TaskBoard({ projects, decisions, onOpenProject }: { projects: readonly Project[]; decisions: readonly Decision[]; onOpenProject: (projectId: string) => void }) {
   const rows = projects.flatMap(project => project.terminals.map(terminal => {
     const waiting = decisions.filter(decision => decision.terminalId === terminal.id).length;
@@ -41,6 +43,7 @@ export function TaskBoard({ projects, decisions, onOpenProject }: { projects: re
           <span className="task-main">
             <b>{project.name}{project.terminals.length > 1 ? ` · ${terminal.title}` : ''}{terminal.codexActive && <em>{terminal.agent === 'claude' ? 'Claude Code' : 'Codex'}</em>}</b>
             <span>{doing || (terminal.codexActive ? t('还没有交代任务') : t('没有运行中的助手'))}</span>
+            {state.key === 'working' && terminal.action && <span className="task-step">{t('正在{step}', { step: actionText(terminal.action) })}</span>}
           </span>
           <span className="task-meta">
             {waiting > 0 && <span className="is-deciding">{t('{count} 件待决定', { count: waiting })}</span>}
