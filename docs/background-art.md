@@ -7,7 +7,12 @@
 | 林间光影 | High Sierra / `src/assets/macos-high-sierra.webp` | 3840×2160 | 2,278,518 | [High Sierra](https://media.512pixels.net/downloads/macos-wallpapers-6k/10-13-6k.jpg) |
 | 山青蓝 | Big Sur Day / `src/assets/macos-big-sur.webp` | 3840×3840 | 2,933,980 | [Big Sur Day](https://media.512pixels.net/downloads/macos-wallpapers-6k/11-Big-Sur-Day-6k.jpg) |
 | 西野红 | Sierra / `src/assets/macos-sierra.webp` | 3840×2160 | 1,962,848 | [Sierra](https://media.512pixels.net/downloads/macos-wallpapers-6k/10-12-6k.jpg) |
+| 半穹霞光 | Yosemite / `src/assets/macos-yosemite.webp` | 2560×1440 | 551,196 | [Yosemite](https://media.512pixels.net/downloads/macos-wallpapers-6k/10-10-6k.jpg) |
+| 酋长岩 | El Capitan / `src/assets/macos-el-capitan.webp` | 2560×1600 | 710,762 | [El Capitan](https://media.512pixels.net/downloads/macos-wallpapers-6k/10-11-6k.jpg) |
+| 沙丘暮色 | Mojave Day / `src/assets/macos-mojave.webp` | 2560×1440 | 95,780 | [Mojave Day](https://media.512pixels.net/downloads/macos-wallpapers-6k/10-14-Day-6k.jpg) |
+| 海岛暮蓝 | Catalina Day / `src/assets/macos-catalina.webp` | 2560×2560 | 609,632 | [Catalina Day](https://media.512pixels.net/downloads/macos-wallpapers-6k/10-15-Day-6k.jpg) |
 
+- 2026-10-12 按用户要求再加四个 macOS 风景主题（Yosemite、El Capitan、Mojave、Catalina），同一档案的 6K 原图用 Pillow 等比缩放到长边 2560 px、WebP quality 84/method 6，没有重新绘制或更改画面；设置里的主题默认只显示一排，其余收在「更多主题」里。
 - 三张源图分别为 6016×3384、6016×6016、6016×3384；约 66.05 MB 的 JPEG 编为总计 7,175,346 bytes 的 WebP。使用 ImageMagick 等比缩放至最大 3840×3840、WebP quality 88/method 6，没有重新绘制、增加文字或更换画面内容。
 - 背景只绘制在 `.app-shell`，保持原有染色及液态玻璃透明度。`cover` 保持比例；Big Sur 使用 `center 35%` 保留天空和海岸，其他两张居中。
 - 设置缩略图复用同一图片及裁切位置，不另外打包大图/缩略图副本。Vite 将文件打包为本地资源，运行时不下载图片，断网可用。

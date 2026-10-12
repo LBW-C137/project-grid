@@ -1,14 +1,17 @@
-/* The home pages (decisions, tasks) lie over the workbench, which keeps running under them. One column, readable on
-   any wallpaper: a decision's text sits on a steady, nearly opaque card. */
+/* The home pages (decisions, tasks) lie over the workbench, which keeps running under them, hidden. Like the
+   workbench ("界面清晰化"), the wallpaper shows sharp at its own brightness and what sits on it is a frosted pane. */
 .home-layer {
   --home-card: var(--glass-solid, #102331); --home-line: var(--card-line, rgba(255, 255, 255, .13)); --home-row: var(--card-fill, rgba(255, 255, 255, .07));
   --home-ink: var(--ink, #f2f7fc); --home-muted: var(--ink-secondary, #b9c8d8); --home-faint: var(--ink-faint, rgba(255, 255, 255, .5));
   --home-ok: var(--accent-green, #3ddc97); --home-blue: var(--accent-blue, #3b9eff); --home-pink: #ff5fa2; --home-amber: #ffb347; --home-red: #ff7b72;
-  position: absolute; inset: 0; z-index: 4; overflow: auto; background: rgba(6, 12, 20, .58); backdrop-filter: blur(22px) saturate(1.15);
+  --home-pane: var(--pane-fill, rgba(28, 32, 40, .3)); --home-frost: var(--pane-blur, blur(24px) saturate(130%) brightness(.62)); --home-edge: rgba(255, 255, 255, .2);
+  position: absolute; inset: 0; z-index: 4; overflow: auto; background: transparent;
 }
+.main-workspace[inert] { visibility: hidden; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-layer {
   --home-row: var(--theme-hover); --home-line: var(--theme-line); --home-ink: var(--theme-ink); --home-muted: var(--theme-muted); --home-faint: var(--theme-muted);
   --home-ok: var(--theme-ink); --home-blue: var(--theme-ink); --home-pink: var(--mono-orange); --home-amber: var(--mono-orange); --home-red: var(--mono-alert-ink);
+  --home-pane: var(--theme-hover); --home-frost: none; --home-edge: var(--theme-line);
   background: var(--theme-editor);
 }
 .home-page { width: min(920px, 100%); margin: 0 auto; padding: 34px 32px 48px; color: var(--home-ink); }
@@ -139,3 +142,16 @@
 .review-feedback textarea { width: 100%; margin-top: 16px; padding: 12px 14px; border: 0; border-radius: 12px; resize: vertical; font: 14px/1.55 var(--font-ui); color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 2px var(--home-pink); outline: none; }
 .decision-card.is-review .decision-kind svg { color: var(--home-pink); }
 .task-step { color: var(--home-blue) !important; }
+
+/* On the wallpaper: every card, row, notice and input is a frosted pane with a thin light edge (the content inside it
+   sits on flat, lighter cards); the headings with no pane under them keep a soft shadow, like the title bar. */
+.home-layer :is(.decision-card, .home-notice, .decision-rows button, .progress-rows li, .task-rows button, .new-work textarea, .decision-later-menu) {
+  background: var(--home-pane); backdrop-filter: var(--home-frost);
+  box-shadow: inset 0 0 0 1px var(--home-edge), inset 0 1px 0 rgba(255, 255, 255, .1), 0 8px 24px rgba(0, 0, 0, .18);
+}
+.home-layer :is(.decision-rows button, .task-rows button):hover { background: color-mix(in srgb, var(--home-pane), rgba(255, 255, 255, .5) 12%); }
+/* A little more than the title bar's: these lines are longer and lie over the brightest part of the sky. */
+.home-layer :is(.home-head, .home-section > h3, .new-work > h3, .new-work label, .new-work-note) { text-shadow: 0 1px 2px rgba(0, 0, 0, .6), 0 0 14px rgba(0, 0, 0, .35); }
+.home-layer .home-counts { color: var(--home-ink); }
+:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-layer :is(.home-head, .home-section > h3, .new-work > h3, .new-work label) { text-shadow: none; }
+

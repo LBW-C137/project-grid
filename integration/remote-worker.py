@@ -168,7 +168,7 @@ class CodexActivityReader:
             dirs[:] = [name for name in dirs if not os.path.islink(os.path.join(current, name))]
             for name in files:
                 if not (name.startswith("rollout-") and name.endswith(".jsonl")): continue
-                if self.thread_id and self.thread_id not in name: continue
+                if self.thread_id and self.thread_id.lower() not in name.lower(): continue
                 filename = os.path.join(current, name)
                 try:
                     modified = os.stat(filename).st_mtime * 1000
@@ -183,7 +183,8 @@ class CodexActivityReader:
                 meta = record.get("payload", {})
                 if record.get("type") != "session_meta" or meta.get("source", "cli") not in ("cli", "vscode"): continue
                 if os.path.realpath(meta.get("cwd", "")) != os.path.realpath(self.root) or not re.fullmatch(r"[a-fA-F0-9-]{36}", meta.get("id", "")): continue
-                if self.thread_id and meta.get("id") != self.thread_id: continue
+                # The id the terminal title showed may be cut short (Codex caps its title): it is how the id begins.
+                if self.thread_id and not meta.get("id", "").lower().startswith(self.thread_id.lower()): continue
                 self.filename = filename
                 self.file_identity, self.history_pending = None, True
                 self.snapshot = {"threadId": meta["id"], "turnId": None, "state": "unknown", "updatedAt": 0}
@@ -248,7 +249,7 @@ class Worker:
     def codex_status(self, since, thread_id=None):
         if not isinstance(since, (int, float)) or since <= 0: raise ValueError("无效的会话时间。")
         with self.activity_lock:
-            if thread_id is not None and not re.fullmatch(r"[a-fA-F0-9-]{36}", thread_id): raise ValueError("无效的会话标识。")
+            if thread_id is not None and not re.fullmatch(r"[a-fA-F0-9]{8}-[a-fA-F0-9-]{8,27}", thread_id): raise ValueError("无效的会话标识。")
             if self.activity_reader is None or self.activity_reader.since != since or self.activity_reader.thread_id != thread_id:
                 self.activity_reader = CodexActivityReader(self.coding_root, self.codex_home, since, thread_id)
             return self.activity_reader.read()

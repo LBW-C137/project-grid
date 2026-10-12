@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, House, ArrowsOutSimple, Terminal as TerminalIcon, Check, Power, ArrowCounterClockwise, Monitor, Cpu, Info, SpeakerHigh, Globe, Microphone, BookOpen, FloppyDisk, Palette, Robot, Keyboard } from '@phosphor-icons/react';
+import { Bell, CaretDown, House, ArrowsOutSimple, Terminal as TerminalIcon, Check, Power, ArrowCounterClockwise, Monitor, Cpu, Info, SpeakerHigh, Globe, Microphone, BookOpen, FloppyDisk, Palette, Robot, Keyboard } from '@phosphor-icons/react';
 import type { AgentsState, AppUpdateState, Settings, Workspace } from '../../shared/types';
 import { themes } from '../../shared/themes';
 import { VoiceModelSetting } from '../voice/VoiceButton';
@@ -11,6 +11,15 @@ import { isMac, isLinux } from '../../shared/platform';
 import { recommendedAppearance } from '../../shared/theme-presets';
 import { TerminalFontSettings } from './TerminalFontSettings';
 
+// The theme picker shows one row; "更多主题" unfolds the rest. The theme in use is always in that row: one from further
+// down takes the row's last place.
+const THEME_ROW = 4;
+function shownThemes<T extends { id: string }>(all: readonly T[], selected: string, everything: boolean) {
+  if (everything) return all;
+  const row = all.slice(0, THEME_ROW), chosen = all.find(theme => theme.id === selected);
+  return chosen && !row.includes(chosen) ? [...row.slice(0, THEME_ROW - 1), chosen] : row;
+}
+
 export function SettingsDialog({ settings, desktopGlass, localShell, agents, onAgents, initialSection, updates, onCheckUpdate, onInstallUpdate, onDownloadPage, onGuide, close, update, quit }: {
   localShell: Workspace['localShell']; agents: AgentsState | null; onAgents: (state: AgentsState) => void; initialSection: string;
   desktopGlass?: Workspace['desktopGlass']; settings: Settings; close: () => void; update: (patch: Partial<Settings>) => void; quit: () => void; onGuide: () => void;
@@ -18,7 +27,7 @@ export function SettingsDialog({ settings, desktopGlass, localShell, agents, onA
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const pane = useRef<HTMLDivElement>(null);
-  const [activeSection, setActiveSection] = useState(initialSection);
+  const [activeSection, setActiveSection] = useState(initialSection), [allThemes, setAllThemes] = useState(false);
   // One category at a time: the sidebar chooses it and the pane beside it shows only that category.
   const sections = [
     { id: 'appearance', title: t('外观'), hint: t('主题、语言、材质与动画'), icon: <Palette size={17} /> },
@@ -51,12 +60,15 @@ export function SettingsDialog({ settings, desktopGlass, localShell, agents, onA
         <div className="settings-pane" ref={pane}>
       <section className="settings-section" id="settings-appearance" aria-label={t('外观')} hidden={current.id !== 'appearance'}>
       <fieldset className="theme-picker"><legend>{t('外观主题')}</legend><div className="theme-options">
-        {themes.map(theme => <label key={theme.id} className={`theme-option ${settings.theme === theme.id ? 'is-selected' : ''}`}>
+        {shownThemes(themes, settings.theme, allThemes).map(theme => <label key={theme.id} className={`theme-option ${settings.theme === theme.id ? 'is-selected' : ''}`}>
           <input type="radio" name="theme" value={theme.id} checked={settings.theme === theme.id} aria-label={t(theme.name)} onChange={() => update({ theme: theme.id })} />
           <span className="theme-swatch" data-theme-preview={theme.id} aria-hidden="true"><span className="theme-mini-window"><i /><i /><i /></span><span className="theme-check"><Check size={12} weight="bold" /></span></span>
           <span className="theme-name">{t(theme.name)}</span><small>{t(theme.description)}</small>
         </label>)}
-      </div></fieldset>
+      </div>
+      {themes.length > THEME_ROW && <button type="button" className="text-button theme-more" aria-expanded={allThemes} onClick={() => setAllThemes(value => !value)}>
+        {allThemes ? t('收起') : t('更多主题 · {count}', { count: themes.length - THEME_ROW })}<CaretDown size={13} weight="bold" className={allThemes ? 'is-open' : undefined} /></button>}
+      </fieldset>
       <label className="setting-row"><span><Globe size={19} /><span><b>{t('语言')}</b><small>{t('界面与提示的语言')}</small></span></span><select aria-label={t('语言')} value={settings.language} onChange={event => update({ language: event.target.value as Settings['language'] })}><option value="zh">中文</option><option value="en">English</option></select></label>
       <label className="setting-row"><span><House size={19} /><span><b>{t('启动时打开')}</b><small>{t('决策：先看需要你决定的事；工作台：项目网格')}</small></span></span><select aria-label={t('启动时打开')} value={settings.startView} onChange={event => update({ startView: event.target.value as Settings['startView'] })}><option value="decisions">{t('决策')}</option><option value="workspace">{t('工作台')}</option></select></label>
       <label className="setting-row"><span><Monitor size={19} /><span><b>{t('界面材质')}</b><small>{t('实色：面板不透明，文字用 ClearType 渲染，最锐利，也更省显卡；玻璃：透出壁纸')}</small></span></span><select aria-label={t('界面材质')} value={settings.surface} onChange={event => update({ surface: event.target.value as Settings['surface'] })}><option value="glass">{t('液态玻璃')}</option><option value="solid">{t('实色（更清晰）')}</option></select></label>

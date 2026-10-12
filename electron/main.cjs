@@ -50,7 +50,7 @@ const { SSHAuthServer } = require('./ssh-auth.cjs');
 const { RemoteConnection } = require('./remote-connection.cjs');
 const { recentSession, resumeCommand, claudeResumeCommand } = require('./session-restore.cjs');
 const { CodexActivityReader, monitorActivity } = require('./codex-activity.cjs');
-const { TerminalTitleTracker } = require('./terminal-title.cjs');
+const { TerminalTitleTracker, wholeThread } = require('./terminal-title.cjs');
 const { FileOperations } = require('./file-operations.cjs');
 const { ClipboardWrites } = require('./clipboard-writes.cjs');
 const { VoiceManager } = require('./voice.cjs');
@@ -615,7 +615,8 @@ function startTerminal(id) {
     for (const threadId of s.titles.write(data)) {
       if (s.reportedThreadId !== threadId) {
         s.reportedThreadId = threadId;
-        if (s.codexActive) { s.codexActivity = 'unknown'; s.activityInputAt = 0; store.setRestore(id, { threadId }); void s.activityMonitor?.poll(); }
+        // A title cut short names the session only by how its id begins: the whole id is kept once its record is found.
+        if (s.codexActive) { s.codexActivity = 'unknown'; s.activityInputAt = 0; if (wholeThread(threadId)) store.setRestore(id, { threadId }); void s.activityMonitor?.poll(); }
       }
     }
     s.gate.output(data);

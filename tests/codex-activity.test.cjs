@@ -27,6 +27,12 @@ test('two terminals in the same folder bind to different Codex session titles', 
   assert.deepEqual(titles.write(ids[0].slice(15) + '\x07' + 'output'.repeat(20000)), [ids[0]]);
   assert.deepEqual(titles.write('\x1b]2;' + ids[1] + '\x1b\\'), [ids[1]]);
   assert.deepEqual(titles.write('normal output ' + ids[0]), []);
+  // Codex 0.162 caps its title at 32 characters: the id arrives cut short and still names its session.
+  const cut = ids[1].slice(0, 29);
+  assert.deepEqual(titles.write('\x1b]0;' + cut + '...\x07'), [cut]);
+  const short = new CodexActivityReader(home, home, Date.now(), { threadId: () => cut, requireBinding: () => true });
+  assert.equal((await short.read()).state, 'complete');
+  assert.equal(short.snapshot.threadId, ids[1]);
 });
 
 test('a child completion and stale turn never complete the interactive parent', async t => {

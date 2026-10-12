@@ -1,6 +1,6 @@
 macOS landscape wallpapers
 
-High Sierra, Big Sur and Sierra wallpapers: Apple Inc. and their respective
+High Sierra, Big Sur, Sierra, Yosemite, El Capitan, Mojave and Catalina wallpapers: Apple Inc. and their respective
 rights holders. These third-party images are not original Agentrix artwork
 and are not licensed under the project's MIT code license.
 
@@ -10,6 +10,10 @@ https://512pixels.net/projects/default-mac-wallpapers-in-5k/
 High Sierra: https://media.512pixels.net/downloads/macos-wallpapers-6k/10-13-6k.jpg
 Big Sur Day: https://media.512pixels.net/downloads/macos-wallpapers-6k/11-Big-Sur-Day-6k.jpg
 Sierra: https://media.512pixels.net/downloads/macos-wallpapers-6k/10-12-6k.jpg
+Yosemite: https://media.512pixels.net/downloads/macos-wallpapers-6k/10-10-6k.jpg
+El Capitan: https://media.512pixels.net/downloads/macos-wallpapers-6k/10-11-6k.jpg
+Mojave Day: https://media.512pixels.net/downloads/macos-wallpapers-6k/10-14-Day-6k.jpg
+Catalina Day: https://media.512pixels.net/downloads/macos-wallpapers-6k/10-15-Day-6k.jpg
 
 Images are proportionally resized and encoded as WebP for local display.
 Agentrix is an independent project and is not affiliated with Apple.

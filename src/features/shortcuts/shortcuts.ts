@@ -4,12 +4,13 @@ import type { Settings } from '../../shared/types';
 // Keyboard shortcuts for app actions. Defaults are shared with the main process (electron/shortcuts.json),
 // which must let them through; settings keep only what the user changed.
 // A shortcut is written as "Ctrl+Shift+F": modifiers in the order Ctrl, Alt, Shift, then one key.
-export type ShortcutAction = 'search' | 'addProject' | 'voice' | 'overview' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal' | 'removeProject';
+export type ShortcutAction = 'search' | 'addProject' | 'voice' | 'overview' | 'decisions' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'maximize' | 'fullscreen' | 'newTerminal' | 'removeProject';
 export const SHORTCUT_ACTIONS: { id: ShortcutAction; label: string }[] = [
   { id: 'search', label: '搜索项目' },
   { id: 'addProject', label: '添加项目' },
   { id: 'voice', label: '语音输入' },
   { id: 'overview', label: '返回总览' },
+  { id: 'decisions', label: '回到决策' },
   { id: 'explorer', label: '展开或收起目录栏' },
   { id: 'nextProject', label: '下一个项目' },
   { id: 'previousProject', label: '上一个项目' },

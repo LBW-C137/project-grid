@@ -218,6 +218,7 @@ export function App() {
       else if (action === 'addProject') setAddOpen(true);
       else if (action === 'voice') void quickDictation(reportError);
       else if (action === 'overview') void returnToGrid();
+      else if (action === 'decisions') setView('decisions');
       else if (action === 'explorer' && focusedId) perform(api.settings({ explorerCollapsed: !workspace?.settings.explorerCollapsed }));
       else if (action === 'settings') setSettingsOpen(true);
       else if (action === 'newTerminal') {
@@ -299,7 +300,7 @@ export function App() {
     <div className="titlebar">
       <div className="titlebar-brand"><span className="brand-mark"><i /><i /><i /><i /></span><span>Agentrix</span></div>
       <nav className="home-nav" aria-label={t('页面')}>
-        <button type="button" aria-current={shownView === 'decisions' ? 'page' : undefined} onClick={() => setView('decisions')}><Tray size={16} />{t('决策')}{decisions.length > 0 && <span className="home-nav-count" aria-label={t('{count} 件待决定', { count: decisions.length })}>{decisions.length}</span>}</button>
+        <button type="button" aria-current={shownView === 'decisions' ? 'page' : undefined} title={t('回到决策 · {key}', { key: shortcut('decisions') })} onClick={() => setView('decisions')}><Tray size={16} />{t('决策')}{decisions.length > 0 && <span className="home-nav-count" aria-label={t('{count} 件待决定', { count: decisions.length })}>{decisions.length}</span>}</button>
         <button type="button" aria-current={shownView === 'workspace' ? 'page' : undefined} onClick={() => setView('workspace')}><CirclesFour size={16} />{t('工作台')}</button>
         <button type="button" aria-current={shownView === 'tasks' ? 'page' : undefined} onClick={() => setView('tasks')}><ListChecks size={16} />{t('任务')}</button>
       </nav>

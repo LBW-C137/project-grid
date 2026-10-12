@@ -90,7 +90,7 @@ export function useDecisions(projects: readonly Project[]) {
       const id = `${terminal.id}:review:${project.lastCompletedAt ?? terminal.lastCompletedAt ?? 0}`;
       if (!firstSeen.has(id)) firstSeen.set(id, project.lastCompletedAt ?? Date.now());
       found.push({ id, kind: 'review', projectId: project.id, projectName: project.name, terminalId: terminal.id, sessionId: terminal.sessionId, terminalTitle: terminal.title, multipleTerminals: project.terminals.length > 1,
-        agent: terminal.agent === 'codex' ? 'codex' : 'claude', title: reviewHistory(project.id).task || terminal.task, context: [], choice: null, identity: null, message: '', since: firstSeen.get(id)! });
+        agent: terminal.agent === 'codex' ? 'codex' : 'claude', title: reviewHistory(project.id).task || (terminal.task?.startsWith('<') ? '' : terminal.task), context: [], choice: null, identity: null, message: '', since: firstSeen.get(id)! });
     }
     return found.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.since - b.since);
     // eslint-disable-next-line react-hooks/exhaustive-deps

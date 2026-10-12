@@ -5,6 +5,7 @@ const { summarizeTask } = require('../electron/task-summary.cjs');
 test('a spoken task name is the first sentence of the prompt, cut to a short phrase', () => {
   assert.equal(summarizeTask('给登录页加上验证码。然后跑一下测试'), '给登录页加上验证码');
   assert.equal(summarizeTask('Add a captcha to the login page. Then run the tests.'), 'Add a captcha to the login page');
+  assert.equal(summarizeTask(['<task-notification>', '<task-id>bbbp9tmug</task-id>', '<status>completed</status>', '<summary>Background command "Analyze and build debug APK" completed</summary>', '</task-notification>'].join(String.fromCharCode(10))), '');
   assert.equal(summarizeTask('把设置对话框右上角的关闭按钮删掉，并且更新所有相关的测试脚本和文档说明'), '把设置对话框右上角的关闭按钮删掉，并且更新所有相关的测试…');
   assert.equal(summarizeTask('refactor the voice input so that it works in every terminal and every split view we have'), 'refactor the voice input so that it works in every terminal and…');
 });

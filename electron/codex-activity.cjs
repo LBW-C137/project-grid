@@ -5,6 +5,7 @@ const { interactiveSession } = require('./session-restore.cjs');
 const { rolloutFiles, sessionMeta } = require('./session-files.cjs');
 const { transcriptWindow, LIVE_READ_LIMIT } = require('./transcript-window.cjs');
 const { OversizedLine } = require('./oversized-record.cjs');
+const { sameThread } = require('./terminal-title.cjs');
 
 // Only interactive rollout files can own a project card. A child agent can
 // inherit notify, but its completion does not end the interactive parent turn.
@@ -25,7 +26,7 @@ class CodexActivityReader {
       if (item.filename === this.filename) return;
       try {
         const meta = await sessionMeta(item.filename);
-        if (interactiveSession(meta, this.cwd) && (!this.boundThread || meta.id === this.boundThread)) {
+        if (interactiveSession(meta, this.cwd) && (!this.boundThread || sameThread(meta.id, this.boundThread))) {
           this.filename = item.filename;
           this.fileIdentity = null;
           this.snapshot = { threadId: meta.id, turnId: null, state: 'unknown', updatedAt: 0 };

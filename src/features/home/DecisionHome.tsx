@@ -4,7 +4,7 @@ import type { Project, Result } from '../../shared/types';
 import type { Decision } from './decisions';
 import { DecisionDeck } from './DecisionDeck';
 import { acceptedToday } from './ReviewCard';
-import { prefillComposer } from '../reading/composer-prefill';
+import { sendToAgent, untilAtPrompt } from './send-to-agent';
 import { t } from '../../shared/i18n';
 import './home.css';
 
@@ -48,31 +48,41 @@ export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOp
           <button type="button" className="text-button" onClick={() => onOpenProject(project.id)}>{t('打开')}<ArrowRight size={13} /></button></li>)}
       </ul>
     </section>}
-    <NewWork projects={projects} onOpenProject={onOpenProject} onAction={onAction} onError={onError} />
+    <NewWork projects={projects} onAction={onAction} onDone={setNotice} onError={onError} />
   </div>;
 }
 
 const BREAKDOWN: Partial<Record<Decision['kind'], string>> = { approval: '{count} 次审批', question: '{count} 个问题', choice: '{count} 个选择', signin: '{count} 个登录', attention: '{count} 件要你处理', review: '{count} 项交付审查' };
 
-// "What next": a goal for a project. It waits in that project's message box to be sent after a look; an agent is started
-// first when none runs there.
-function NewWork({ projects, onOpenProject, onAction, onError }: {
-  projects: readonly Project[]; onOpenProject: (projectId: string) => void;
-  onAction: <T,>(promise: Promise<Result<T>>) => Promise<T | undefined>; onError: (message: string) => void;
+// "What next": a goal sent to a project's agent from here, without leaving the page. One that runs gets it at once (it
+// queues it while it works); otherwise the chosen agent is started first and gets it when its input is ready. Its
+// progress then shows under "工作进展" and its work comes back as a card.
+function NewWork({ projects, onAction, onDone, onError }: {
+  projects: readonly Project[];
+  onAction: <T,>(promise: Promise<Result<T>>) => Promise<T | undefined>; onDone: (message: string) => void; onError: (message: string) => void;
 }) {
   const local = useMemo(() => projects.filter(project => project.kind !== 'ssh' || project.terminals[0]?.codexActive), [projects]);
   const [text, setText] = useState(''), [projectId, setProjectId] = useState(''), [agent, setAgent] = useState<'claude' | 'codex'>('claude'), [busy, setBusy] = useState(false);
   const project = local.find(item => item.id === projectId) ?? local[0], terminal = project?.terminals[0];
   const start = async () => {
-    if (!text.trim() || !project || !terminal || busy) return;
+    const goal = text.trim();
+    if (!goal || !project || !terminal || busy) return;
+    const kind = terminal.codexActive ? (terminal.agent === 'codex' ? 'codex' : 'claude') : agent, name = kind === 'codex' ? 'Codex' : 'Claude Code';
     setBusy(true);
     try {
-      prefillComposer(terminal.id, text.trim());
       if (!terminal.codexActive) {
         if (terminal.sessionId && terminal.shellReady) window.agentrix.writeTerminal(terminal.id, `${agent}\r`);
         else if (!terminal.sessionId && await onAction(window.agentrix.agentLaunch(terminal.id, agent, 'new')) === undefined) return;
+        onDone(t('正在启动 {agent}，准备好就把任务发给它…', { agent: name }));
+        if (!await untilAtPrompt(terminal.id, kind)) { onError(t('{agent} 还没准备好接收任务，任务留在这里，稍后再点开始。', { agent: name })); return; }
       }
-      setText(''); onOpenProject(project.id);
+      // A just-started terminal has its session only now.
+      const state = await window.agentrix.getState();
+      const sessionId = state.ok ? state.value.projects.flatMap(item => item.terminals).find(item => item.id === terminal.id)?.sessionId : null;
+      if (!sessionId) { onError(t('它的终端还没有准备好，请稍后再试。')); return; }
+      const failed = await sendToAgent(terminal.id, sessionId, kind, goal);
+      if (failed) { onError(failed); return; }
+      setText(''); onDone(t('已交给「{project}」的 {agent}，它的进展会出现在下面。', { project: project.name, agent: name }));
     } catch (error) { onError(String(error)); } finally { setBusy(false); }
   };
   if (!local.length) return null;
@@ -83,8 +93,8 @@ function NewWork({ projects, onOpenProject, onAction, onError }: {
     {text.trim() && <div className="new-work-options">
       <label>{t('项目')}<select value={project?.id} onChange={event => setProjectId(event.target.value)}>{local.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       {terminal && !terminal.codexActive && <label>{t('助手')}<select value={agent} onChange={event => setAgent(event.target.value as 'claude' | 'codex')}><option value="claude">Claude Code</option><option value="codex">Codex</option></select></label>}
-      <span className="new-work-note">{terminal?.codexActive ? t('放进它的消息框，看一眼再发送') : t('先启动助手，再放进它的消息框')}</span>
-      <button type="button" className="button primary" disabled={busy} onClick={() => void start()}><PaperPlaneRight size={15} />{t('开始')}</button>
+      <span className="new-work-note">{terminal?.codexActive ? t('直接发给它，不离开这一页') : t('先启动助手，准备好就发给它')}</span>
+      <button type="button" className="button primary" disabled={busy} onClick={() => void start()}>{busy ? <CircleNotch size={15} className="loading-spinner" /> : <PaperPlaneRight size={15} />}{busy ? t('发送中…') : t('开始')}</button>
     </div>}
   </section>;
 }

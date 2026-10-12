@@ -6,9 +6,7 @@ import { decisionTitle, waited } from './DecisionCard';
 import { Markdown } from '../reading/ReadingView';
 import { FileCards, previewable } from '../reading/FileCards';
 import { replyFiles } from '../reading/reply-files';
-import { parseAgentScreen } from '../agents/agent-screen';
-import { cliInputDraft, isAtPrompt } from '../reading/cli-panel';
-import { readScreen } from '../terminal/terminal-screen';
+import { atPrompt, sendToAgent } from './send-to-agent';
 import { showPopup } from '../files/file-popup';
 import { passed, reviewHistory, sentBack } from './review-history';
 import { t } from '../../shared/i18n';
@@ -65,23 +63,11 @@ export function ReviewCard({ decision, now, kind, onOpen, onDone, onError }: {
   const revise = async () => {
     const text = feedback.trim();
     if (!text || busy) return;
-    const rows = readScreen(decision.terminalId)?.rows, screen = rows ? parseAgentScreen(decision.agent, rows) : null;
-    if (!rows || !screen || !isAtPrompt(decision.agent, rows, screen)) { onError(t('它现在不在等你输入，打开来源再发送修改意见。')); return; }
+    if (!decision.sessionId || !atPrompt(decision.terminalId, decision.agent)) { onError(t('它现在不在等你输入，打开来源再发送修改意见。')); return; }
     setBusy(true);
     try {
-      if (cliInputDraft(decision.agent, rows, screen)) { window.agentrix.writeTerminal(decision.terminalId, '\x15'); await pause(60); }
-      if (!decision.sessionId) { onError(t('它现在不在等你输入，打开来源再发送修改意见。')); return; }
-      const pasted = await window.agentrix.pasteTerminal(decision.terminalId, text, decision.sessionId);
-      if (!pasted.ok) { onError(pasted.error); return; }
-      await pause(400);
-      window.agentrix.writeTerminal(decision.terminalId, '\r');
-      // An Enter the CLI did not take leaves the text in its input: Enter again, a few times.
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await pause(700);
-        const after = readScreen(decision.terminalId)?.rows;
-        if (!after || !cliInputDraft(decision.agent, after, parseAgentScreen(decision.agent, after)).trim()) break;
-        window.agentrix.writeTerminal(decision.terminalId, '\r');
-      }
+      const failed = await sendToAgent(decision.terminalId, decision.sessionId, decision.agent, text);
+      if (failed) { onError(failed); return; }
       await window.agentrix.acknowledge(decision.projectId);
       sentBack(decision.projectId, decision.title, text);
       setFeedback(''); setRevising(false);
@@ -131,7 +117,6 @@ export function ReviewCard({ decision, now, kind, onOpen, onDone, onError }: {
     </footer>
   </article>;
 }
-const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Deliveries accepted today, kept in this window's storage for the home page's line about the day.
 const ACCEPTED_KEY = 'agentrix.decisions.accepted';

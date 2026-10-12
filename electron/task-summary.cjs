@@ -1,10 +1,13 @@
 // A short spoken name for what a round worked on, taken from the prompt that started it:
 // the first sentence, without code, links or paths, cut to a phrase that is quick to hear.
 // Bare follow-ups ("继续", "continue", "ok") say nothing about the work, so they give no summary.
+// What the CLI itself puts in the user's place (Claude Code's background-task and command notices,
+// "<task-notification>…</task-notification>") is not something the person asked for.
+const MACHINE = /^\s*<([a-z][\w-]*)>[\s\S]*<\/\1>\s*$/i;
 const FOLLOW_UP = /^(继续|接着|继续吧|继续执行|好的?|可以|行|嗯|是的?|对|go on|continue|keep going|ok(ay)?|yes|y|proceed)[。.!！\s]*$/i;
 
 function summarizeTask(prompt, { maxChars = 28, maxWords = 12 } = {}) {
-  if (typeof prompt !== 'string') return '';
+  if (typeof prompt !== 'string' || MACHINE.test(prompt)) return '';
   let text = prompt
     .replace(/```[\s\S]*?(```|$)/g, ' ')
     .replace(/`[^`\n]*`/g, ' ')

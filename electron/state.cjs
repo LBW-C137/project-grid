@@ -26,7 +26,7 @@ const defaults = { startView: DEFAULT_START, surface: 'glass', glassBackground: 
 
 // Keyboard shortcuts the user changed, by action; defaults live in the window (src/features/shortcuts/shortcuts.ts).
 // "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
-const SHORTCUT_ACTIONS = ['search', 'addProject', 'voice', 'overview', 'explorer', 'settings', 'nextProject', 'previousProject', 'maximize', 'fullscreen', 'newTerminal', 'removeProject'];
+const SHORTCUT_ACTIONS = ['search', 'addProject', 'voice', 'overview', 'decisions', 'explorer', 'settings', 'nextProject', 'previousProject', 'maximize', 'fullscreen', 'newTerminal', 'removeProject'];
 const SHORTCUT = /^(?:(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:F(?:[1-9]|1[0-2]))|(?=Ctrl\+|Alt\+)(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:[A-Z0-9,./;'[\]\\=`-]|Space|Tab|Enter))$/;
 function cleanShortcuts(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
@@ -41,7 +41,7 @@ function cleanSettings(input = {}) {
     terminalCjkFontFamily: typeof input.terminalCjkFontFamily === 'string' && input.terminalCjkFontFamily.length <= 80 && !/[\u0000-\u001f\u007f]/.test(input.terminalCjkFontFamily) ? input.terminalCjkFontFamily.trim() : defaults.terminalCjkFontFamily,
     focusAnimation: ['smooth', 'system', 'off'].includes(input.focusAnimation) ? input.focusAnimation : defaults.focusAnimation,
     startView: ['decisions', 'workspace'].includes(input.startView) ? input.startView : defaults.startView,
-    theme: ['daylight', 'forest', 'mountain-blue', 'wild-red', 'mono-amber', 'mono-amber-dark'].includes(input.theme) ? input.theme : defaults.theme,
+    theme: ['daylight', 'forest', 'mountain-blue', 'wild-red', 'yosemite', 'el-capitan', 'mojave', 'catalina', 'mono-amber', 'mono-amber-dark'].includes(input.theme) ? input.theme : defaults.theme,
     language: ['zh', 'en'].includes(input.language) ? input.language : defaults.language,
     // glass: translucent panes over the wallpaper. solid: opaque panes, on which Windows draws text with
     // ClearType and nothing is blurred behind them.

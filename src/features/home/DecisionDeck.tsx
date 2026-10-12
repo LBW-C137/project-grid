@@ -90,7 +90,7 @@ export function DecisionDeck({ decisions, now, onOpen, onDone, onError }: {
   const untilt = (event: PointerEvent<HTMLButtonElement>) => { event.currentTarget.style.removeProperty('--tilt-x'); event.currentTarget.style.removeProperty('--tilt-y'); };
   return <>
     <div className="decision-deck-wrap">
-      <div ref={deck} className="decision-deck" role="listbox" aria-label={t('待决定的事')} tabIndex={0} onWheel={wheel} onKeyDown={keys}
+      <div ref={deck} className="decision-deck" style={{ '--behind': Math.min(decisions.length - front - 1, 2) } as CSSProperties} role="listbox" aria-label={t('待决定的事')} tabIndex={0} onWheel={wheel} onKeyDown={keys}
         aria-activedescendant={decisions[front] ? `deck-${decisions[front].id}` : undefined}>
         {decisions.map((decision, index) => {
           const offset = index - front, { label, Icon } = decisionKind(decision.kind);
