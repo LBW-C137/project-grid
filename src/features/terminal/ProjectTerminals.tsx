@@ -43,7 +43,7 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
           <button className="icon-button" title={t('关闭此终端')} aria-label={t('关闭 {name}', { name })} onClick={() => void onAction(window.agentrix.closeTerminal(terminal.id))}><X size={13} /></button>
         </header>}
         <div className="terminal-split-body">
-          {readingShown(terminal, raw) && <ReadingView projectId={project.id} terminal={terminal} autoFocus={focused && selected === terminal.id} onShowTerminal={() => setReading(terminal.id, false)} onError={onError} onOpenLink={target => onOpenLink(project.id, target)} />}
+          {readingShown(terminal, raw) && <ReadingView projectId={project.id} terminal={terminal} remote={project.kind === 'ssh'} autoFocus={focused && selected === terminal.id} onShowTerminal={() => setReading(terminal.id, false)} onError={onError} onOpenLink={target => onOpenLink(project.id, target)} />}
           {terminal.sessionId ? <TerminalPane id={terminal.id} sessionId={terminal.sessionId} fontSize={fontSize} focused={focused && selected === terminal.id && !readingShown(terminal, raw)} onError={onError} onOpenLink={(_id, target) => onOpenLink(project.id, target)} remote={project.kind === 'ssh'} />
             // A local project starts with the agent chosen here; an SSH project connects first, in its terminal.
             : project.kind !== 'ssh' ? <AgentLauncher terminalId={terminal.id} onAction={onAction} />

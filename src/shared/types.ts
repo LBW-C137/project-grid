@@ -127,6 +127,8 @@ type Bridge = {
   attachTerminal(id: string): Promise<Result<TerminalSnapshot>>;
   terminalCommands(id: string): Promise<Result<AgentCommand[]>>;
   agentImage(file: string): Promise<Result<{ url: string; width: number; height: number }>>;
+  saveImage(terminalId: string, bytes: ArrayBuffer, type: string): Promise<Result<string>>;
+  clipboardImage(terminalId: string): Promise<Result<string | null>>;
   fileCard(id: string, file: string): Promise<Result<FileCard>>;
   agentHistory(id: string): Promise<Result<{ claude: { id: string; at: number } | null; codex: { id: string; at: number } | null }>>;
   agentLaunch(id: string, agent: 'claude' | 'codex', mode: 'new' | 'continue'): Promise<Result<boolean>>;

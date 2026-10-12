@@ -13,6 +13,7 @@ import { ReadingChoice } from './ReadingChoice';
 import { ReadingQuestion } from './ReadingQuestion';
 import { ReadingSessions } from './ReadingSessions';
 import { usesSessionPicker } from './reading-sessions';
+import { dataUrl, thumbnail } from './image-thumbnail';
 import { useWelcomeStarting } from './reading-welcome';
 import { ReadingCliPanel } from './ReadingCliPanel';
 import { ReadingSignIn } from './ReadingSignIn';
@@ -66,17 +67,6 @@ function finish(parsed: string) {
 }
 
 const safely = (make: () => string) => { try { return make(); } catch { return null; } };
-// A pasted picture as a JPEG at most 640 pixels wide, for the attachment bar and the message.
-const dataUrl = (file: Blob) => new Promise<string>((done, fail) => { const reader = new FileReader(); reader.onload = () => typeof reader.result === 'string' ? done(reader.result) : fail(new Error('unreadable')); reader.onerror = () => fail(reader.error); reader.readAsDataURL(file); });
-async function thumbnail(file: Blob) {
-  const bitmap = await createImageBitmap(file);
-  try {
-    if (bitmap.width <= 640) return await dataUrl(file);
-    const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = Math.max(1, Math.round(bitmap.height * 640 / bitmap.width));
-    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', .86);
-  } finally { bitmap.close(); }
-}
 // Short answers are parsed here at once. A long one is parsed in a worker (markdown-parse): until it is ready the
 // previous version stays (an answer still streaming) or the text shows plain, and a parse that takes too long leaves
 // it plain rather than freezing the window. One parse per answer runs at a time, always of its latest text.
@@ -211,7 +201,7 @@ function WorkingLine({ agent, label }: { agent: 'claude' | 'codex'; label: strin
   </div>;
 }
 
-export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, onError, onOpenLink }: { projectId: string; terminal: ProjectTerminal; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
+export function ReadingView({ projectId, terminal, remote = false, autoFocus, onShowTerminal, onError, onOpenLink }: { projectId: string; terminal: ProjectTerminal; remote?: boolean; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
   const conversationEntries = useReadingConversation(terminal.id, terminal.sessionId);
   const [hidden, setHidden] = useState(() => cleared.get(conversationKey(terminal.id, terminal.sessionId)));
   useEffect(() => { setHidden(cleared.get(conversationKey(terminal.id, terminal.sessionId))); }, [terminal.id, terminal.sessionId]);
@@ -447,6 +437,19 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
     if (data.getData('text/plain') || ![...data.items].some(item => item.kind === 'file' && item.type.startsWith('image/'))) return;
     event.preventDefault();
     if (!terminal.codexActive || !terminal.sessionId) { onError(t('启动 Codex 或 Claude Code 后才能粘贴图片。')); return; }
+    // Over SSH the CLI cannot reach this computer's clipboard: the picture goes over as a file on that computer and its
+    // path joins the message, which both CLIs take as an attached picture.
+    if (remote) {
+      const file = [...data.items].find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+      if (!file) return;
+      const target = event.currentTarget, at = target.selectionStart ?? draft.length, until = target.selectionEnd ?? at;
+      void file.arrayBuffer().then(bytes => window.agentrix.saveImage(terminal.id, bytes, file.type)).then(saved => {
+        if (!saved.ok) { onError(saved.error); return; }
+        const current = input.current?.value ?? draft, before = current.slice(0, at), after = current.slice(until);
+        edit(`${before}${before && !/\s$/.test(before) ? ' ' : ''}${saved.value} ${after}`);
+      }).catch(error => onError(String(error)));
+      return;
+    }
     window.agentrix.writeTerminal(terminal.id, terminal.agent === 'claude' ? '\x1bv' : '\x16');
     // The agent takes the picture from the clipboard; a copy is kept here to show in the message, small (a 4K
     // screenshot decoded at full size costs tens of megabytes per copy).
@@ -533,7 +536,7 @@ export function ReadingView({ projectId, terminal, autoFocus, onShowTerminal, on
       : <ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} />}</div>}
     {sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
-    }}><ReadingSessions key={`${terminal.id}-${terminal.sessionId}`} terminalId={terminal.id} onError={onError} onClose={() => setSessionsOpen(false)} onSent={text => {
+    }}><ReadingSessions key={`${terminal.id}-${terminal.sessionId}`} terminalId={terminal.id} agent={terminal.agent === 'codex' ? 'codex' : 'claude'} onError={onError} onClose={() => setSessionsOpen(false)} onSent={text => {
       history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50)); setImages([]); toBottom();
     }} /></div>}
     {/* The command list is part of the page, above the message box, not a popup over the conversation. */}

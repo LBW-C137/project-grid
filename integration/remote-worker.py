@@ -1,5 +1,6 @@
 """Agentrix's session-scoped Linux worker, transported over one SSH connection."""
 import base64
+import calendar
 import concurrent.futures
 import glob
 import hashlib
@@ -151,14 +152,64 @@ def recent_session(root, codex_home, thread_id=None):
         except (OSError, ValueError, TypeError): continue
     return None
 
+CONVERSATION_EVENTS = ("item_completed", "user_message", "agent_message", "task_started", "turn_started", "task_complete", "turn_completed", "turn_aborted", "turn_interrupted")
+TOOL_CALLS = ("custom_tool_call", "function_call", "local_shell_call")
+TOOL_OUTPUTS = ("custom_tool_call_output", "function_call_output", "local_shell_call_output")
+RECORD_TEXT_LIMIT, RECORDS_BUDGET = 64 * 1024, 1024 * 1024
+
+def record_time(text):
+    """A rollout timestamp ("2026-10-12T05:56:02.121Z") in milliseconds, 0 when unreadable. Python 3.6 has no
+    datetime.fromisoformat, so the UTC time is read field by field."""
+    match = re.match(r"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.(\d+))?(Z|[+-]\d\d:?\d\d)?$", text or "")
+    if not match: return 0
+    try:
+        seconds = calendar.timegm(tuple(int(part) for part in match.groups()[:6]) + (0, 0, 0))
+        zone = match.group(8) or "Z"
+        if zone != "Z":
+            sign, hours, minutes = (1 if zone[0] == "+" else -1), int(zone[1:3]), int(zone[-2:])
+            seconds -= sign * (hours * 3600 + minutes * 60)
+        return int(seconds * 1000 + int((match.group(7) or "0")[:3].ljust(3, "0")))
+    except (ValueError, OverflowError): return 0
+
+def clip(value, limit=RECORD_TEXT_LIMIT):
+    return value[:limit] if isinstance(value, str) else value
+
+def compact_record(record):
+    """What the reading view and the activity pane on the other computer take from one rollout record, small: the
+    conversation's messages, the tools called and which call finished. Outputs, reasoning and instructions stay here."""
+    kind, payload, at = record.get("type"), record.get("payload") or {}, record.get("timestamp")
+    if kind == "session_meta": return {"type": kind, "timestamp": at, "payload": {"id": payload.get("id"), "cwd": payload.get("cwd"), "source": payload.get("source")}}
+    if kind == "turn_context": return {"type": kind, "timestamp": at, "payload": {"cwd": payload.get("cwd")}}
+    if kind == "event_msg" and payload.get("type") in CONVERSATION_EVENTS:
+        item = payload.get("item")
+        if payload.get("type") == "item_completed":
+            if not isinstance(item, dict) or item.get("type") not in ("UserMessage", "AgentMessage"): return None
+            content = [{"type": "text", "text": clip(part.get("text"))} for part in item.get("content") or [] if isinstance(part, dict) and isinstance(part.get("text"), str)]
+            return {"type": kind, "timestamp": at, "payload": {"type": "item_completed", "item": {"type": item.get("type"), "id": item.get("id"), "content": content}}}
+        return {"type": kind, "timestamp": at, "payload": {key: clip(value) for key, value in payload.items() if key in ("type", "turn_id", "message")}}
+    if kind == "response_item" and payload.get("type") in TOOL_OUTPUTS: return {"type": kind, "timestamp": at, "payload": {"type": payload.get("type"), "call_id": payload.get("call_id")}}
+    if kind == "response_item" and payload.get("type") in TOOL_CALLS:
+        return {"type": kind, "timestamp": at, "payload": {key: clip(value) for key, value in payload.items() if key in ("type", "name", "call_id", "id", "input", "arguments", "action")}}
+    return None
+
 class CodexActivityReader:
-    """Incrementally read only the interactive parent's lifecycle records."""
+    """Incrementally read the interactive parent's records: its lifecycle, and (compacted) what the reading view shows."""
     def __init__(self, root, home, since, thread_id=None):
         self.root, self.home, self.since = root, home, since
         self.thread_id = thread_id
         self.filename, self.snapshot = None, None
         self.offset, self.buffer, self.skipping, self.next_discovery = 0, b"", False, 0
         self.file_identity, self.file_size, self.history_pending = None, 0, True
+        # Records for the other computer, and whether its conversation starts over (a new file, or the file replaced).
+        self.outbox, self.reset = [], False
+
+    def take(self):
+        """The records waiting, up to a budget per answer; the rest go with the next one."""
+        batch, size = [], 0
+        while self.outbox and (not batch or size + len(json.dumps(self.outbox[0], ensure_ascii=True)) <= RECORDS_BUDGET):
+            record = self.outbox.pop(0); size += len(json.dumps(record, ensure_ascii=True)); batch.append(record)
+        reset, self.reset = self.reset, False
+        return {"records": batch, "reset": reset, "historyDone": bool(self.filename) and not self.history_pending and not self.outbox}
 
     def discover(self):
         if time.monotonic() < self.next_discovery: return
@@ -188,15 +239,19 @@ class CodexActivityReader:
                 self.filename = filename
                 self.file_identity, self.history_pending = None, True
                 self.snapshot = {"threadId": meta["id"], "turnId": None, "state": "unknown", "updatedAt": 0}
+                self.outbox, self.reset = [], True
                 return
             except (OSError, ValueError, TypeError): pass
 
     def record(self, record):
+        compact = compact_record(record)
+        if compact is not None:
+            self.outbox.append(compact)
+            if len(self.outbox) > 20000: del self.outbox[:len(self.outbox) - 20000]
         if record.get("type") != "event_msg": return
         item = record.get("payload", {})
         kind, turn = item.get("type"), item.get("turn_id")
-        try: updated = int(datetime.fromisoformat(record.get("timestamp", "").replace("Z", "+00:00")).timestamp() * 1000)
-        except (ValueError, TypeError): updated = 0
+        updated = record_time(record.get("timestamp"))
         if kind in ("task_started", "turn_started") and isinstance(turn, str) and turn:
             self.snapshot.update(turnId=turn, state="working", updatedAt=updated)
         elif kind in ("task_complete", "turn_completed", "turn_aborted", "turn_interrupted"):
@@ -213,6 +268,7 @@ class CodexActivityReader:
                 self.offset, self.skipping = transcript_window(size)
                 self.buffer, self.history_pending = b"", True
                 self.snapshot.update(turnId=None, state="unknown", updatedAt=0)
+                self.outbox, self.reset = [], True
             self.file_identity, self.file_size = identity, size
             source.seek(self.offset)
             end = size if self.history_pending else min(size, self.offset + LIVE_READ_LIMIT)
@@ -252,7 +308,9 @@ class Worker:
             if thread_id is not None and not re.fullmatch(r"[a-fA-F0-9]{8}-[a-fA-F0-9-]{8,27}", thread_id): raise ValueError("无效的会话标识。")
             if self.activity_reader is None or self.activity_reader.since != since or self.activity_reader.thread_id != thread_id:
                 self.activity_reader = CodexActivityReader(self.coding_root, self.codex_home, since, thread_id)
-            return self.activity_reader.read()
+            # The lifecycle snapshot (None while history is still being read), with the conversation's records.
+            snapshot = self.activity_reader.read()
+            return {"snapshot": snapshot, **self.activity_reader.take()}
 
     def initialize(self, config):
         self.root = os.path.realpath(os.path.expanduser(config["path"]))
@@ -263,8 +321,9 @@ class Worker:
         self.project_id = config["projectId"]
         branch = ""
         try:
-            result = subprocess.run(["git", "-C", self.root, "branch", "--show-current"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=3)
-            if result.returncode == 0: branch = result.stdout.strip()[:120]
+            # rev-parse names the branch on every Git; branch --show-current needs 2.22 and -C needs 1.8.5.
+            result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=self.root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=3)
+            if result.returncode == 0 and result.stdout.strip() != "HEAD": branch = result.stdout.strip()[:120]
         except (OSError, subprocess.TimeoutExpired): pass
         return {"root": self.root, "branch": branch, "platform": sys.platform}
 
@@ -279,8 +338,28 @@ class Worker:
         info = os.stat(filename)
         return {"path": relative, "name": os.path.basename(filename), "size": info.st_size, "modifiedAt": int(info.st_mtime * 1000), "realPath": os.path.relpath(filename, self.root).replace(os.sep, "/"), "directory": stat.S_ISDIR(info.st_mode), "file": stat.S_ISREG(info.st_mode), "link": os.path.islink(os.path.join(self.root, relative))}
 
+    def git_version(self):
+        """Git's version as (major, minor, patch); None when it cannot be told. Asked once."""
+        if not hasattr(self, "_git_version"):
+            try:
+                found = subprocess.run(["git", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=3).stdout
+                parts = [int(part) for part in re.findall(r"\d+", found)[:3]]
+                self._git_version = tuple(parts + [0] * (3 - len(parts))) if len(parts) >= 2 else None
+            except (OSError, ValueError, subprocess.TimeoutExpired): self._git_version = None
+        return self._git_version
+
+    def no_relative(self):
+        """--no-relative keeps paths from the top of the repository despite diff.relative; both came in Git 2.28, so
+        older Git neither needs nor knows it."""
+        version = self.git_version()
+        return [] if version and version < (2, 28) else ["--no-relative"]
+
     def git(self, action, value=None):
         if action not in ("status", "history", "files", "diff", "apply"): raise ValueError("无效的 Git 请求。")
+        # The Git panel reads porcelain v2 status (Git 2.11) and ISO dates (2.2). An older Git, such as CentOS 7's
+        # 1.8.3, is named instead of failing on an option it does not know.
+        version = self.git_version()
+        if version and version < (2, 11): raise ValueError("远程 Git 版本 %s 太旧，Git 面板需要 2.11 或更高版本。" % ".".join(str(part) for part in version))
         if action == "history" and (type(value) is not int or not 0 <= value <= 100000): raise ValueError("无效的历史页码。")
         if action == "files" and (not isinstance(value, str) or not re.fullmatch(r"(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})", value)): raise ValueError("无效的提交标识。")
         if action == "diff":
@@ -290,12 +369,13 @@ class Worker:
         env = {key: val for key, val in os.environ.items() if key.upper() not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES")}
         env.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1", LC_ALL="C")
         # text: a patch for git's standard input. ok: exit codes whose output is still wanted.
-        def run(args, text=None, ok=(0,)):
+        # cwd: the folder git runs in (given this way, not as -C, which CentOS 7's git 1.8.3 does not know).
+        def run(args, text=None, ok=(0,), cwd=None):
             # Spool subprocess output to temporary files so a large worktree does
             # not build an unbounded Python/JSON buffer. Both files close on error.
             with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as error:
                 try:
-                    result = subprocess.run(["git", "--no-pager", "-c", "core.fsmonitor=false", "-c", "log.showSignature=false", "-c", "color.ui=false", "-c", "i18n.logOutputEncoding=UTF-8", "-C", self.root] + args, stdout=output, stderr=error, env=env, timeout=8, input=None if text is None else text.encode("utf-8"))
+                    result = subprocess.run(["git", "--no-pager", "-c", "core.fsmonitor=false", "-c", "log.showSignature=false", "-c", "color.ui=false", "-c", "i18n.logOutputEncoding=UTF-8"] + args, cwd=cwd or self.root, stdout=output, stderr=error, env=env, timeout=8, input=None if text is None else text.encode("utf-8"))
                 except FileNotFoundError: raise ValueError("远程主机未找到 Git。")
                 except subprocess.TimeoutExpired: raise ValueError("远程 Git 读取超时，请稍后重试。")
                 if output.tell() > 1024 * 1024: raise ValueError("Git 结果过大，请缩小项目范围后重试。")
@@ -310,28 +390,29 @@ class Worker:
             elif action == "history":
                 try: data = run(["log", "--topo-order", "-z", "--format=%H%x00%P%x00%an%x00%aI%x00%D%x00%s", "--max-count=41", "--skip=" + str(value)] + (["--full-history", "--", "."] if prefix else ["--"]))
                 except ValueError as error:
-                    if "does not have any commits yet" in str(error): data = ""
+                    # No commits yet: new Git says so, Git before 2.24 calls HEAD a bad revision.
+                    if "does not have any commits yet" in str(error) or "bad default revision" in str(error): data = ""
                     else: raise
             elif action == "diff":
-                options = ["--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "-U3"]
+                options = ["--no-color", "--no-ext-diff", "--no-textconv"] + self.no_relative() + ["-U3"]
                 if value.get("untracked") is True:
                     # Nothing in the index to compare with: against nothing, from the top of the repository
                     # so the header names the file the way every other patch does.
                     top = re.sub(r"\r?\n$", "", run(["rev-parse", "--show-toplevel"]))
-                    data = run(["-C", top, "diff", "--no-index"] + options + ["--", "/dev/null", prefix + value["path"]], ok=(0, 1))
+                    data = run(["diff", "--no-index"] + options + ["--", "/dev/null", prefix + value["path"]], ok=(0, 1), cwd=top)
                 else: data = run(["diff"] + (["--cached"] if value.get("staged") is True else []) + options + ["--", value["path"]])
             elif action == "apply":
                 run(["apply"] + (["-R"] if value.get("reverse") is True else []) + (["--cached"] if value.get("cached") is True else []) + ["--whitespace=nowarn", "-"], text=value["patch"])
                 data = ""
             else:
                 parents = run(["show", "-s", "--format=%P", value + "^{commit}", "--"]).strip().split()
-                args = ["diff", "--no-relative", "--name-status", "-z", "--no-ext-diff", "--no-textconv", "-M", parents[0], value, "--", "."] if parents else ["diff-tree", "--root", "--no-relative", "--no-commit-id", "-r", "--name-status", "-z", "--no-ext-diff", "--no-textconv", value, "--", "."]
+                args = ["diff"] + self.no_relative() + ["--name-status", "-z", "--no-ext-diff", "--no-textconv", "-M", parents[0], value, "--", "."] if parents else ["diff-tree", "--root"] + self.no_relative() + ["--no-commit-id", "-r", "--name-status", "-z", "--no-ext-diff", "--no-textconv", value, "--", "."]
                 data = run(args)
             value = {"repository": True, "prefix": prefix, "output": data}
             if len(json.dumps(value, ensure_ascii=True)) > MAX_MESSAGE - 256: raise ValueError("Git 结果过大，请缩小项目范围后重试。")
             return value
         except ValueError as error:
-            if "not a git repository" in str(error) or "must be run in a work tree" in str(error): return {"repository": False, "prefix": "", "output": ""}
+            if "not a git repository" in str(error).lower() or "must be run in a work tree" in str(error).lower(): return {"repository": False, "prefix": "", "output": ""}
             raise
 
     def entry_path(self, relative):
@@ -390,6 +471,27 @@ class Worker:
         self.uploads[identity] = {"file": os.fdopen(descriptor, "wb"), "temporary": temporary, "target": os.path.join(parent, name), "size": size, "written": 0}
         return {"id": identity}
 
+    # A picture pasted for the agent here: the CLI on this machine cannot read the other computer's clipboard (no
+    # display to reach), so the picture comes over as a file in this machine's temporary folder, and its absolute path
+    # goes with the message for the agent to open. A week later the next one clears it away.
+    def start_image(self, extension, size):
+        if extension not in ("png", "jpg", "webp", "gif"): raise ValueError("只能附加 PNG、JPEG、WebP 或 GIF 图片。")
+        if type(size) is not int or size <= 0 or size > 25 * 1024 * 1024: raise ValueError("图片太大（超过 25 MB），请压缩后再粘贴。")
+        folder = os.path.join(tempfile.gettempdir(), "agentrix-images-" + str(os.getuid()))
+        os.makedirs(folder, mode=0o700, exist_ok=True)
+        if os.path.islink(folder) or os.stat(folder).st_uid != os.getuid(): raise ValueError("临时图片目录不安全。")
+        cutoff = time.time() - 7 * 86400
+        for name in os.listdir(folder):
+            try:
+                existing = os.path.join(folder, name)
+                if os.lstat(existing).st_mtime < cutoff: os.unlink(existing)
+            except OSError: pass
+        target = os.path.join(folder, time.strftime("%Y%m%d-%H%M%S-") + os.urandom(4).hex() + "." + extension)
+        descriptor, temporary = tempfile.mkstemp(prefix=".agentrix-upload-", dir=folder)
+        identity = os.urandom(16).hex()
+        self.uploads[identity] = {"file": os.fdopen(descriptor, "wb"), "temporary": temporary, "target": target, "size": size, "written": 0, "absolute": True}
+        return {"id": identity}
+
     def upload_chunk(self, identity, offset, data):
         upload = self.uploads[identity]
         chunk = base64.b64decode(data, validate=True)
@@ -405,6 +507,7 @@ class Worker:
         # anything created by another process during the transfer.
         os.link(upload["temporary"], upload["target"])
         os.unlink(upload["temporary"]); del self.uploads[identity]
+        if upload.get("absolute"): return {"path": upload["target"]}
         return {"path": os.path.relpath(upload["target"], self.root).replace(os.sep, "/")}
 
     def cancel_upload(self, identity):
@@ -636,6 +739,7 @@ def main():
             elif op == "rename": value = worker.rename(message["path"], message["name"])
             elif op == "remove": value = worker.remove(message["path"])
             elif op == "upload-start": value = worker.start_upload(message.get("path", ""), message["name"], message["size"])
+            elif op == "image-start": value = worker.start_image(message.get("extension"), message.get("size"))
             elif op == "upload-chunk": value = worker.upload_chunk(message["transfer"], message["offset"], message["data"])
             elif op == "upload-finish": value = worker.finish_upload(message["transfer"])
             elif op == "upload-cancel": value = worker.cancel_upload(message["transfer"])

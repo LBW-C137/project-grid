@@ -3,10 +3,10 @@ const assert = require('node:assert/strict');
 const { usesSessionPicker, resumeReadingSession, sessionAge } = require('../src/features/reading/reading-sessions.ts');
 const { welcomeStarting, hasStatusFooter } = require('../src/features/reading/reading-welcome.ts');
 
-test('only exact /resume for active Claude opens the native picker', () => {
+test('only exact /resume for an active agent opens the reading view picker', () => {
   assert.equal(usesSessionPicker({ agent: 'claude', codexActive: true }, '/resume'), true);
   for (const text of ['/resume abc', '/resume-all', '/RESUME', 'hello', '/resume\n']) assert.equal(usesSessionPicker({ agent: 'claude', codexActive: true }, text), false);
-  assert.equal(usesSessionPicker({ agent: 'codex', codexActive: true }, '/resume'), false);
+  assert.equal(usesSessionPicker({ agent: 'codex', codexActive: true }, '/resume'), true, "Codex's own picker fills the screen, which the reading view cannot show");
   assert.equal(usesSessionPicker({ agent: 'claude', codexActive: false }, '/resume'), false);
 });
 

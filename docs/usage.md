@@ -78,7 +78,7 @@ Windows 多项目终端工作台。每个目录对应一个真实终端，Codex 
 
 主机列表沿用 VS Code 的 `remote.SSH.configFile`，未设置时使用 `~/.ssh/config`，并读取 Include 中的主机。连接由 OpenSSH 处理，沿用配置中的 IdentityFile、Port、ProxyJump 等参数。密码仅用于这次认证，不写入项目配置。
 
-远端需要 **Linux、Python 3.6+ 和 Bash**；远端 Bash 中需能找到 `codex`。每个项目通过同一条 SSH 连接传输终端、目录和文件预览，文件按需读取。远端终端会加载 `~/.bashrc`。连接断开后，项目菜单可重新连接；文件目录外的符号链接不会被预览。
+远端需要 **Linux、Python 3.6+ 和 Bash**；远端 Bash 中需能找到 `codex`。Git 面板需要远端 Git 2.11 或更高版本。远端的 CLI 读不到这台电脑的剪贴板：在 SSH 项目里粘贴截图时，图片会先放进远端的临时目录（`/tmp/agentrix-images-<用户号>`，一周后清理），再把路径交给助手。每个项目通过同一条 SSH 连接传输终端、目录和文件预览，文件按需读取。远端终端会加载 `~/.bashrc`。连接断开后，项目菜单可重新连接；文件目录外的符号链接不会被预览。
 
 SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入应用内资源管理器。项目列表、SSH 主机别名和路径保存在本机，项目文件与 Codex 对话留在服务器上。
 
@@ -93,6 +93,14 @@ SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入
 - 本地与 SSH 项目均支持恢复；SSH 需要重新认证时会弹出认证窗口。只关闭到托盘时，原任务继续运行，不会重新恢复一遍。
 
 恢复基于各主机 Codex CLI 保存的会话记录。未找到可识别的记录但上次仍在运行 Codex 时，使用 `codex resume --last` 交由 CLI 选择最近会话，不创建新对话。
+
+## 开发记忆与技能
+
+同一个项目里，Claude Code 和 Codex 的开发记忆会自动继承。每次在本地项目里打开其中一个，Agentrix 会整理这个文件夹里两个 CLI 做过的每一轮：你提的要求、它最后的回答、改了哪些文件、跑了哪些检查，并告诉新打开的 CLI 在第一次回复前先读。不需要任何操作。
+
+这份记忆保存在 Agentrix 自己的数据目录（`memory` 文件夹），**永久保留在本机**，不写进项目，也不会因为 CLI 清理自己的记录（Claude Code 默认一个月后清理）而丢失。SSH 项目每轮结束时也会记进来。
+
+可以反复用的做法会沉淀成技能，放在项目仓库的 `skills/` 文件夹里（每个技能一个子文件夹，里面一份 `SKILL.md`）。CLI 接到任务时会先看有没有合适的技能照着做；发现新的、以后还会用到的做法时，会新建或更新技能。技能会随仓库提交和推送，所以不能带个人隐私：CLI 被要求只写占位符，Agentrix 也会在 CLI 启动和每轮结束时检查本地项目的 `skills/`，把用户名、个人目录、IP 地址、邮箱、电话、身份证号、密码、令牌和私钥等替换成 `<home>`、`<ip>`、`<email>`、`<secret>` 之类的占位符。
 
 ## 复制与粘贴
 
@@ -221,20 +229,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=1.1.1`：安装指定版本。
+- `AGENTRIX_VERSION=1.2.0`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 1.1.1：
+例如，安装 1.2.0：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.1.1 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.0 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-1.1.1-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-1.2.0-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：

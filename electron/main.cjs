@@ -12,6 +12,9 @@ const { registerUpdatesIpc } = require('./features/updates/ipc.cjs');
 const { registerAgentsIpc } = require('./features/agents/ipc.cjs');
 const { folderHistory, launchCommand } = require('./features/agents/launch.cjs');
 const { READING_NOTE } = require('./features/agents/reading-note.cjs');
+const { writeHandoff, startupNote } = require('./features/agents/handoff.cjs');
+const { remember, roundsOf } = require('./features/agents/project-memory.cjs');
+const { scrubSkills } = require('./features/agents/skill-privacy.cjs');
 const { setThumbnailer, isGeneratedImage } = require('./conversation.cjs');
 const { registerVoiceIpc } = require('./features/voice/ipc.cjs');
 const { createIpcAdapter } = require('./shared/ipc.cjs');
@@ -60,6 +63,7 @@ const { ConversationLog, claudeConversation, codexConversation } = require('./co
 const { conversationBatchDelay, pollAfterSubmission } = require('./conversation-timing.cjs');
 const { listAgentCommands, isLocalAgentCommand } = require('./agent-commands.cjs');
 const { claudeConfigDir, findClaudeSession, listClaudeSessions } = require('./claude-sessions.cjs');
+const { listCodexSessions } = require('./codex-sessions.cjs');
 const { AgentsManager, onPath } = require('./agents.cjs');
 const DEFAULT_SHORTCUTS = require('./shortcuts.json');
 const { windowsAppId, materializeIcon, repairShortcuts, refreshSearchIcons } = require('./windows-integration.cjs');
@@ -354,6 +358,13 @@ function applyActivity(project, s, snapshot) {
     if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
     if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project);
   } else if (snapshot.state === 'interrupted') store.expectCompletion(project.id, false);
+  // The round that ended joins the folder's permanent memory (project-memory.cjs), here or over SSH alike. Claude's
+  // transcript is read a moment later, when its last reply has arrived.
+  if (['complete', 'interrupted'].includes(snapshot.state) && snapshot.threadId) {
+    const agent = s.agent === 'claude' ? 'claude' : 'codex', folder = memoryFolder(project, s);
+    setTimeout(() => { void remember(memoryDir(), folder, roundsOf(s.conversation.list, agent, snapshot.threadId)).catch(() => {}); }, 1500).unref?.();
+    if (project.kind !== 'ssh') void scrubProjectSkills(project).catch(() => {});
+  }
   broadcast();
 }
 
@@ -401,6 +412,11 @@ function onEvent(event) {
     if (typeof event.codexHome === 'string') s.codexHome = event.codexHome;
     if (!quitting && typeof event.cwd === 'string') store.setRestore(s.terminalId, { cwd: event.cwd });
   } else if (event.type === 'codex-started') {
+    // The work done in this folder before, brought up to date for the CLI that starts now (handoff.cjs).
+    if (project.kind !== 'ssh') {
+      void writeHandoff(handoffFile(s.terminalId), event.cwd || project.path, { memoryDir: memoryDir(), codexHome: event.codexHome || s.codexHome || undefined }).catch(() => {});
+      void scrubProjectSkills(project).catch(() => {});
+    }
     const claudeResumeId = event.agent === 'claude' ? s.claudeResumeId : null;
     const keepClaudeHistory = claudeResumeId && s.claudeSessionId === claudeResumeId && s.claudeTranscript;
     s.ready = false;
@@ -426,17 +442,27 @@ function onEvent(event) {
     store.setRestore(s.terminalId, agentRestore);
     const remoteSince = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince;
     s.activityMonitor?.stop();
-    const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0,
-      onHistory: ready => {
-        if (ready) s.conversation.endHistory();
-        else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); }
-      },
-      onRecord: record => {
-        codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
-        if (record?.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload?.type)) s.promptQueue.finish(Date.parse(record.timestamp) || Date.now());
-      } });
+    // Its records feed the reading view and the activity pane: read here, or, over SSH, read on that computer and
+    // sent back compacted with each status (integration/remote-worker.py), with the same history start and end.
+    const onHistory = ready => {
+      if (ready) s.conversation.endHistory();
+      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); }
+    };
+    const onRecord = record => {
+      codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
+      if (record?.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload?.type)) s.promptQueue.finish(Date.parse(record.timestamp) || Date.now());
+    };
+    const remoteStatus = value => {
+      if (!value || typeof value !== 'object' || !('snapshot' in value)) return value;
+      if (sessions.get(s.terminalId) !== s) return null;
+      if (value.reset) onHistory(false);
+      for (const record of Array.isArray(value.records) ? value.records : []) { try { onRecord(record); } catch { } }
+      if (value.historyDone) onHistory(true);
+      return value.snapshot;
+    };
+    const reader = project.kind === 'ssh' ? null : new CodexActivityReader(event.cwd || project.path, event.codexHome || s.codexHome, s.activitySince, { threadId: () => s.reportedThreadId, requireBinding: () => (project.terminals?.length || 0) > 0, onHistory, onRecord });
     s.activityMonitor = monitorActivity(
-      () => reader ? reader.read() : project.terminals?.length && !s.reportedThreadId ? Promise.resolve(null) : s.terminal.request('codex-status', { since: remoteSince, threadId: s.reportedThreadId }),
+      () => reader ? reader.read() : project.terminals?.length && !s.reportedThreadId ? Promise.resolve(null) : s.terminal.request('codex-status', { since: remoteSince, threadId: s.reportedThreadId }).then(remoteStatus),
       snapshot => {
         if (!reader) snapshot = { ...snapshot, updatedAt: snapshot.updatedAt + s.activitySince - remoteSince };
         applyActivity(project, s, snapshot);
@@ -537,6 +563,22 @@ function localShell(fresh = false) {
   return linuxShells;
 }
 
+// Each local terminal's handoff of earlier work, and every folder's permanent development memory, in this profile
+// (never in the project; the memory is never cleared).
+const handoffFile = terminalId => path.join(app.getPath('userData'), 'handoff', `${terminalId}.md`);
+const memoryDir = () => path.join(app.getPath('userData'), 'memory');
+// Skills the agents write into a project are committed and pushed: whatever personal data got into them (this
+// computer's home folder and user name, the SSH hosts, addresses, keys, contacts) is replaced as soon as a round ends.
+async function scrubProjectSkills(project) {
+  const changed = await scrubSkills(path.join(project.path, 'skills'), { homes: [os.homedir()], users: [os.userInfo().username],
+    hosts: store.projects.filter(item => item.kind === 'ssh' && item.ssh?.host).map(item => item.ssh.host) });
+  if (changed.length) console.log(`Agentrix scrubbed personal data from ${changed.length} skill file(s) in ${project.name}.`);
+  return changed;
+}
+// The folder a session works in, as the memory names it: its path here, or the SSH host and path.
+const memoryFolder = (project, s) => project.kind === 'ssh' ? `ssh://${project.ssh?.host}${store.findTerminal(s.terminalId)?.record.restore?.cwd || project.path}`
+  : store.findTerminal(s.terminalId)?.record.restore?.cwd || project.path;
+
 function startTerminal(id) {
   const project = findProject(id);
   const old = sessions.get(id);
@@ -555,8 +597,12 @@ function startTerminal(id) {
     powershellPath, notifyPath: path.join(integrationDir, 'notify.ps1'), claudeHookPath: path.join(integrationDir, 'claude-hook.ps1'),
   }), { mode: 0o600 });
   let env = createTerminalEnvironment(withoutAppImage(process.env), bootstrapFile || '');
-  // The agent wrappers tell Claude Code and Codex what the reading view shows (an SSH project's worker is told on start).
-  if (project.kind !== 'ssh') env.AGENTRIX_READING_NOTE = READING_NOTE;
+  // The agent wrappers tell Claude Code and Codex what the reading view shows (an SSH project's worker is told on start),
+  // and where the work done in this folder before is written down for them (handoff.cjs), so either one carries it on.
+  if (project.kind !== 'ssh') {
+    env.AGENTRIX_READING_NOTE = startupNote(READING_NOTE, handoffFile(id), path.join(project.path, 'skills'));
+    void writeHandoff(handoffFile(id), startPath, { memoryDir: memoryDir() }).catch(() => {});
+  }
   // zsh and Bash learn where to report from their environment (integration/zsh-integration.zsh and
   // bash-integration.bash), and report through integration/agent-event.cjs run by this executable as Node.
   const local = project.kind !== 'ssh' && ['zsh', 'bash'].includes(shellKind);
@@ -566,7 +612,7 @@ function startTerminal(id) {
     locale: process.platform === 'darwin' ? terminalLocale(app.getPreferredSystemLanguages()) : 'C.UTF-8' };
   if (local) env = shellKind === 'zsh' ? zshEnvironment(env, integration) : shellEnvironment(env, integration);
   const sshAskpassPath = project.kind === 'ssh' ? prepareAskpass() : undefined;
-  const terminal = project.kind === 'ssh' ? new RemoteConnection({ ...project, id }, { integrationDir, auth: sshAuth, sessionKey, onEvent, codingPath: startPath, askpassPath: sshAskpassPath, readingNote: READING_NOTE,
+  const terminal = project.kind === 'ssh' ? new RemoteConnection({ ...project, id }, { integrationDir, auth: sshAuth, sessionKey, onEvent, codingPath: startPath, askpassPath: sshAskpassPath, readingNote: startupNote(READING_NOTE, null, `${project.path.replace(/\/+$/, '')}/skills`),
     onReady: info => { remoteBranch(project.id, info.branch); },
   }) : shellKind === 'zsh' ? pty.spawn(shell.file, ['-l', '-i'], {
     name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env,
@@ -685,7 +731,7 @@ async function requestQuit() {
 function registerIpc() {
   const { handle, listen } = createIpcAdapter({ ipcMain, getWindow: () => window, devUrl, t, report });
   registerAgentsIpc({ handle, agents, openExternal: url => shell.openExternal(url), getSession: id => sessions.get(id), findProject,
-    getRestoreCwd: id => store.findTerminal(id)?.record.restore?.cwd, listClaudeSessions, followClaudeSession, listAgentCommands, t });
+    getRestoreCwd: id => store.findTerminal(id)?.record.restore?.cwd, listClaudeSessions, listCodexSessions, followClaudeSession, listAgentCommands, t });
   registerSshIpc({ handle, getSSHInfo, sshAuth, addSSH: input => store.addSSH(input), hasSession: id => sessions.has(id), getSession: id => sessions.get(id),
     startTerminal, setStartupError: (id, message) => startupErrors.set(id, message), broadcast });
   updatesIpc = registerUpdatesIpc({ handle, updateManager, openExternal: url => shell.openExternal(url), getWindow: () => window, dialog, t,
@@ -705,6 +751,46 @@ function registerIpc() {
   // A new project's card offers Claude Code and Codex, fresh or continuing this folder's latest conversation.
   const folderOf = id => store.findTerminal(id)?.record.restore?.cwd || findProject(id).path;
   handle('project:card', (id, file) => fileCard(findProject(id), file, folderOf(id)));
+  // A picture pasted where the agent cannot take it from the clipboard: before it runs (the decisions' "what next"), or
+  // on another computer over SSH, whose CLI has no way to this one's clipboard. It is kept as a file where the agent
+  // runs (this profile, or that computer's temporary folder) and its path goes with the message for the agent to open.
+  // A week later the next one clears it away.
+  async function saveAgentImage(terminalId, data, extension) {
+    const project = findProject(terminalId), s = sessions.get(terminalId);
+    if (!data.length || data.length > 25 * 1024 * 1024) throw new Error('图片太大（超过 25 MB），请压缩后再粘贴。');
+    if (project.kind === 'ssh') {
+      if (!s?.terminal?.request) throw new Error('SSH 连接已断开，请重新连接。');
+      const transfer = await s.terminal.request('image-start', { extension, size: data.length });
+      try {
+        for (let offset = 0; offset < data.length; offset += 256 * 1024) {
+          await s.terminal.request('upload-chunk', { transfer: transfer.id, offset, data: data.subarray(offset, offset + 256 * 1024).toString('base64') });
+        }
+        return (await s.terminal.request('upload-finish', { transfer: transfer.id })).path;
+      } catch (error) { await s.terminal.request('upload-cancel', { transfer: transfer.id }).catch(() => {}); throw error; }
+    }
+    const folder = path.join(app.getPath('userData'), 'attachments');
+    await fs.promises.mkdir(folder, { recursive: true });
+    const old = Date.now() - 7 * 24 * 3600 * 1000;
+    for (const name of await fs.promises.readdir(folder).catch(() => [])) {
+      const file = path.join(folder, name);
+      if ((await fs.promises.stat(file).catch(() => null))?.mtimeMs < old) await fs.promises.rm(file, { force: true }).catch(() => {});
+    }
+    const file = path.join(folder, `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}.${extension}`);
+    await fs.promises.writeFile(file, data);
+    return file;
+  }
+  handle('agent:saveImage', async (terminalId, bytes, type) => {
+    const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[type];
+    if (!extension || !(bytes instanceof Uint8Array || bytes instanceof ArrayBuffer)) throw new Error('只能附加 PNG、JPEG、WebP 或 GIF 图片。');
+    return saveAgentImage(terminalId, Buffer.from(bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes), extension);
+  });
+  // The picture on the clipboard, for an SSH terminal's agent: saved on that computer, and its path given back to be
+  // pasted in its place. Null when the clipboard holds no picture (its text is pasted as usual then). Only reads.
+  handle('agent:clipboardImage', async terminalId => {
+    if (findProject(terminalId).kind !== 'ssh') return null;
+    const image = clipboard.readImage();
+    return image.isEmpty() ? null : saveAgentImage(terminalId, image.toPNG(), 'png');
+  });
   // A picture the reading view shows (one Codex generated, or an image file a card shows), large enough to look at in
   // its popup: at most 2400 pixels wide. Only an image file is read this way, never opened in another program.
   handle('agent:image', async file => {
@@ -741,7 +827,7 @@ function registerIpc() {
     startTerminal(id); broadcast(); return true;
   });
   registerTerminalIpc({ handle, listen, findProject, getSession: id => sessions.get(id), hasSession: id => sessions.has(id), startTerminal,
-    addTerminal: id => store.addTerminal(id), removeTerminal: id => store.removeTerminal(id), confirmTerminalClose, forgetRestorePlan: id => restorePlans.delete(id),
+    addTerminal: id => store.addTerminal(id), removeTerminal: id => { store.removeTerminal(id); fs.promises.rm(handoffFile(id), { force: true }).catch(() => {}); }, confirmTerminalClose, forgetRestorePlan: id => restorePlans.delete(id),
     disposeTerminal, clearStartupError: id => startupErrors.delete(id), broadcast, getProjectById: id => store.projects.find(p => p.id === id),
     acknowledgeProject: id => store.acknowledge(id), expectCompletion: id => store.expectCompletion(id), scheduleState, applyActivity, pollAfterSubmission, send,
     getActiveTerminal: () => activeTerminal, setActiveTerminal: value => { activeTerminal = value; }, setActiveFileTree: value => { activeFileTree = value; } });

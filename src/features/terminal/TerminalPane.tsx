@@ -36,7 +36,13 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const terminal = term.current;
     const result = await window.agentrix.readClipboard();
     if (!result.ok) { report.current(result.error); return; }
-    if (terminal && terminal === term.current && result.value) terminal.paste(result.value);
+    if (terminal && terminal === term.current && result.value) { terminal.paste(result.value); return; }
+    // Over SSH the CLI cannot reach this computer's clipboard for a picture: it goes over as a file on that computer,
+    // and its path is pasted instead, which Codex and Claude Code both take as an attached picture.
+    if (!remote) return;
+    const image = await window.agentrix.clipboardImage(id);
+    if (!image.ok) { report.current(image.error); return; }
+    if (terminal && terminal === term.current && image.value) terminal.paste(image.value + ' ');
   };
   const copyAll = () => {
     const terminal = term.current;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { CircleNotch } from '@phosphor-icons/react';
 import type { AgentSession } from '../../shared/types';
-import { resumeReadingSession, sessionAge } from './reading-sessions';
+import { resumeCodexSession, resumeReadingSession, sessionAge } from './reading-sessions';
 import { t } from '../../shared/i18n';
 
 function relativeTime(updatedAt: number, now: number) {
@@ -14,9 +14,10 @@ function relativeTime(updatedAt: number, now: number) {
   }
 }
 
-export function ReadingSessions({ terminalId, onClose, onSent, onError }: {
-  terminalId: string; onClose: () => void; onSent: (text: string) => void; onError: (message: string) => void;
+export function ReadingSessions({ terminalId, agent, onClose, onSent, onError }: {
+  terminalId: string; agent: 'claude' | 'codex'; onClose: () => void; onSent: (text: string) => void; onError: (message: string) => void;
 }) {
+  const name = agent === 'codex' ? 'Codex' : 'Claude';
   const [sessions, setSessions] = useState<AgentSession[] | null>(null), [failed, setFailed] = useState(false);
   const [highlight, setHighlight] = useState(0), [pending, setPending] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now);
@@ -37,6 +38,11 @@ export function ReadingSessions({ terminalId, onClose, onSent, onError }: {
     if (!session || sending.current) return;
     sending.current = true; setPending(session.id); card.current?.focus();
     try {
+      if (agent === 'codex') {
+        await resumeCodexSession(terminalId, session.id, () => active.current, t('Codex 正在工作，等这一轮结束再切换会话。'), t('Codex 没有退出，请在终端里退出后再恢复。'));
+        if (active.current) onClose();
+        return;
+      }
       const followed = await resumeReadingSession(session.id,
         text => window.agentrix.writeTerminal(terminalId, text),
         id => window.agentrix.followAgentSession(terminalId, id), () => active.current);
@@ -63,7 +69,7 @@ export function ReadingSessions({ terminalId, onClose, onSent, onError }: {
     onFocus={() => window.agentrix.terminalFocus(terminalId, false)}>
     <div className="reading-choice-head"><strong>{t('恢复会话')}</strong><button type="button" className="text-button" disabled={pending !== null} onClick={close}>{t('取消')}</button></div>
     {sessions === null ? <p className="reading-sessions-empty"><CircleNotch size={13} className="loading-spinner" />{t('正在加载会话…')}</p>
-      : !sessions.length ? <p className="reading-sessions-empty">{failed ? t('无法加载 Claude 会话。') : t('这个项目还没有其他 Claude 会话')}</p>
+      : !sessions.length ? <p className="reading-sessions-empty">{failed ? t('无法加载 {agent} 会话。', { agent: name }) : t('这个项目还没有其他 {agent} 会话', { agent: name })}</p>
       : <div className="reading-choice-options">{sessions.map((session, index) => <button type="button" key={session.id} className="reading-choice-option" data-highlighted={index === highlight} disabled={pending !== null} onClick={() => { setHighlight(index); void choose(session); }}>
         <span className="reading-choice-label"><b>{session.title || t('未命名会话')}</b><small>{relativeTime(session.updatedAt, now)} · {t('约 {count} 条消息', { count: session.messages })}</small></span>
         {pending === session.id && <CircleNotch size={13} className="loading-spinner" />}

@@ -1,4 +1,4 @@
-function registerAgentsIpc({ handle, agents, openExternal, getSession, findProject, getRestoreCwd, listClaudeSessions, followClaudeSession, listAgentCommands, t }) {
+function registerAgentsIpc({ handle, agents, openExternal, getSession, findProject, getRestoreCwd, listClaudeSessions, listCodexSessions, followClaudeSession, listAgentCommands, t }) {
   handle('agents:status', () => agents.getState());
   handle('agents:install', agent => agents.install(agent));
   handle('agents:open-node', () => openExternal('https://nodejs.org/'));
@@ -6,8 +6,11 @@ function registerAgentsIpc({ handle, agents, openExternal, getSession, findProje
   handle('terminal:conversation', id => { findProject(id); return getSession(id)?.conversation.snapshot() || []; });
   handle('terminal:agentSessions', id => {
     const project = findProject(id), s = getSession(id);
-    if (project.kind === 'ssh' || s?.agent !== 'claude') return [];
+    if (project.kind === 'ssh' || !s) return [];
     const cwd = getRestoreCwd(id) || project.path;
+    // Codex's own list leaves out the conversation it is in; so does this one.
+    if (s.agent === 'codex') return listCodexSessions(cwd, s.rootThreadId || s.reportedThreadId, s.codexHome);
+    if (s.agent !== 'claude') return [];
     return listClaudeSessions(cwd, s.codexActive ? s.claudeSessionId : s.claudeResumeId);
   });
   handle('terminal:followAgentSession', async (id, sessionId) => {

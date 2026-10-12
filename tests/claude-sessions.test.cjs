@@ -110,6 +110,8 @@ function mainHarness(t, f) {
     claudeConfigDir: () => f.home, findClaudeSession: (cwd, id) => findClaudeSession(cwd, id, f.home),
     describeActions() {}, broadcast() {}, acceptShellEvent: () => true,
     quitting: false, Date, claudeResumeCommand, restorePlans: new Map(),
+    // The handoff of earlier work is written on start (handoff.cjs, tested on its own).
+    writeHandoff: async () => false, handoffFile: id => path.join(f.home, 'handoff', `${id}.md`), memoryDir: () => path.join(f.home, 'memory'), scrubProjectSkills: async () => [],
   });
   vm.runInContext(main.slice(main.indexOf('function followClaude('), main.indexOf('// One place turns an agent')), context);
   vm.runInContext(main.slice(main.indexOf('function onEvent('), main.indexOf('function remoteFor(')), context);
@@ -190,19 +192,20 @@ test('following a different session replaces history, and invalid ids or closed 
   assert.equal(await h.context.followClaudeSession(h.project, h.s, 'first'), false);
 });
 
-test('session IPC returns Codex empty lists and only follows active local Claude terminals', async t => {
+test('session IPC lists Codex conversations its own way and only follows active local Claude terminals', async t => {
   const f = await fixture(t); await f.write('current', [user('current')]); await f.write('other', [user('other')]);
   const h = mainHarness(t, f), handlers = {};
   h.s.claudeSessionId = 'current';
   require('../electron/features/agents/ipc.cjs').registerAgentsIpc({ handle: (name, handler) => { handlers[name] = handler; },
     findProject: () => h.project, getSession: id => h.sessions.get(id), getRestoreCwd: id => h.context.store.findTerminal(id)?.record.restore?.cwd,
-    followClaudeSession: (...args) => h.context.followClaudeSession(...args), listClaudeSessions: (cwd, id) => listClaudeSessions(cwd, id, f.home) });
+    followClaudeSession: (...args) => h.context.followClaudeSession(...args), listClaudeSessions: (cwd, id) => listClaudeSessions(cwd, id, f.home),
+    listCodexSessions: async (cwd, id) => [{ id: 'codex-other', cwd, current: id }] });
   assert.deepEqual((await handlers['terminal:agentSessions']('terminal')).map(item => item.id), ['other']);
   h.s.claudeSessionId = null; h.restore.threadId = 'current';
   assert.equal((await handlers['terminal:agentSessions']('terminal')).length, 2, 'an old restore id is not the current fresh session');
   assert.equal(await handlers['terminal:followAgentSession']('terminal', 'other'), true);
-  h.s.agent = 'codex';
-  assert.equal((await handlers['terminal:agentSessions']('terminal')).length, 0);
+  h.s.agent = 'codex'; h.s.rootThreadId = 'codex-current';
+  assert.deepEqual((await handlers['terminal:agentSessions']('terminal')).map(item => [item.id, item.current]), [['codex-other', 'codex-current']], 'Codex lists its own, leaving out the one it is in');
   assert.equal(await handlers['terminal:followAgentSession']('terminal', 'other'), false);
   h.s.agent = 'claude'; h.project.kind = 'ssh';
   assert.equal((await handlers['terminal:agentSessions']('terminal')).length, 0);

@@ -16,6 +16,13 @@ remote = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(remote)
 
 
+def _git_too_old():
+    try: version = remote.Worker(lambda _: None).git_version()
+    except Exception: return False
+    return bool(version) and version < (2, 11)
+GIT_TOO_OLD = _git_too_old()
+
+
 class RemoteFilesTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="agentrix-worker-test-")
@@ -28,11 +35,12 @@ class RemoteFilesTest(unittest.TestCase):
         self.worker.stop()
         self.temp.cleanup()
 
+    @unittest.skipIf(GIT_TOO_OLD, "the Git panel needs Git 2.11; older Git is named instead")
     def test_git_reads_status_history_and_commit_paths_without_mutation(self):
         def git(*args):
-            return subprocess.run(["git", "-C", str(self.root), *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout
+            return subprocess.run(["git", *args], cwd=str(self.root), check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout
         self.assertFalse(self.worker.git("status")["repository"])
-        git("init", "-b", "main")
+        git("init"); git("symbolic-ref", "HEAD", "refs/heads/main")
         git("config", "user.name", "测试 User")
         git("config", "user.email", "test@example.invalid")
         git("config", "core.autocrlf", "false")
@@ -59,10 +67,11 @@ class RemoteFilesTest(unittest.TestCase):
         with self.assertRaises(ValueError): self.worker.git("files", "--output=outside")
         with self.assertRaises(ValueError): self.worker.git("history", -1)
 
+    @unittest.skipIf(GIT_TOO_OLD, "the Git panel needs Git 2.11; older Git is named instead")
     def test_signed_history_ignores_user_signature_display_setting(self):
         def git(*args):
-            return subprocess.run(["git", "-C", str(self.root), *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode().strip()
-        git("init", "-b", "main")
+            return subprocess.run(["git", *args], cwd=str(self.root), check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode().strip()
+        git("init"); git("symbolic-ref", "HEAD", "refs/heads/main")
         (self.root / "signed.txt").write_text("signed change", encoding="utf-8")
         git("add", ".")
         tree = git("write-tree")
@@ -113,6 +122,44 @@ class RemoteFilesTest(unittest.TestCase):
         self.assertEqual(reader.read()["state"], "working")
         with filename.open("a", encoding="utf-8") as output: output.write("\n")
         self.assertEqual(reader.read()["state"], "complete")
+
+    def test_conversation_records_go_back_compacted_with_the_status(self):
+        # The reading view on the other computer gets the messages, the tools called and which finished; outputs,
+        # reasoning and instructions stay here. A new file starts its conversation over; history ends once all is sent.
+        home = Path(self.temp.name) / "conversation-home"
+        sessions = home / "sessions"
+        sessions.mkdir(parents=True)
+        identity = str(uuid.uuid4())
+        filename = sessions / ("rollout-" + identity + ".jsonl")
+        at = datetime.now(timezone.utc).isoformat()
+        rows = [
+            {"type": "session_meta", "timestamp": at, "payload": {"id": identity, "cwd": str(self.root), "source": "cli", "base_instructions": {"text": "x" * 50000}}},
+            {"type": "event_msg", "timestamp": at, "payload": {"type": "task_started", "turn_id": "t1"}},
+            {"type": "event_msg", "timestamp": at, "payload": {"type": "item_completed", "item": {"type": "UserMessage", "id": "u1", "content": [{"type": "text", "text": "预处理太慢"}, {"type": "image", "image_url": "data:" + "y" * 90000}]}}},
+            {"type": "response_item", "timestamp": at, "payload": {"type": "reasoning", "encrypted_content": "z" * 80000}},
+            {"type": "response_item", "timestamp": at, "payload": {"type": "custom_tool_call", "name": "exec", "call_id": "c1", "input": "tools.exec_command({cmd: \"pytest -q\"})"}},
+            {"type": "response_item", "timestamp": at, "payload": {"type": "custom_tool_call_output", "call_id": "c1", "output": "o" * 70000}},
+            {"type": "event_msg", "timestamp": at, "payload": {"type": "item_completed", "item": {"type": "AgentMessage", "id": "a1", "content": [{"type": "text", "text": "| 节点 | 耗时 |\n| 预处理 | 0.51 |"}]}}},
+            {"type": "event_msg", "timestamp": at, "payload": {"type": "token_count", "info": {"total": 1}}},
+        ]
+        filename.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+        reader = remote.CodexActivityReader(str(self.root), str(home), 0, identity[:29])
+        snapshot = reader.read()
+        answer = reader.take()
+        self.assertEqual(snapshot["state"], "working")
+        self.assertTrue(answer["reset"]); self.assertTrue(answer["historyDone"])
+        kinds = [(record["type"], record["payload"].get("type")) for record in answer["records"]]
+        self.assertEqual(kinds, [("session_meta", None), ("event_msg", "task_started"), ("event_msg", "item_completed"), ("response_item", "custom_tool_call"), ("response_item", "custom_tool_call_output"), ("event_msg", "item_completed")])
+        self.assertEqual(answer["records"][0]["payload"], {"id": identity, "cwd": str(self.root), "source": "cli"})
+        self.assertEqual(answer["records"][2]["payload"]["item"]["content"], [{"type": "text", "text": "预处理太慢"}])
+        self.assertEqual(answer["records"][4]["payload"], {"type": "custom_tool_call_output", "call_id": "c1"})
+        self.assertLess(len(json.dumps(answer)), 4000)
+        # Later growth comes with the next status, without starting over.
+        with filename.open("a", encoding="utf-8") as output: output.write(json.dumps({"type": "event_msg", "timestamp": at, "payload": {"type": "agent_message", "message": "完成"}}) + "\n")
+        reader.read()
+        later = reader.take()
+        self.assertFalse(later["reset"])
+        self.assertEqual([record["payload"].get("message") for record in later["records"]], ["完成"])
 
     def test_transcript_window_history_live_budget_and_rebinding(self):
         home = Path(self.temp.name) / "window-home"
@@ -205,6 +252,37 @@ class RemoteFilesTest(unittest.TestCase):
         self.assertEqual(result["state"], "interrupted")
         with filename.open("a", encoding="utf-8") as output: output.write('\n{"type":"event_msg","payload":{"type":"task_complete"}}\n')
         self.assertEqual(remote.recent_session(os.path.realpath(self.root), str(home))["state"], "complete")
+
+    @unittest.skipUnless(hasattr(os, "getuid"), "the remote side runs on Linux and macOS")
+    def test_pasted_picture_lands_in_a_private_temporary_folder_by_absolute_path(self):
+        data = b"\x89PNG\r\n\x1a\n" + b"picture" * 60000
+        transfer = self.worker.start_image("png", len(data))["id"]
+        for offset in range(0, len(data), remote.MAX_READ): self.worker.upload_chunk(transfer, offset, base64.b64encode(data[offset:offset + remote.MAX_READ]).decode())
+        saved = Path(self.worker.finish_upload(transfer)["path"])
+        self.addCleanup(lambda: saved.exists() and saved.unlink())
+        self.assertTrue(saved.is_absolute())
+        self.assertEqual(saved.read_bytes(), data)
+        self.assertEqual(saved.parent, Path(tempfile.gettempdir()) / f"agentrix-images-{os.getuid()}")
+        self.assertEqual(saved.parent.stat().st_mode & 0o777, 0o700)
+        self.assertFalse(list(saved.parent.glob(".agentrix-upload-*")))
+        # Only pictures, and not too large; the project itself is untouched.
+        with self.assertRaises(ValueError): self.worker.start_image("sh", 10)
+        with self.assertRaises(ValueError): self.worker.start_image("png", 26 * 1024 * 1024)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_old_git_is_named_instead_of_failing_on_its_options(self):
+        self.worker._git_version = (1, 8, 3)
+        with self.assertRaisesRegex(ValueError, "1.8.3"): self.worker.git("status")
+        self.assertEqual(self.worker.no_relative(), [])
+        self.worker._git_version = (2, 43, 0)
+        self.assertEqual(self.worker.no_relative(), ["--no-relative"])
+
+    def test_rollout_times_are_read_without_fromisoformat(self):
+        self.assertEqual(remote.record_time("1970-01-01T00:00:01.5Z"), 1500)
+        self.assertEqual(remote.record_time("1970-01-01T08:00:00+08:00"), 0)
+        self.assertEqual(remote.record_time("2026-10-12T05:56:02.121Z"), 1791784562121)
+        self.assertEqual(remote.record_time("not a time"), 0)
+        self.assertEqual(remote.record_time(None), 0)
 
     def test_file_mutations_and_upload_do_not_overwrite_existing_data(self):
         self.worker.create("", "新目录", "directory")
