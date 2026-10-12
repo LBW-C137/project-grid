@@ -1,11 +1,12 @@
-/* The decisions as a stack of cards. The front card lies on top; those behind it step down and back; one flipped past
-   lifts away. Cards are dealt in, lean toward the pointer, and a full card grows out of the small one when drawn. */
+/* The decisions as a stack of cards. The front card lies on top; those behind it step down and back. Where each card
+   is while the stack moves is set frame by frame (deck-motion.ts); cards are dealt in, the front one leans toward the
+   pointer, and a full card grows out of the small one when drawn. */
 .decision-deck-wrap { position: relative; display: flex; align-items: flex-start; gap: 14px; margin-top: 24px; }
 /* As tall as a card and the edges of the (at most two) cards behind it: the page goes on right under the stack. */
 .decision-deck { position: relative; flex: 1; min-width: 0; height: calc(206px + var(--behind, 2) * 21px); perspective: 1400px; outline: none; transition: height .4s ease; }
 .decision-deck:focus-visible .deck-card.is-front { box-shadow: 0 0 0 2px var(--home-blue), 0 26px 60px -28px rgba(0, 0, 0, .8); }
 .deck-card {
-  --tint: var(--home-blue); --offset: 0;
+  --tint: var(--home-blue);
   position: absolute; inset: 0 0 auto; display: flex; flex-direction: column; gap: 10px; min-height: 196px; padding: 22px 24px 20px;
   border: 0; border-radius: 20px; text-align: left; font: inherit; color: var(--home-ink); cursor: pointer; overflow: hidden;
   /* A frosted pane, a little denser than the workbench's so the cards stacked behind it stay behind it. */
@@ -13,19 +14,16 @@
   backdrop-filter: var(--home-frost);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 45%, var(--home-edge)), inset 0 1px 0 rgba(255, 255, 255, .12), 0 18px 40px -22px rgba(0, 0, 0, .55);
   transform-origin: 50% 0;
-  transform: translateY(calc(var(--offset) * 22px)) scale(calc(1 - var(--offset) * .05));
-  filter: brightness(calc(1 - var(--offset) * .12));
-  transition: transform .55s cubic-bezier(.2, .8, .2, 1), opacity .4s ease, filter .4s ease, box-shadow .3s ease;
-  /* Held only before it starts: a dealt card hands its transform back to the transitions that flip it. */
+  transition: transform .25s ease, box-shadow .3s ease;
+  /* Held only before it starts: a dealt card then takes the place the deck gives it. */
   animation: deck-deal .55s cubic-bezier(.2, .8, .2, 1) backwards;
 }
 .deck-card.is-behind { pointer-events: auto; }
 .deck-card.is-behind > :not(.deck-card-head) { opacity: .55; }
-/* Flipped past: turned over its top edge like a calendar page, darkening as it turns away; flipping back lays it down
-   again. The cards behind each step forward as it goes. */
-.deck-card.is-past { opacity: 0; pointer-events: none; transform: translateY(-14px) rotateX(96deg) scale(1.02); filter: brightness(.55);
-  transition: transform .62s cubic-bezier(.45, .05, .25, 1), opacity .3s ease .3s, filter .5s ease; }
-.decision-deck { transform-style: preserve-3d; }
+/* Out of sight below the stack, and while it moves, the cards follow the frames alone; dragging shows a grab. */
+.deck-card.is-hidden { pointer-events: none; }
+.decision-deck.is-moving .deck-card { transition: none; cursor: grabbing; }
+.deck-card.is-front { touch-action: pan-y; }
 .deck-card.is-front { transform: translateY(0) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)); }
 .deck-card.is-front:hover { transform: translateY(-5px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 55%, var(--home-line)), 0 34px 70px -26px rgba(0, 0, 0, .85); }
 /* A sweep of light that follows the pointer across the front card. */

@@ -7,6 +7,7 @@ import { Markdown } from '../reading/ReadingView';
 import { FileCards, previewable } from '../reading/FileCards';
 import { replyFiles } from '../reading/reply-files';
 import { atPrompt, sendToAgent } from './send-to-agent';
+import { parseDelivery } from './delivery';
 import { showPopup } from '../files/file-popup';
 import { passed, reviewHistory, sentBack } from './review-history';
 import { t } from '../../shared/i18n';
@@ -21,7 +22,7 @@ type Round = { goal: string; reply: string; written: string[] };
 // files its steps wrote.
 function lastRound(entries: readonly ConversationEntry[]): Round {
   let start = -1;
-  for (let index = entries.length - 1; index >= 0; index--) if (entries[index].role === 'user') { start = index; break; }
+  for (let index = entries.length - 1; index >= 0; index--) if (entries[index].role === 'user' && !entries[index].answer) { start = index; break; }
   const round = entries.slice(start + 1);
   const reply = [...round].reverse().find(entry => entry.role === 'assistant' && entry.text)?.text ?? '';
   const written = [...new Set(round.flatMap(entry => entry.tool?.done && !entry.tool.failed ? entry.tool.written ?? [] : []))];
@@ -74,7 +75,7 @@ export function ReviewCard({ decision, now, kind, onOpen, onDone, onError }: {
       onDone(t('已打回「{project}」，批语已发给它，改完会再交上来。', { project: decision.projectName }));
     } catch (error) { onError(String(error)); } finally { setBusy(false); }
   };
-  const replyLong = round.reply.length > 900;
+  const replyLong = round.reply.length > 900, delivery = useMemo(() => parseDelivery(round.reply), [round.reply]);
   return <article className="decision-card is-review" aria-label={decisionTitle(decision)}>
     <header className="decision-card-head">{kind}<span className="decision-source">{decision.projectName}{decision.multipleTerminals ? ` · ${decision.terminalTitle}` : ''} · {decision.agent === 'claude' ? 'Claude Code' : 'Codex'} · {t('交付于 {time}', { time: waited(decision.since, now).replace(/^等了 /, '') })}</span></header>
     <h2 className="decision-title">{decisionTitle(decision)}{history.submission > 1 && <span className="review-submission">{t('第 {count} 次提交', { count: history.submission })}</span>}</h2>
@@ -82,9 +83,15 @@ export function ReviewCard({ decision, now, kind, onOpen, onDone, onError }: {
       {history.notes.length > 1 && <small>{t('之前还打回过 {count} 次', { count: history.notes.length - 1 })}</small>}</section>}
     {entries === null ? <p className="decision-why"><CircleNotch size={14} className="loading-spinner" /> {t('正在整理这一轮的交付…')}</p> : <>
       {round.goal && round.goal.trim() !== lastNote?.text.trim() && <section className="review-block"><h4>{t('你让它做的')}</h4><p className="review-goal">{round.goal}</p></section>}
-      <section className="review-block"><h4>{t('它的交付说明')}</h4>
-        {round.reply ? <div className={`review-reply ${replyLong && !fullReply ? 'is-folded' : ''}`}><Markdown text={round.reply} /></div> : <p className="decision-why">{t('这一轮没有留下说明。')}</p>}
-        {replyLong && <button type="button" className="text-button" onClick={() => setFullReply(!fullReply)}>{fullReply ? t('收起') : t('展开全文')}</button>}
+      {/* What the grading is about, first: for a fix, the problem, its cause and the result; for an optimization, what
+          was done, what it solves and the comparison. Its whole account folds under it. */}
+      {delivery ? <section className={`review-block review-delivery is-${delivery.kind}`} aria-label={delivery.kind === 'fix' ? t('修复') : t('优化')}>
+        {delivery.parts.map((part, index) => <div key={part.label} className="review-delivery-part"><span className="review-delivery-step">{index + 1}</span>
+          <div><h4>{t(part.label)}</h4><Markdown text={part.text} /></div></div>)}
+      </section> : round.reply && <p className="review-unverified"><Question size={16} weight="fill" />{t('它没有按“问题、原因、结果”写交付摘要，下面是它的原话。')}</p>}
+      <section className="review-block"><h4>{delivery ? t('完整交付说明') : t('它的交付说明')}</h4>
+        {round.reply ? <div className={`review-reply ${(delivery || replyLong) && !fullReply ? 'is-folded' : ''}`}><Markdown text={round.reply} /></div> : <p className="decision-why">{t('这一轮没有留下说明。')}</p>}
+        {(delivery || replyLong) && round.reply && <button type="button" className="text-button" onClick={() => setFullReply(!fullReply)}>{fullReply ? t('收起') : t('展开全文')}</button>}
       </section>
       {made.length > 0 && <section className="review-block"><h4>{t('产出物')}</h4><FileCards projectId={decision.projectId} files={made} renderMarkdown={text => <Markdown text={text} />} onError={onError} quiet /></section>}
       <section className="review-block"><h4>{t('验证')}</h4>

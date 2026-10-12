@@ -161,6 +161,30 @@ class RemoteFilesTest(unittest.TestCase):
         self.assertFalse(later["reset"])
         self.assertEqual([record["payload"].get("message") for record in later["records"]], ["完成"])
 
+    def test_codex_sessions_lists_the_folders_other_conversations_by_name(self):
+        home = Path(self.temp.name) / "sessions-home"
+        folder = home / "sessions" / "2026" / "10" / "12"
+        folder.mkdir(parents=True)
+        def rollout(identity, cwd, user_text, age):
+            path = folder / ("rollout-" + identity + ".jsonl")
+            rows = [{"type": "session_meta", "payload": {"id": identity, "cwd": cwd, "source": "cli"}},
+                    {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "UserMessage", "id": "u", "content": [{"type": "text", "text": user_text}]}}},
+                    {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "AgentMessage", "id": "a", "content": [{"type": "text", "text": "好"}]}}}]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            stamp = time.time() - age
+            os.utime(str(path), (stamp, stamp))
+        current, merge, plain, elsewhere = (str(uuid.uuid4()) for _ in range(4))
+        rollout(current, str(self.root), "现在这个", 10)
+        rollout(merge, str(self.root), "<send_user_message_question_reply>[]</send_user_message_question_reply>", 100)
+        rollout(plain, str(self.root), "删除显示和系统监控功能", 200)
+        rollout(elsewhere, str(self.temp.name), "别的文件夹", 50)
+        (home / "session_index.jsonl").write_text(json.dumps({"id": merge, "thread_name": "合并远端主分支"}) + "\n", encoding="utf-8")
+        listed = remote.codex_sessions(str(self.root), str(home), current[:29])
+        self.assertEqual([item["id"] for item in listed], [merge, plain])
+        self.assertEqual([item["title"] for item in listed], ["合并远端主分支", "删除显示和系统监控功能"])
+        self.assertEqual(listed[1]["messages"], 2)
+        self.assertEqual(remote.codex_sessions(str(self.root), str(Path(self.temp.name) / "missing")), [])
+
     def test_transcript_window_history_live_budget_and_rebinding(self):
         home = Path(self.temp.name) / "window-home"
         sessions = home / "sessions"

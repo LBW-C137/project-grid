@@ -116,6 +116,69 @@ def json_records(filename, history_window=False):
             try: yield json.loads(line)
             except (ValueError, UnicodeError): continue
 
+def rollout_summary(filename):
+    """The first thing asked in a rollout and about how many messages it holds, from its first 256 KiB."""
+    title, messages, completed = "", 0, None
+    with open(filename, "rb") as source:
+        size = os.fstat(source.fileno()).st_size
+        data = source.read(256 * 1024)
+    if len(data) < size: data = data[:data.rfind(b"\n") + 1]
+    text = data.decode("utf-8", "replace")
+    completed = '"item_completed"' in text
+    for line in text.split("\n"):
+        try: record = json.loads(line)
+        except ValueError: continue
+        if not isinstance(record, dict) or record.get("type") != "event_msg": continue
+        payload = record.get("payload") or {}
+        item = payload.get("item") if isinstance(payload.get("item"), dict) else {}
+        user = payload.get("type") == "user_message" or (payload.get("type") == "item_completed" and item.get("type") == "UserMessage")
+        agent = payload.get("type") == "agent_message" or (payload.get("type") == "item_completed" and item.get("type") == "AgentMessage")
+        if (user or agent) and (payload.get("type") == "item_completed" or not completed): messages += 1
+        if user and not title:
+            said = payload.get("message") if isinstance(payload.get("message"), str) else " ".join(part.get("text", "") for part in item.get("content") or [] if isinstance(part, dict) and isinstance(part.get("text"), str))
+            said = " ".join(said.split())
+            # Notices and answers to its own questions are wrapped in tags; they do not name the conversation.
+            if said and not said.startswith("<"): title = said[:60]
+    if size > len(data) and data: messages = int(round(messages * size / len(data)))
+    return title, messages
+
+def codex_sessions(root, codex_home, current=None):
+    """This folder's other Codex conversations for the reading view's resume list (electron/codex-sessions.cjs does the
+    same for a local folder): newest first, named as Codex's own picker names them (session_index.jsonl), else by the
+    first thing asked. current: the one the terminal is in, or how its id begins."""
+    names = {}
+    try:
+        with open(os.path.join(codex_home, "session_index.jsonl"), encoding="utf-8") as source:
+            for line in source:
+                try: record = json.loads(line)
+                except ValueError: continue
+                if isinstance(record, dict) and record.get("id") and isinstance(record.get("thread_name"), str): names[record["id"]] = record["thread_name"].strip()
+    except OSError: pass
+    files = []
+    for folder, dirs, entries in os.walk(os.path.join(codex_home, "sessions")):
+        dirs[:] = [name for name in dirs if not os.path.islink(os.path.join(folder, name))]
+        for name in entries:
+            if not (name.startswith("rollout-") and name.endswith(".jsonl")): continue
+            filename = os.path.join(folder, name)
+            try: files.append((os.stat(filename).st_mtime, filename))
+            except OSError: pass
+    result = []
+    for modified, filename in sorted(files, reverse=True)[:3000]:
+        if len(result) >= 30: break
+        try:
+            rows = json_records(filename)
+            try: record = next(rows, {})
+            finally: rows.close()
+            meta = record.get("payload", {}) if record.get("type") == "session_meta" else {}
+            identity = meta.get("id") or ""
+            if meta.get("source", "cli") not in ("cli", "vscode") or not re.fullmatch(r"[a-fA-F0-9-]{36}", identity): continue
+            if os.path.realpath(meta.get("cwd", "")) != os.path.realpath(root): continue
+            if current and identity.lower().startswith(current.lower()): continue
+            title, messages = rollout_summary(filename)
+            result.append({"id": identity, "updatedAt": int(modified * 1000), "title": names.get(identity) or title, "messages": messages})
+        except (OSError, ValueError, TypeError): continue
+    return result
+
 def recent_session(root, codex_home, thread_id=None):
     directory = os.path.join(codex_home, "sessions")
     candidates = []
@@ -735,6 +798,10 @@ def main():
             elif op == "save-file": value = worker.save_file(message["path"], message.get("page", 0), message.get("revision"), message["data"])
             elif op == "resume-info": value = recent_session(worker.coding_root, worker.codex_home, message.get("threadId"))
             elif op == "codex-status": value = worker.codex_status(message.get("since"), message.get("threadId"))
+            elif op == "codex-sessions":
+                current = message.get("currentId")
+                if current is not None and not (isinstance(current, str) and re.fullmatch(r"[a-fA-F0-9]{8}-[a-fA-F0-9-]{8,27}", current)): raise ValueError("无效的会话标识。")
+                value = codex_sessions(worker.coding_root, worker.codex_home, current)
             elif op == "create": value = worker.create(message.get("path", ""), message["name"], message["kind"], message.get("unique", False))
             elif op == "rename": value = worker.rename(message["path"], message["name"])
             elif op == "remove": value = worker.remove(message["path"])

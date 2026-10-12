@@ -55,3 +55,8 @@
 /* What the steps wrote (cards, a picture being drawn) sits under the pill or inside the opened card. */
 .reading-tools > :is(.file-cards, .reading-generating) { margin-left: 4px; }
 .reading-tools.is-open > :is(.file-cards, .reading-generating) { margin: 0 14px 12px; }
+
+/* An answer to the agent's own question: labelled as such, its "question → answer" lines under the label. */
+.reading-user.is-answer > :first-child { grid-row: span 2; }
+.reading-user.is-answer > :not(:first-child) { grid-column: 2; }
+.reading-user-label { font-size: 12px; font-weight: 600; color: var(--flow-muted, rgba(255, 255, 255, .72)); }

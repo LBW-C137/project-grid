@@ -640,7 +640,8 @@ function startTerminal(id) {
   s.conversation = new ConversationLog(change => {
     publishConversation(s, change);
     const entry = change.entry;
-    if (entry?.role === 'user' && s.codexActive && entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
+    // An answer to the agent's own question is not a prompt: it goes on with the round it answered.
+    if (entry?.role === 'user' && !entry.answer && s.codexActive && entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
   });
   sessions.set(id, s);
   store.setRestore(id, { terminal: true, ...(restorePlans.has(id) ? {} : { codex: false }) });

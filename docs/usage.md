@@ -229,20 +229,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=1.2.1`：安装指定版本。
+- `AGENTRIX_VERSION=1.2.2`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 1.2.1：
+例如，安装 1.2.2：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.1 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.2 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-1.2.1-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-1.2.2-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：
@@ -324,7 +324,7 @@ npm run dist
 - `node scripts/linux-smoke.mjs [--packaged] [--shell zsh]`：在 Linux 上以隔离配置和独立 HOME 启动应用，验证 Bash 或 zsh 终端、Codex 开始与结束状态、`Ctrl+Shift+C` 复制和 `Ctrl+C` 中断；`node scripts/appimage-smoke.mjs <AppImage>` 启动 AppImage，确认终端环境不含 AppImage 的目录和变量。
 - `node scripts/verify-installer-payload.cjs`：从实际 NSIS 安装包提取程序，核对可执行文件与应用资源；动画检查可用 `node scripts/focus-motion-smoke.mjs --executable 路径` 直接验证提取出的程序，不添加专用渲染开关，并清除测试工具默认的动态效果模拟，使用真实 Windows 偏好。
 
-终端依赖锁定为 `node-pty@1.2.1-beta.15`，使用其随包提供的 ConPTY 1.25，修复旧版在窗口缩放后光标坐标不同步的问题。相关上游说明见 [microsoft/terminal#18725](https://github.com/microsoft/terminal/issues/18725)。渲染端同步启用光标所在行的重排，并在预览期间保持终端布局。
+终端依赖锁定为 `node-pty@1.2.2-beta.15`，使用其随包提供的 ConPTY 1.25，修复旧版在窗口缩放后光标坐标不同步的问题。相关上游说明见 [microsoft/terminal#18725](https://github.com/microsoft/terminal/issues/18725)。渲染端同步启用光标所在行的重排，并在预览期间保持终端布局。
 
 ## GitHub 自动构建
 

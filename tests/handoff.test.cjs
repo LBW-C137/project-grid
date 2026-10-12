@@ -62,7 +62,11 @@ test('the startup note names the handoff and skills with forward slashes and no 
   assert.ok(startupNote('Reading view note.', null, '/srv/app/skills').length < 2000, 'an SSH worker takes a note of up to 2000 characters');
   assert.ok(note.includes('C:/Users/me/AppData/Roaming/Agentrix/handoff/t1.md'));
   assert.ok(!/["\\\n]/.test(note));
-  assert.equal(startupNote('Reading view note.', null), 'Reading view note.');
+  // Every note asks for the delivery summary the homework card reads (src/features/home/delivery.ts), with its labels.
+  const plain = startupNote('Reading view note.', null);
+  assert.ok(plain.startsWith('Reading view note. When you finish a task'));
+  for (const label of ['【交付】', '问题：', '原因：', '结果：', '优化：', '解决：', '对比：']) assert.ok(plain.includes(label), label);
+  assert.ok(!plain.includes('skills') && !plain.includes('read the file'));
 });
 
 test('a round joins the memory once and later only grows; notices are not asks', async t => {

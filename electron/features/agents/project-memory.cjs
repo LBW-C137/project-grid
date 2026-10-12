@@ -26,7 +26,7 @@ const archiveFile = (dir, folder) => path.join(dir, `${folderKey(folder)}.jsonl`
 function roundsOf(entries, agent, session) {
   const result = [];
   for (const entry of entries) {
-    if (entry.role === 'user' && entry.text && !entry.text.trim().startsWith('<')) {
+    if (entry.role === 'user' && !entry.answer && entry.text && !entry.text.trim().startsWith('<')) {
       const at = Number(entry.at) || 0;
       result.push({ key: `${agent}:${session}:${crypto.createHash('sha1').update(`${at}\n${entry.text}`).digest('hex').slice(0, 16)}`, agent, session, at, ask: entry.text.slice(0, TEXT_LIMIT), reply: '', files: [], checks: [] });
     }

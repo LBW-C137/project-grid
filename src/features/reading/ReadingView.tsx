@@ -341,7 +341,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   // The CLI recognises slash commands and shell mode from typed keys, not bracketed paste.
   const deliver = async (text: string) => {
     if (inputBlocked || (!text && !images.length) || !terminal.sessionId) return;
-    if (usesSessionPicker(terminal, text)) { choiceVisible.current = true; restoreComposer.current = document.activeElement === input.current; edit(''); setSessionsOpen(true); return; }
+    if (usesSessionPicker(terminal, text, remote)) { choiceVisible.current = true; restoreComposer.current = document.activeElement === input.current; edit(''); setSessionsOpen(true); return; }
     const typed = isTypedCommand(text), sessionId = terminal.sessionId, agentKind = terminal.agent === 'claude' ? 'claude' : 'codex';
     // What the CLI shows above its input before the command is typed, to tell its output from what was there.
     const shown = typed && visibleScreen ? cliHistory(agentKind, visibleScreen.rows, screen) : undefined;
@@ -508,7 +508,8 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     {tail.visible.map((block, index) => block.kind === 'tools'
     ? <ToolGroup key={block.id} entries={block.entries} live={index === tail.visible.length - 1} projectId={projectId} onError={onError} />
     : block.entry.role === 'user'
-      ? <div key={block.entry.id} className="reading-user"><UserAvatar /><UserText text={block.entry.text || ''} />{block.entry.images && <UserImages images={block.entry.images} />}</div>
+      ? <div key={block.entry.id} className={`reading-user${block.entry.answer ? ' is-answer' : ''}`}><UserAvatar />
+        {block.entry.answer && <span className="reading-user-label">{t('你回答了它的问题')}</span>}<UserText text={block.entry.text || ''} />{block.entry.images && <UserImages images={block.entry.images} />}</div>
       : <AssistantReply key={block.entry.id} entry={block.entry} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} projectId={projectId} onError={onError} />)}
   </>;
   return <div className="reading-view" onClick={event => {

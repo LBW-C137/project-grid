@@ -124,6 +124,19 @@ function claudeConversation(log, record, cwd) {
   });
 }
 
+// Codex records the answers to its own questions (request_user_input) as a user message: the questions and the chosen
+// answers as JSON inside <send_user_message_question_reply>. They answer it; they are not something the user asked.
+// Gives the readable "question → answer" lines, '' for a reply that cannot be read, or null for any other message.
+const QUESTION_REPLY = /^\s*<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>\s*$/;
+function questionReply(text) {
+  const match = QUESTION_REPLY.exec(String(text || ''));
+  if (!match) return null;
+  let answers; try { answers = JSON.parse(match[1]); } catch { return ''; }
+  if (!Array.isArray(answers)) return '';
+  const said = value => typeof value === 'string' && value.trim() ? value.trim() : '';
+  return answers.map(item => [said(item?.question), said(item?.answer)]).filter(([question, answer]) => question || answer)
+    .map(([question, answer]) => question && answer ? `${question}\n→ ${answer}` : question || `→ ${answer}`).join('\n\n');
+}
 // Newer Codex reports each message once as a completed item; older versions as event messages.
 function codexMessage(item) {
   const parts = Array.isArray(item?.content) ? item.content : [];
@@ -138,12 +151,13 @@ function codexConversation(log, record, cwd) {
     const picture = payload.type === 'item_completed' ? generatedImage(payload.item, at) : null;
     if (picture) log.put(picture);
     else if (payload.type === 'item_completed' && ['UserMessage', 'AgentMessage'].includes(payload.item?.type)) {
-      const text = codexMessage(payload.item), user = payload.item.type === 'UserMessage';
-      const entry = { id: `${user ? 'u' : 'a'}:${payload.item.id || at}`, at, role: user ? 'user' : 'assistant', text: bounded(text) };
+      const raw = codexMessage(payload.item), user = payload.item.type === 'UserMessage', reply = user ? questionReply(raw) : null, text = reply ?? raw;
+      const entry = { id: `${user ? 'u' : 'a'}:${payload.item.id || at}`, at, role: user ? 'user' : 'assistant', text: bounded(text), ...(reply !== null ? { answer: true } : {}) };
       const shown = user ? withImages(entry, payload.item.content) : entry;
       if (text || shown.images) log.put(shown);
     } else if (['user_message', 'agent_message'].includes(payload.type) && typeof payload.message === 'string' && clean(payload.message)) {
-      log.put({ id: `${payload.type[0]}:${at}:${payload.message.length}`, at, role: payload.type === 'user_message' ? 'user' : 'assistant', text: bounded(clean(payload.message)) });
+      const user = payload.type === 'user_message', reply = user ? questionReply(clean(payload.message)) : null, text = reply ?? clean(payload.message);
+      if (text) log.put({ id: `${payload.type[0]}:${at}:${payload.message.length}`, at, role: user ? 'user' : 'assistant', text: bounded(text), ...(reply !== null ? { answer: true } : {}) });
     } else if (['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(payload.type)) log.settle();
     return;
   }
@@ -152,4 +166,4 @@ function codexConversation(log, record, cwd) {
   for (const action of codexActions(payload, at, log.cwd || cwd)) log.put({ id: action.id, at, role: 'tool', tool: brief(action) });
 }
 
-module.exports = { ConversationLog, claudeConversation, codexConversation, clean, brief, generatedImage, isGeneratedImage, setThumbnailer };
+module.exports = { ConversationLog, claudeConversation, codexConversation, clean, brief, generatedImage, isGeneratedImage, setThumbnailer, questionReply };

@@ -161,3 +161,12 @@
 .new-work-images img { display: block; height: 64px; max-width: 120px; object-fit: cover; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--home-edge), 0 6px 16px rgba(0, 0, 0, .25); }
 .new-work-images button { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; color: #fff; background: rgba(12, 16, 24, .82); box-shadow: 0 0 0 1px rgba(255, 255, 255, .3); cursor: pointer; }
 .new-work-images button:hover { background: var(--home-red); }
+
+/* The delivery summary, first on the homework card: three numbered parts (a fix pink, an optimization green). */
+.review-delivery { display: grid; gap: 10px; }
+.review-delivery-part { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); }
+.review-delivery-step { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; font-weight: 700; color: #fff; background: var(--home-pink); }
+.review-delivery.is-optimize .review-delivery-step { color: #06231a; background: var(--home-ok); }
+.review-delivery-part h4 { margin: 2px 0 4px; font-size: 13px; font-weight: 600; color: var(--home-muted); }
+.review-delivery-part .reading-markdown, .review-delivery-part p { margin: 0; font-size: 14.5px; line-height: 1.6; }
+.review-delivery ~ .review-block .review-reply.is-folded { max-height: 120px; }
