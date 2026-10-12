@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { marked } from 'marked';
+import { readingMarked } from './markdown-escape';
 import createDOMPurify from 'dompurify';
 import { ArrowDown, CaretDown, CaretUp, CheckCircle, CircleNotch, FileText, Globe, Image as ImageIcon, MagnifyingGlass, PaperPlaneRight, PencilSimple, Plugs, Robot, Sparkle, Stop, TerminalWindow, Wrench, X, XCircle, type Icon } from '@phosphor-icons/react';
 import type { AgentCommand, ConversationEntry, ProjectTerminal } from '../../shared/types';
@@ -7,7 +7,7 @@ import { actionText, stepVerb } from '../agents/ActivityPane';
 import { dictateInto } from '../voice/voice-input';
 import { readScreen, useScreen } from '../terminal/terminal-screen';
 import { parseAgentScreen } from '../agents/agent-screen';
-import { cliCloseKey, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isSideConversation } from './cli-panel';
+import { cliCloseKey, cliDialogShown, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isSideConversation } from './cli-panel';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
 import { ReadingQuestion } from './ReadingQuestion';
@@ -73,7 +73,7 @@ const safely = (make: () => string) => { try { return make(); } catch { return n
 const QUICK = 4000;
 export function Markdown({ text }: { text: string }) {
   const language = currentLanguage(), short = text.length <= QUICK;
-  const quick = useMemo(() => short ? safely(() => finish(marked.parse(text, { async: false, gfm: true, breaks: true }) as string)) : undefined, [text, language, short]);
+  const quick = useMemo(() => short ? safely(() => finish(readingMarked.parse(text) as string)) : undefined, [text, language, short]);
   const [long, setLong] = useState<{ text: string; parsed: string | null } | null>(() => {
     const parsed = short ? undefined : parsedMarkdown(text);
     return parsed === undefined ? null : { text, parsed };
@@ -205,6 +205,12 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const conversationEntries = useReadingConversation(terminal.id, terminal.sessionId);
   const [hidden, setHidden] = useState(() => cleared.get(conversationKey(terminal.id, terminal.sessionId)));
   useEffect(() => { setHidden(cleared.get(conversationKey(terminal.id, terminal.sessionId))); }, [terminal.id, terminal.sessionId]);
+  // What /clear hid stays hidden only while that conversation is the one shown: once the agent has moved to another
+  // (its new conversation came in), resuming the old one later shows it again rather than an empty page.
+  useEffect(() => {
+    if (!hidden || !conversationEntries.length || conversationEntries.some(entry => hidden.has(entry.id))) return;
+    cleared.delete(conversationKey(terminal.id, terminal.sessionId)); setHidden(undefined);
+  }, [conversationEntries, hidden]);
   const entries = useMemo(() => hidden ? conversationEntries.filter(entry => !hidden.has(entry.id)) : conversationEntries, [conversationEntries, hidden]);
   const { pending, echo, cancelEcho } = usePendingPrompts(terminal.id, terminal.sessionId, entries);
   const visibleEntries = useMemo(() => [...entries, ...pending], [entries, pending]);
@@ -272,9 +278,12 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   }, [terminal.id, terminal.agent, requested]);
   const matches = useMemo(() => {
     const query = draft.slice(1).toLowerCase(), name = (command: AgentCommand) => command.name.slice(1).toLowerCase();
-    return commands.filter(command => name(command).includes(query)).sort((a, b) => Number(!name(a).startsWith(query)) - Number(!name(b).startsWith(query)));
+    // The command named exactly comes first (a project's /doc before the built-in /doctor), then those it begins.
+    const rank = (command: AgentCommand) => name(command) === query ? 0 : name(command).startsWith(query) ? 1 : 2;
+    return commands.filter(command => name(command).includes(query)).sort((a, b) => rank(a) - rank(b));
   }, [commands, draft]);
-  const palette = !inputBlocked && !dismissed && /^\/[^\s]*$/.test(draft), selected = matches[selection];
+  // A command recalled from history (↑) is sent as it is: the list stays shut, so ↑ goes on through history.
+  const palette = !inputBlocked && !dismissed && historyAt.current === null && /^\/[^\s]*$/.test(draft), selected = matches[selection];
   const listId = `reading-commands-${terminal.id}`, optionId = (index: number) => `${listId}-${index}`;
   useEffect(() => { setSelection(0); }, [draft, commands]);
   useEffect(() => { if (palette) document.getElementById(optionId(selection))?.scrollIntoView({ block: 'nearest' }); }, [palette, selection]);
@@ -299,10 +308,10 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const grouped = useMemo(() => blocks(entries), [entries]);
   const tail = useVisibleTail(grouped, conversation, scroller, stuck, holdPosition);
   // One message at a time: a second Enter while the first is still being pasted waits for nothing and sends nothing.
-  const send = async (text = draft.trim()) => {
+  const send = async (text = draft.trim(), own = true) => {
     if (sending.current) return;
     sending.current = true;
-    try { await deliver(text); } catch (error) { if (mounted.current) onError(String(error)); } finally { sending.current = false; }
+    try { await deliver(text, own); } catch (error) { if (mounted.current) onError(String(error)); } finally { sending.current = false; }
   };
   // Closes what a command left open and waits for the CLI's input to come back. Keys typed while a dialog is still
   // open land in it: Enter on Claude's /config switches the selected setting, and the dialog stays on its old tab
@@ -329,42 +338,63 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   // (a dialog, a pager, a side conversation) rather than interrupting the round, pressing again while the dialog only
   // left an inner mode (Claude's /config search). Putting it away never asks anything of the reader: a dialog still
   // open (one that ignores Escape while it loads) is remembered and closed before the next message is typed.
+  // A popup being put away closes its dialog in the background; a message sent meanwhile waits for that, so its keys
+  // never land in the dialog still closing.
+  const closing = useRef<Promise<void> | null>(null);
   const closeCommand = async () => {
-    const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', command = cli.panel?.command ?? '', current = readScreen(terminal.id);
-    const key = cli.busy && current ? cliCloseKey(agentKind, current.rows, parseAgentScreen(agentKind, current.rows), command, cli.panel?.rows) : null;
+    const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', command = cli.panel?.command ?? '', current = readScreen(terminal.id), busy = cli.busy;
+    const key = busy && current ? cliCloseKey(agentKind, current.rows, parseAgentScreen(agentKind, current.rows), command, cli.panel?.rows) : null;
     cli.close();
-    if (!key) return;
+    // Still in the CLI's input (Claude holds a command there while its hooks run): its dialog may open after this, so
+    // the next message looks for it first.
+    if (!key) { if (busy) leftOpen.current = command; return; }
     if (key === '\x03') { window.agentrix.writeTerminal(terminal.id, key); return; }
-    leftOpen.current = await closeDialog(agentKind, command, false) ? null : command;
+    const work = closeDialog(agentKind, command, false).then(closed => { leftOpen.current = closed ? null : command; });
+    closing.current = work;
+    await work.finally(() => { if (closing.current === work) closing.current = null; });
   };
   const interrupt = () => window.agentrix.writeTerminal(terminal.id, '\x1b');
   // The CLI recognises slash commands and shell mode from typed keys, not bracketed paste.
-  const deliver = async (text: string) => {
-    if (inputBlocked || (!text && !images.length) || !terminal.sessionId) return;
-    if (usesSessionPicker(terminal, text, remote)) { choiceVisible.current = true; restoreComposer.current = document.activeElement === input.current; edit(''); setSessionsOpen(true); return; }
+  // own: written in the composer here (it is cleared, with its pictures); otherwise a message sent again, which leaves
+  // whatever is being written now alone and takes no pictures with it.
+  const deliver = async (text: string, own = true) => {
+    const attached = own ? images : [];
+    if (inputBlocked || (!text && !attached.length) || !terminal.sessionId) return;
     const typed = isTypedCommand(text), sessionId = terminal.sessionId, agentKind = terminal.agent === 'claude' ? 'claude' : 'codex';
-    // What the CLI shows above its input before the command is typed, to tell its output from what was there.
-    const shown = typed && visibleScreen ? cliHistory(agentKind, visibleScreen.rows, screen) : undefined;
-    // A command's dialog still open (Claude's /usage, /config) would take this message's keys and Enter: close it first.
+    if (closing.current) await closing.current;
+    // A command's dialog still open (Claude's /usage, /config) would take this message's keys and Enter: close it first,
+    // whether a command of ours opened it or the screen shows one open anyway.
     // In a Codex side conversation a message is part of it: the card stays and nothing is closed. Its messages never
     // reach the main conversation's records, so they get no echo there either.
-    const side = !!cli.panel && isSideConversation(agentKind, cli.panel.command, [...cli.panel.rows, ...readScreen(terminal.id)?.rows ?? []]);
+    const before = readScreen(terminal.id);
+    const side = !!cli.panel && isSideConversation(agentKind, cli.panel.command, [...cli.panel.rows, ...before?.rows ?? []]);
+    const stray = !side && !!before && cliDialogShown(agentKind, before.rows, parseAgentScreen(agentKind, before.rows));
     if (cli.panel && !cli.busy) cli.close();
-    if ((cli.busy || leftOpen.current !== null) && !side) {
+    if ((cli.busy || leftOpen.current !== null || stray) && !side) {
       const command = cli.panel?.command ?? leftOpen.current ?? undefined;
       cli.close(); leftOpen.current = null;
       if (!await closeDialog(agentKind, command)) { if (mounted.current) onError(t('命令的对话框没有关闭，请在终端中关闭后再发送。')); return; }
     }
     if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
-    const pendingId = text && !typed && !side ? echo(text, images) : null;
+    if (usesSessionPicker(terminal, text, remote)) {
+      choiceVisible.current = true; restoreComposer.current = document.activeElement === input.current;
+      if (own) edit('');
+      setSessionsOpen(true); return;
+    }
+    // What the CLI shows above its input before the command is typed, to tell its output from what was there.
+    const now = readScreen(terminal.id);
+    const shown = typed && now ? cliHistory(agentKind, now.rows, parseAgentScreen(agentKind, now.rows)) : undefined;
+    const pendingId = text && !typed && !side ? echo(text, attached) : null;
     if (pendingId) toBottom();
     // Text left in the CLI's own input would be sent along with this message. An earlier message of ours whose Enter
     // was lost goes first, never wiped; anything else (Claude puts an interrupted prompt back there) is cleared with
-    // Ctrl+U. Pasted images also live there, so it is kept while images are attached.
-    const left = text && !images.length ? inputDraft(agentKind) : '';
+    // Ctrl+U. With pictures attached it was cleared when the first one was pasted, and Ctrl+U would take them too.
+    const left = text && !attached.length ? inputDraft(agentKind) : '';
+    // The composer is empty from here: what is written next is the next message, never wiped when this one is typed.
+    if (own) { edit(''); setImages([]); }
     // Sent again while it still waits there: Enter is all it needs.
     if (left && !typed && sameMessage(text, left)) {
-      edit(''); toBottom(); window.agentrix.writeTerminal(terminal.id, '\r'); await submitted(agentKind, text);
+      toBottom(); window.agentrix.writeTerminal(terminal.id, '\r'); await submitted(agentKind, text);
       history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50));
       return;
     }
@@ -374,18 +404,28 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       if (typed) window.agentrix.writeTerminal(terminal.id, text);
       else {
         const pasted = await window.agentrix.pasteTerminal(terminal.id, text, terminal.sessionId);
-        if (!pasted.ok) { if (pendingId) cancelEcho(pendingId); onError(pasted.error); return; }
+        if (!pasted.ok) {
+          if (pendingId) cancelEcho(pendingId);
+          // Not sent: the words come back to the composer unless something new was written there meanwhile.
+          if (own && mounted.current && !input.current?.value) edit(text);
+          onError(pasted.error); return;
+        }
         if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
       }
       history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50));
     }
-    edit(''); setImages([]); toBottom();
+    toBottom();
     if (text) await new Promise(resolve => setTimeout(resolve, typed ? 150 : 400));
     if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
-    if (typed) cli.begin(text, shown);
+    // A command whose result comes in the conversation (/init, /review, a skill or a saved prompt) gets no popup: the
+    // reading view shows its round as it goes. Codex's /side is a conversation of its own and keeps its popup.
+    const name = text.split(/\s/)[0], listed = commands.find(command => command.name === name);
+    const inConversation = typed && listed?.view === 'reading' && !(agentKind === 'codex' && name === '/side');
+    if (typed && !inConversation) cli.begin(text, shown);
     if (clears(terminal.agent, text)) { const ids = new Set(conversationEntries.map(entry => entry.id)); cleared.set(conversation, ids); setHidden(ids); }
     window.agentrix.writeTerminal(terminal.id, '\r');
     if (text && !typed) await submitted(agentKind, text);
+    else if (typed) void commandSubmitted(agentKind, text, sessionId);
   };
   // What is typed in the CLI's own input right now.
   const inputDraft = (agent: 'claude' | 'codex') => { const current = readScreen(terminal.id); return current ? cliInputDraft(agent, current.rows, parseAgentScreen(agent, current.rows)) : ''; };
@@ -397,6 +437,18 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       if (!mounted.current || choiceVisible.current || !sameMessage(text, inputDraft(agent))) return;
       window.agentrix.writeTerminal(terminal.id, '\r');
     }
+  };
+  // A command still sitting in the CLI's input after its Enter (one that arrived while the CLI redrew) is entered again,
+  // slowly, since Claude keeps a command there for a moment while its hooks run. One that never leaves is reported,
+  // and its popup put away, rather than waited on for good.
+  const commandSubmitted = async (agent: 'claude' | 'codex', text: string, sessionId: string) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1600));
+      if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId || inputDraft(agent).trim() !== text.trim()) return;
+      if (attempt === 0) window.agentrix.writeTerminal(terminal.id, '\r');
+    }
+    cli.close();
+    onError(t('{command} 没有发出去，还留在它的输入框里。', { command: text.split(/\s/)[0] }));
   };
   const sendRef = useRef(send); sendRef.current = send;
   // The safety net: a message no record has shown once its echo timed out, while the agent sits idle, is sent again
@@ -414,12 +466,12 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       const tries = resent.current.get(prompt.text) ?? 0;
       if (tries >= 2 || sending.current) continue;
       resent.current.set(prompt.text, tries + 1);
-      cancelEcho(prompt.id); void sendRef.current(prompt.text);
+      cancelEcho(prompt.id); void sendRef.current(prompt.text, false);
       break;
     }
   });
   const undelivered = (prompt: PendingPrompt) => idle && !prompt.sending && (resent.current.get(prompt.text) ?? 0) >= 2;
-  const resend = (prompt: PendingPrompt) => { cancelEcho(prompt.id); void send(prompt.text); };
+  const resend = (prompt: PendingPrompt) => { cancelEcho(prompt.id); void send(prompt.text, false); };
   // Dictation into this terminal lands here while the reading view shows: the words appear at the cursor as
   // soon as they are recognised, and Enter (or the shortcut again) sends the whole message.
   useEffect(() => dictateInto(terminal.id, (text, submit) => {
@@ -437,6 +489,11 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     if (data.getData('text/plain') || ![...data.items].some(item => item.kind === 'file' && item.type.startsWith('image/'))) return;
     event.preventDefault();
     if (!terminal.codexActive || !terminal.sessionId) { onError(t('启动 Codex 或 Claude Code 后才能粘贴图片。')); return; }
+    // The first picture goes into a clean input: text left there (a prompt Claude put back after an interrupt) would be
+    // sent with this message, and once pictures are in it Ctrl+U would take them too. One of ours still waiting stays.
+    const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', left = !images.length && !remote ? inputDraft(agentKind) : '';
+    const clearFirst = !!left && !pending.some(prompt => sameMessage(prompt.text, left));
+    if (clearFirst) window.agentrix.writeTerminal(terminal.id, '\x15');
     // Over SSH the CLI cannot reach this computer's clipboard: the picture goes over as a file on that computer and its
     // path joins the message, which both CLIs take as an attached picture.
     if (remote) {
@@ -450,7 +507,9 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       }).catch(error => onError(String(error)));
       return;
     }
-    window.agentrix.writeTerminal(terminal.id, terminal.agent === 'claude' ? '\x1bv' : '\x16');
+    const pasteKey = terminal.agent === 'claude' ? '\x1bv' : '\x16';
+    if (clearFirst) setTimeout(() => window.agentrix.writeTerminal(terminal.id, pasteKey), 60);
+    else window.agentrix.writeTerminal(terminal.id, pasteKey);
     // The agent takes the picture from the clipboard; a copy is kept here to show in the message, small (a 4K
     // screenshot decoded at full size costs tens of megabytes per copy).
     const file = [...data.items].find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();

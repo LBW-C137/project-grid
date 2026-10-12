@@ -271,7 +271,7 @@ export function App() {
   }, [decisions, shownView, workspace]);
   useEffect(() => api?.onDecisionShow(() => setView('decisions')), []);
   // Under a home page the workbench keeps running but takes no keys: a terminal behind it must not get what is typed.
-  useEffect(() => { if (shownView !== 'workspace') (document.activeElement as HTMLElement | null)?.closest('.main-workspace, .project-explorer') && (document.activeElement as HTMLElement).blur(); }, [shownView]);
+  useEffect(() => { if (shownView !== 'workspace') (document.activeElement as HTMLElement | null)?.closest('.main-workspace, .focus-sidebar') && (document.activeElement as HTMLElement).blur(); }, [shownView]);
   const openDecision = useCallback((decision: Decision) => { void focusProject(decision.projectId); }, [focusProject]);
 
   if (!api) return <div className="startup-message"><SquaresFour size={38} /><h1>Agentrix 是桌面应用</h1><p>请在项目目录运行 npm start，或双击打包后的应用。</p></div>;

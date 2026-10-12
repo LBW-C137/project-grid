@@ -351,6 +351,17 @@ function applyActivity(project, s, snapshot) {
   if (task) s.lastTask = task;
   if (s.agent === 'codex') store.setRestore(s.terminalId, { threadId: snapshot.threadId });
   s.codexActivity = snapshot.state;
+  if (s.agent === 'claude') {
+    s.claudeActivitySnapshot = snapshot;
+    if (['complete', 'interrupted'].includes(snapshot.state)) {
+      // The last poll may still add tool calls. Settle both views afterward, unless another round has started.
+      void Promise.resolve(s.activityMonitor?.poll()).then(() => {
+        if (sessions.get(s.terminalId) === s && s.codexActive && s.agent === 'claude' && s.claudeActivitySnapshot === snapshot && s.codexActivity !== 'working' && !(s.activityInputAt > snapshot.updatedAt)) {
+          s.actions.settle(); s.conversation.settle();
+        }
+      });
+    }
+  }
   if (snapshot.state === 'working') store.expectCompletion(project.id);
   if (['complete', 'interrupted'].includes(snapshot.state) && (s.agent === 'claude' || project.kind === 'ssh')) s.promptQueue.finish(snapshot.updatedAt);
   if (snapshot.state === 'complete' && snapshot.turnId) {
@@ -388,7 +399,6 @@ function claudeActivity(project, s, event) {
   // Remember the conversation and whether its turn is still open, so a restart can resume it and continue.
   store.setRestore(s.terminalId, { threadId: event.sessionId, interrupted: event.state === 'working' });
   followClaude(project, s, event);
-  if (event.state === 'complete') void s.activityMonitor?.poll().then(() => { if (sessions.get(s.terminalId) === s && s.codexActivity !== 'working') s.actions.settle(); });
   applyActivity(project, s, { threadId: event.sessionId, turnId: event.state === 'complete' ? turnId : null, state: event.state, updatedAt: Date.now(), prompt: typeof event.prompt === 'string' ? event.prompt.slice(0, 2000) : undefined });
 }
 

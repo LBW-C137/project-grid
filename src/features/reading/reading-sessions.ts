@@ -34,6 +34,10 @@ export async function resumeReadingSession(id: string, write: (text: string) => 
   follow: (id: string) => Promise<Result<boolean>>, active: () => boolean) {
   if (!/^[\w-]{1,100}$/.test(id)) throw new Error('Invalid session id');
   if (!active()) return false;
+  // Whatever waits in Claude's input (a prompt it put back after an interrupt) would be sent with the command: cleared.
+  write('\x15');
+  await new Promise(resolve => setTimeout(resolve, 60));
+  if (!active()) return false;
   write(`/resume ${id}`);
   await new Promise(resolve => setTimeout(resolve, 150));
   if (!active()) return false;

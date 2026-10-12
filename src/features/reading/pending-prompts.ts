@@ -9,14 +9,19 @@ export type PendingPrompts = { sessionId: string | null; prompts: readonly Pendi
 export const normalizePrompt = (text: string) => text.trim().replace(/\s+/g, ' ');
 export const isTypedCommand = (text: string) => /^[\/!]/.test(text) && !/[\r\n]/.test(text);
 
-// Whether what the CLI's input holds is this message: its input wraps lines, puts "[Image #1]" before pasted pictures
-// and shows a long paste as "[Pasted text #1 +12 lines]".
+// Whether what the CLI's input holds is this message: its input wraps lines, puts "[Image #1]" before pasted pictures,
+// may cut a long line short with "…", and shows a long paste only as "[Pasted text #1 +12 lines]" (Claude) or
+// "[Pasted Content 1200 chars]" (Codex). It must be this message, not one that merely begins the same way: Enter on a
+// leftover "delete" would send it instead of "delete nothing".
 const squash = (text: string) => text.replace(/\[Image #\d+\]/g, '').replace(/\s+/g, '');
+const PASTE_SUMMARY = /^\s*(?:\[Image #\d+\]\s*)*\[(?:Pasted text #\d+[^\]]*|Pasted Content \d+ chars)\]\s*$/;
 export function sameMessage(message: string, draft: string) {
   if (!draft.trim()) return false;
-  if (/^\s*(?:\[Image #\d+\]\s*)*\[Pasted text #\d+/.test(draft)) return true;
-  const sent = squash(message), held = squash(draft).replace(/…$/, '');
-  return !!held && !!sent && (sent.startsWith(held.slice(0, 24)) || held.startsWith(sent.slice(0, 24)));
+  // Only a long or multi-line message is shown as a paste summary; its words cannot be compared.
+  if (PASTE_SUMMARY.test(draft)) return /\n/.test(message.trim()) || message.length > 200;
+  const sent = squash(message), held = squash(draft);
+  if (!sent || !held) return false;
+  return held.endsWith('…') ? held.length > 9 && sent.startsWith(held.slice(0, -1)) : sent === held;
 }
 
 export function createPendingPrompts(sessionId: string | null, entries: readonly UserRecord[] = []): PendingPrompts {

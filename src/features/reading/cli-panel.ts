@@ -80,6 +80,11 @@ function cliDialogOpen(agent: ScreenAgent, rows: string[], screen: AgentScreen):
   return !(agent === 'claude' && claudeWorking(rows)) || rows.some(dialogHint);
 }
 
+// A dialog open on screen whoever opened it (left open in the terminal, or opened while its popup was being put away),
+// told by its own key hints so that an input this parser misses is never taken for one: a message typed now would
+// land in it.
+export const cliDialogShown = (agent: ScreenAgent, rows: string[], screen: AgentScreen) => cliDialogOpen(agent, rows, screen) && rows.some(dialogHint);
+
 // Codex's /side opens a side conversation that only Ctrl+C leaves; Escape there tries to edit the last prompt.
 // Codex refuses /side in a conversation with nothing in it yet ("'/side' is unavailable until …"): then no side
 // conversation opened, and /side is an ordinary command whose result is that line. rows: what it printed, then the
@@ -118,22 +123,28 @@ export function cliHistory(agent: ScreenAgent, rows: string[], screen: AgentScre
 // when the history changed meanwhile (a startup tip that went away). A screen drawn anew (/clear) starts with Codex's
 // banner, and nothing is taken; /status repeats that banner inside its card, so the echo is looked for first.
 const codexBanner = (row: string) => /^\s*>_ OpenAI Codex\b/.test(row);
+// The history only moves up as output comes in, so its last row is never found below where it was when the command
+// was sent: the same command run twice prints the same rows again, and an anchor found in them would leave nothing.
+// The command's own echo row, when newer Codex prints one under the history, starts its output.
 function rowsSince(before: readonly string[], rows: string[], end: number, command: string): string[] | null {
   const last = before.filter(row => row.trim()).slice(-2);
   if (!last.length) return null;
-  const found = anchored(last, rows, end);
-  if (found) return found;
-  for (let index = end - 1; index >= 0; index--) if (command.trim() && rows[index].trim() === command.trim()) return trimRows(rows.slice(index, end));
+  const anchor = anchoredAt(last, rows, Math.min(end, before.length + 2));
+  const echo = (from: number) => { for (let index = end - 1; index > from; index--) if (command.trim() && rows[index].trim() === command.trim()) return index; return -1; };
+  if (anchor >= 0) { const at = echo(anchor); return trimRows(rows.slice(at >= 0 ? at : anchor + 1, end)); }
+  const at = echo(-1);
+  if (at >= 0) return trimRows(rows.slice(at, end));
   if (rows.slice(0, end).some(codexBanner)) return null;
   return trimRows(rows.slice(0, end));
 }
-function anchored(last: string[], rows: string[], end: number): string[] | null {
-  for (let index = end - 1; index >= 0; index--) {
+// Where the history's last row (and the one before it) is, at or above `limit`; -1 when it scrolled out of sight.
+function anchoredAt(last: string[], rows: string[], limit: number): number {
+  for (let index = Math.min(limit, rows.length) - 1; index >= 0; index--) {
     if (rows[index].trimEnd() !== last.at(-1)!.trimEnd()) continue;
     if (last.length === 2 && rows.slice(0, index).filter(row => row.trim()).at(-1)?.trimEnd() !== last[0].trimEnd()) continue;
-    return trimRows(rows.slice(index + 1, end));
+    return index;
   }
-  return null;
+  return -1;
 }
 
 // Newer Codex prints the command itself as the first line of its output; the conversation already shows it.
@@ -176,6 +187,11 @@ export function extractCliPanelRows(agent: ScreenAgent, rows: string[], screen: 
     // A full-screen view (the /diff pager) replaced everything that was there: all of it is the command's.
     if (!input && rows.some(row => /\bq close\b|to scroll\b/i.test(row))) return squeeze(trimRows(rows.slice(0, end)));
     return [];
+  }
+  // Newer Claude opens a dialog under its ▔▔▔ edge without echoing the command: an echo found above that edge is an
+  // earlier run of the same command, and what lies between is old conversation, not this dialog.
+  if (echo >= 0 && agent === 'claude') {
+    for (let index = (input?.start ?? end) - 1; index > echo; index--) if (/^\s*▔{8,}\s*$/.test(rows[index])) { start = index + 1; break; }
   }
   if (echo < 0) {
     // The composer rules are below the panel, not its upper boundary.

@@ -380,3 +380,21 @@ test('a Codex command that asked something ends once the question is gone, witho
   assert.equal(step(back, 200), false);
   assert.equal(step(back, 600), true, 'done after the usual 400 ms idle, not the eight seconds a silent command gets');
 });
+
+test('the same Codex command twice shows its output again, not nothing', () => {
+  const first = ['• Earlier answer', '', '/pwd', '• Current working directory: C:\work'];
+  const before = cliHistory('codex', [...first, '', ...input('codex')], inspect('codex', [...first, '', ...input('codex')]));
+  const rows = [...first, '', '/pwd', '• Current working directory: C:\work', '', ...input('codex')];
+  assert.deepEqual(extractCliPanelRows('codex', rows, inspect('codex', rows), '/pwd', before), ['• Current working directory: C:\work']);
+  assert.deepEqual(extractCliOutputRows('codex', rows, inspect('codex', rows), '/pwd', before), ['• Current working directory: C:\work']);
+  // Older Codex prints no echo row: what came in under the history is still the command's.
+  const plain = ['• Earlier answer', '', '• Status: ok'], again = [...plain, '', '• Status: ok', '', ...input('codex')];
+  const was = cliHistory('codex', [...plain, '', ...input('codex')], inspect('codex', [...plain, '', ...input('codex')]));
+  assert.deepEqual(extractCliPanelRows('codex', again, inspect('codex', again), '/status', was), ['• Status: ok']);
+});
+
+test('a Claude dialog under its edge shows only itself, not an earlier run of the same command above it', () => {
+  const rows = ['❯ /usage', '  ⎿  Status dialog dismissed', '', '❯ fix the bug', '', '⏺ Fixed it.', '', '▔'.repeat(40), '  Settings   Status   Usage', '', '  Current session  12% used', '', '  Esc to cancel'];
+  const result = extractCliPanelRows('claude', rows, inspect('claude', rows), '/usage');
+  assert.deepEqual(result, ['  Settings   Status   Usage', '', '  Current session  12% used', '', '  Esc to cancel']);
+});

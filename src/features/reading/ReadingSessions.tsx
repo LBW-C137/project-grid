@@ -59,6 +59,8 @@ export function ReadingSessions({ terminalId, agent, onClose, onSent, onError }:
     event.stopPropagation();
     if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (!['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(event.key)) return;
+    // Enter on a focused button presses it: Cancel cancels, a session tabbed to is the one resumed.
+    if (event.key === 'Enter' && (event.target as HTMLElement | null)?.closest?.('button')) return;
     event.preventDefault();
     if (sending.current) return;
     if (event.key === 'Escape') close();

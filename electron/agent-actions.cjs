@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { transcriptWindow, LIVE_READ_LIMIT } = require('./transcript-window.cjs');
+const { ClaudeImageLine } = require('./oversized-record.cjs');
 
 // What an agent is doing, step by step: each tool it calls becomes one action the window can show
 // ("editing src/App.tsx", "running npm test", "skill code-review", "MCP github · create_issue").
@@ -21,6 +22,18 @@ function projectPath(file, cwd) {
     if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) return relative.split(path.sep).join('/');
   }
   return file.split('\\').join('/');
+}
+
+// SSH folders belong to the remote system, even when the app is running on Windows.
+const resolvePath = (cwd, file) => (cwd?.startsWith('/') || file.startsWith('/') ? path.posix : path).resolve(cwd || '.', file);
+
+// These records are Claude's own bookkeeping, not a prompt that starts another round.
+function claudeOwnRecord(record) {
+  if (record?.isCompactSummary || record?.isVisibleInTranscriptOnly) return true;
+  if (record?.type !== 'user') return false;
+  const content = record.message?.content;
+  const text = (typeof content === 'string' ? content : Array.isArray(content) ? content.filter(block => block?.type === 'text').map(block => block.text).join('\n') : '').trim();
+  return /^\[Request interrupted by user(?: for tool use)?\]$/.test(text) || text.startsWith('This session is being continued from a previous conversation');
 }
 
 // mcp__server__tool, the name both agents give a tool that an MCP server provides.
@@ -89,6 +102,21 @@ function commandPhrase(command) {
 const PHRASES = [...COMMAND_PHRASES.map(([, phrase]) => phrase), '运行脚本', '运行命令'];
 
 const EDITING_COMMAND = /\b(apply_patch|writeFileSync|appendFileSync|Set-Content|Add-Content|Out-File|sed\s+-i|tee\s)/;
+// Read literal arguments without executing the script. Interpolated templates cannot name a command reliably.
+function scriptString(input, key) {
+  const match = new RegExp(`\\b${key}:\\s*("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\x60(?:[^\x60\\\\]|\\\\.)*\x60)`).exec(input);
+  if (!match) return null;
+  const literal = match[1];
+  if (literal[0] === '`' && literal.includes('${')) return null;
+  try {
+    if (literal[0] === '"') return JSON.parse(literal);
+    return literal.slice(1, -1).replace(/\\(?:\r?\n|u[\da-f]{4}|x[\da-f]{2}|.)/gi, escape => {
+      const char = escape.slice(1);
+      if (/^[ux][\da-f]+$/i.test(char)) return String.fromCharCode(parseInt(char.slice(1), 16));
+      return ({ n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', '0': '\0', '\n': '', '\r\n': '' })[char] ?? char;
+    });
+  } catch { return null; }
+}
 // A shell command Codex ran. Codex edits files through the shell too (apply_patch or a script that writes).
 function codexCommand(id, at, command, cwd) {
   const action = { id, at, cwd, kind: 'command', tool: 'exec_command', target: clip(command, 240), detail: '', description: '', done: false, failed: false };
@@ -107,14 +135,12 @@ function codexActions(payload, at, cwd) {
   if (payload.type === 'custom_tool_call' && typeof payload.input === 'string') {
     const actions = [], input = payload.input;
     for (const match of input.matchAll(/tools\.([\w.]+)\(/g)) {
-      const name = match[1], rest = input.slice(match.index);
+      const name = match[1], rest = input.slice(match.index + match[0].length).split(/tools\.[\w.]+\(/)[0];
       if (name === 'exec_command' || name === 'shell') {
-        const command = /cmd:\s*("(?:[^"\\]|\\.)*")/.exec(rest);
-        let text = ''; try { text = command ? JSON.parse(command[1]) : ''; } catch { text = command ? command[1] : ''; }
-        const workdir = /workdir:\s*("(?:[^"\\]|\\.)*")/.exec(rest.split(/tools\.[\w.]+\(/)[1] || rest);
-        let directory = cwd; try { if (workdir) directory = path.resolve(cwd || '.', JSON.parse(workdir[1])); } catch { }
+        const text = scriptString(rest, 'cmd') || '', workdir = scriptString(rest, 'workdir');
+        const directory = workdir === null ? cwd : resolvePath(cwd, workdir);
         actions.push(codexCommand(`${id}:${actions.length}`, at, text, directory));
-      } else if (name === 'apply_patch') actions.push(codexCommand(`${id}:${actions.length}`, at, rest, cwd));
+      } else if (name === 'apply_patch') actions.push(codexCommand(`${id}:${actions.length}`, at, `apply_patch\n${rest}`, cwd));
       else if (name === 'write_stdin') continue;
       else {
         const mcp = mcpTool(name) || (name.includes('.') ? { server: name.split('.')[0], tool: name.split('.').slice(1).join('.') } : null);
@@ -129,7 +155,7 @@ function codexActions(payload, at, cwd) {
     const name = String(payload.name || 'shell'), mcp = mcpTool(name);
     if (mcp) return [{ id: `${id}:0`, at, kind: 'mcp', tool: name, target: `${mcp.server} · ${mcp.tool}`, detail: '', description: '', done: false, failed: false, server: mcp.server }];
     const command = Array.isArray(args.command) ? args.command.join(' ') : args.command || args.cmd || args.input || '';
-    if (['shell', 'exec_command', 'local_shell', 'apply_patch', 'container.exec'].includes(name)) return [codexCommand(`${id}:0`, at, name === 'apply_patch' ? `apply_patch\n${command}` : command, typeof args.workdir === 'string' ? path.resolve(cwd || '.', args.workdir) : cwd)];
+    if (['shell', 'exec_command', 'local_shell', 'apply_patch', 'container.exec'].includes(name)) return [codexCommand(`${id}:0`, at, name === 'apply_patch' ? `apply_patch\n${command}` : command, typeof args.workdir === 'string' ? resolvePath(cwd, args.workdir) : cwd)];
     return [{ id: `${id}:0`, at, kind: 'other', tool: name, target: name, detail: '', description: '', done: false, failed: false }];
   }
   return [];
@@ -137,6 +163,23 @@ function codexActions(payload, at, cwd) {
 // The call id a Codex output record answers, or null.
 function codexFinished(payload) {
   return ['custom_tool_call_output', 'function_call_output', 'local_shell_call_output'].includes(payload.type) ? String(payload.call_id || '') : null;
+}
+
+// Outputs have used JSON metadata, plain shell status lines and text blocks. An absent exit code says nothing failed.
+function codexFailed(payload) {
+  const failed = (output, depth = 0) => {
+    if (depth > 8 || output == null) return false;
+    if (typeof output === 'string') {
+      try { return failed(JSON.parse(output), depth + 1); } catch { }
+      return [...output.matchAll(/^(?:Exit code:\s*|Process exited with code\s+)(-?\d+)\b/gm)].some(match => Number(match[1]) !== 0);
+    }
+    if (Array.isArray(output)) return output.some(item => failed(item, depth + 1));
+    if (typeof output !== 'object') return false;
+    const code = output.metadata?.exit_code ?? output.exit_code;
+    if (typeof code === 'number' || typeof code === 'string' && /^-?\d+$/.test(code)) return Number(code) !== 0;
+    return ['output', 'content', 'text'].some(key => failed(output[key], depth + 1));
+  };
+  return failed(payload);
 }
 
 // The steps of the current round, oldest first. changed is called with what to tell the window.
@@ -166,7 +209,7 @@ class ActionLog {
 // Follows a growing JSON-lines file from where the last read stopped, a bounded amount per call.
 class TranscriptTail {
   constructor(filename, { onHistory = () => {} } = {}) {
-    this.filename = filename; this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false;
+    this.filename = filename; this.offset = 0; this.buffer = Buffer.alloc(0); this.skipping = false; this.oversized = null;
     this.onHistory = onHistory; this.historyPending = true; onHistory(false);
   }
   async read(onRecord) {
@@ -176,7 +219,7 @@ class TranscriptTail {
       const identity = `${stat.dev}:${stat.ino}`;
       if (this.fileIdentity !== identity || stat.size < this.fileSize) {
         const rebinding = this.fileIdentity != null;
-        Object.assign(this, transcriptWindow(stat.size)); this.buffer = Buffer.alloc(0);
+        Object.assign(this, transcriptWindow(stat.size)); this.buffer = Buffer.alloc(0); this.oversized = null;
         this.historyPending = true;
         if (rebinding) this.onHistory(false);
       }
@@ -191,10 +234,15 @@ class TranscriptTail {
         let newline;
         while ((newline = this.buffer.indexOf(10)) !== -1) {
           const line = this.buffer.subarray(0, newline); this.buffer = this.buffer.subarray(newline + 1);
-          if (!this.skipping && line.length <= 1024 * 1024) { try { onRecord(JSON.parse(line.toString('utf8'))); } catch { } }
-          this.skipping = false;
+          const oversized = this.oversized ?? (!this.skipping && line.length > 1024 * 1024 ? new ClaudeImageLine(Buffer.alloc(0)) : null);
+          if (oversized) { oversized.add(line); const record = oversized.record(); if (record) onRecord(record); }
+          else if (!this.skipping) { try { onRecord(JSON.parse(line.toString('utf8'))); } catch { } }
+          this.skipping = false; this.oversized = null;
         }
-        if (this.buffer.length > 1024 * 1024) { this.buffer = Buffer.alloc(0); this.skipping = true; }
+        if (this.buffer.length > 1024 * 1024) {
+          if (this.oversized) this.oversized.add(this.buffer); else if (!this.skipping) this.oversized = new ClaudeImageLine(this.buffer);
+          this.buffer = Buffer.alloc(0); this.skipping = true;
+        }
       }
       if (this.historyPending && this.offset >= stat.size) { this.historyPending = false; this.onHistory(true); }
     } finally { await file.close(); }
@@ -204,7 +252,7 @@ class TranscriptTail {
 // One record of a Claude Code transcript, applied to the log: a prompt starts a new round, a tool_use
 // block is a step, its tool_result ends it. Child agents (sidechains) are part of their parent's step.
 function claudeRecord(log, record, cwd) {
-  if (!record || record.isSidechain || !record.message) return;
+  if (!record || record.isSidechain || !record.message || claudeOwnRecord(record)) return;
   const content = record.message.content, at = Date.parse(record.timestamp) || Date.now();
   if (record.type === 'user' && !record.isMeta && (typeof content === 'string' || Array.isArray(content) && content.some(block => block.type === 'text') && !content.some(block => block.type === 'tool_result'))) { log.reset(); return; }
   if (!Array.isArray(content)) return;
@@ -224,7 +272,7 @@ function codexRecord(log, record, cwd) {
   if (record.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload.type)) { log.settle(); return; }
   if (record.type !== 'response_item') return;
   const finished = codexFinished(record.payload);
-  if (finished) { log.finish(finished, false, true); return; }
+  if (finished) { log.finish(finished, codexFailed(record.payload), true); return; }
   const added = codexActions(record.payload, at, cwd);
   for (const action of added) log.add(action);
   return added;
@@ -268,4 +316,4 @@ async function skillDescription(name, cwd, file) {
   return '';
 }
 
-module.exports = { ActionLog, TranscriptTail, claudeAction, claudeRecord, codexActions, codexRecord, commandPhrase, PHRASES, skillDescription, projectPath };
+module.exports = { ActionLog, TranscriptTail, claudeAction, claudeRecord, claudeOwnRecord, codexActions, codexRecord, codexFailed, commandPhrase, PHRASES, skillDescription, projectPath, resolvePath };

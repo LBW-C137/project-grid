@@ -1,8 +1,60 @@
-// A record too large to read whole (over 1 MB) is skipped, except one: Codex writes a generated picture's pixels into
+// An oversized Codex record (over 1 MB) is skipped, except one: Codex writes a generated picture's pixels into
 // the record that reports it. What the reading view needs of it lies at its two ends, the picture's id, state and
 // prompt at the start and the file it was saved to at the end, so a reader keeps the start and the end of an oversized
 // line and this rebuilds the record without the pixels.
 const HEAD = 64 * 1024, TAIL = 8 * 1024;
+const IMAGE_LIMIT = 2_800_000, RECORD_LIMIT = 16 * 1024 * 1024;
+
+// Claude puts pasted screenshots between the prompt's text blocks. Keep small images intact and replace larger
+// base64 strings with null before parsing, so neither the pixels nor the text after them can grow memory forever.
+class ClaudeImageLine {
+  constructor(start) { this.parts = []; this.size = 0; this.buffer = Buffer.alloc(0); this.data = null; this.add(start); }
+  keep(part) {
+    if (!part.length) return;
+    this.size += part.length;
+    if (this.size > RECORD_LIMIT) { this.discarded = true; this.parts = []; this.data = null; this.buffer = Buffer.alloc(0); }
+    else this.parts.push(part);
+  }
+  pixels(part) {
+    this.dataSize += part.length;
+    if (this.dataSize > IMAGE_LIMIT) { this.omitted = true; this.data = []; }
+    else if (!this.omitted) this.data.push(part);
+  }
+  add(chunk) {
+    if (this.discarded) return;
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+    while (this.buffer.length && !this.discarded) {
+      if (this.data !== null) {
+        const quote = this.buffer.indexOf(34);
+        if (quote < 0) { this.pixels(this.buffer); this.buffer = Buffer.alloc(0); return; }
+        this.pixels(this.buffer.subarray(0, quote));
+        const rest = this.buffer.subarray(quote + 1);
+        this.keep(this.omitted ? Buffer.from('null') : Buffer.concat([Buffer.from('"'), ...this.data, Buffer.from('"')]));
+        this.data = null; this.buffer = this.discarded ? Buffer.alloc(0) : rest;
+      } else {
+        const match = /"data"\s*:\s*"/.exec(this.buffer.toString('latin1'));
+        if (match) {
+          const end = match.index + match[0].length;
+          const rest = this.buffer.subarray(end);
+          this.keep(this.buffer.subarray(0, end - 1));
+          if (this.discarded) return;
+          this.hasData = true; this.data = []; this.dataSize = 0; this.omitted = false; this.buffer = rest;
+        } else {
+          // A data key may straddle reads; bytes are decoded only once the whole record is rebuilt.
+          const end = Math.max(0, this.buffer.length - 64), rest = this.buffer.subarray(end);
+          this.keep(this.buffer.subarray(0, end)); this.buffer = this.discarded ? Buffer.alloc(0) : rest;
+          return;
+        }
+      }
+    }
+  }
+  record() {
+    if (this.discarded || !this.hasData || this.data !== null) return null;
+    this.keep(this.buffer);
+    if (this.discarded) return null;
+    try { return JSON.parse(Buffer.concat(this.parts).toString('utf8')); } catch { return null; }
+  }
+}
 
 const field = (text, name) => {
   const match = new RegExp(`"${name}":"((?:[^"\\\\]|\\\\.)*)"`).exec(text);
@@ -29,4 +81,4 @@ class OversizedLine {
   record() { return oversizedRecord(this.head, this.tail); }
 }
 
-module.exports = { OversizedLine, oversizedRecord };
+module.exports = { OversizedLine, oversizedRecord, ClaudeImageLine, IMAGE_LIMIT };

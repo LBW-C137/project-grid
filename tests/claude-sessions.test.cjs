@@ -119,6 +119,91 @@ function mainHarness(t, f) {
   return { project, s, store, sessions, context, restore, resets: () => resets };
 }
 
+function activityHarness(t, f) {
+  const h = mainHarness(t, f);
+  h.project.seenEvents = [];
+  h.s.promptQueue.finish = () => {};
+  h.store.complete = () => false;
+  Object.assign(h.context, {
+    summarizeTask: () => '', isLocalAgentCommand: () => false, notifyCompletion() {},
+    memoryFolder: () => f.cwd, roundsOf: () => [], remember: async () => {},
+    setTimeout: () => ({ unref() {} }),
+  });
+  vm.runInContext(main.slice(main.indexOf('function applyActivity('), main.indexOf('function onEvent(')), h.context);
+  return h;
+}
+
+const pendingTool = id => ({ type: 'assistant', uuid: id, message: { content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: `${id}.txt` } }] } });
+
+test('Claude Stop polls the last transcript records before settling both action and conversation tools', async t => {
+  const f = await fixture(t), file = await f.write('session', [user('Question'), pendingTool('failed'), pendingTool('unanswered')]);
+  const h = activityHarness(t, f);
+  await h.context.followClaudeSession(h.project, h.s, 'session');
+  h.s.codexActivity = 'working';
+  await fs.appendFile(file, [
+    user([{ type: 'tool_result', tool_use_id: 'failed', is_error: true }]), pendingTool('last'),
+  ].map(record => JSON.stringify(record) + '\n').join(''));
+  h.context.claudeActivity(h.project, h.s, { state: 'complete', sessionId: 'session', eventId: 'session:round', transcriptPath: file });
+  await h.s.activityMonitor.poll();
+  await new Promise(setImmediate);
+  assert.equal(h.s.codexActivity, 'complete');
+  assert.deepEqual(h.s.actions.list.map(action => [action.id, action.done, action.failed]), [['failed', true, true], ['unanswered', true, false], ['last', true, false]]);
+  assert.deepEqual(h.s.conversation.list.filter(entry => entry.role === 'tool').map(entry => [entry.id, entry.tool.done, entry.tool.failed]), [['failed', true, true], ['unanswered', true, false], ['last', true, false]]);
+});
+
+test('Escape interruption settles both Claude views through the existing terminal IPC activity flow', async t => {
+  const f = await fixture(t);
+  await f.write('session', [user('Question'), pendingTool('pending')]);
+  const h = activityHarness(t, f);
+  await h.context.followClaudeSession(h.project, h.s, 'session');
+  const listeners = {}, keys = [];
+  Object.assign(h.s, { codexActivity: 'working', status: 'running', needsInput: null,
+    submissions: { write: () => false, sent: [] }, gate: { input: key => keys.push(key) } });
+  require('../electron/features/terminal/ipc.cjs').registerTerminalIpc({ handle() {}, listen: (name, callback) => { listeners[name] = callback; },
+    getSession: id => h.sessions.get(id), getProjectById: () => h.project, applyActivity: h.context.applyActivity });
+  listeners['terminal:write']('terminal', '\x1b');
+  await h.s.activityMonitor.poll();
+  await new Promise(setImmediate);
+  assert.deepEqual(keys, ['\x1b']);
+  assert.equal(h.s.codexActivity, 'interrupted');
+  assert.equal(h.s.actions.list[0].done, true);
+  assert.equal(h.s.conversation.list.at(-1).tool.done, true);
+});
+
+test('a delayed Claude final poll cannot settle a newer round, submission or replacement session', async t => {
+  const f = await fixture(t);
+  for (const change of ['round', 'submission', 'replacement']) {
+    const h = activityHarness(t, f);
+    claudeRecord(h.s.actions, pendingTool('pending'), f.cwd);
+    claudeConversation(h.s.conversation, pendingTool('pending'), f.cwd);
+    let finish;
+    const pending = new Promise(resolve => { finish = resolve; });
+    h.s.activityMonitor = { poll: () => pending, stop() {} };
+    h.context.claudeActivity(h.project, h.s, { state: 'complete', sessionId: 'session', eventId: 'session:old' });
+    assert.equal(h.s.conversation.list[0].tool.done, false, 'settlement waits for the poll');
+    if (change === 'round') h.context.claudeActivity(h.project, h.s, { state: 'working', sessionId: 'session', eventId: 'session:new', prompt: 'Next question' });
+    else if (change === 'submission') { h.s.codexActivity = 'working'; h.s.activityInputAt = Date.now() + 1; }
+    else h.sessions.delete('terminal');
+    finish(); await pending; await new Promise(setImmediate);
+    assert.equal(h.s.actions.list[0].done, false, change);
+    assert.equal(h.s.conversation.list[0].tool.done, false, change);
+  }
+});
+
+test('Claude interruption without a transcript monitor still settles, while stale activity is ignored', async t => {
+  const h = activityHarness(t, await fixture(t));
+  claudeRecord(h.s.actions, pendingTool('pending'));
+  claudeConversation(h.s.conversation, pendingTool('pending'));
+  h.s.activitySince = 20; h.s.activityInputAt = 30; h.s.codexActivity = 'working';
+  h.context.applyActivity(h.project, h.s, { state: 'interrupted', updatedAt: 25 });
+  await Promise.resolve();
+  assert.equal(h.s.conversation.list[0].tool.done, false);
+  h.context.applyActivity(h.project, h.s, { state: 'interrupted', updatedAt: 31 });
+  await Promise.resolve();
+  assert.equal(h.s.actions.list[0].done, true);
+  assert.equal(h.s.conversation.list[0].tool.done, true);
+});
+
 test('following a known id loads history immediately, and same-session hooks preserve the tail and log', async t => {
   const f = await fixture(t), file = await f.write('session', [user('Before resume'), { type: 'assistant', uuid: 'reply', message: { content: [{ type: 'text', text: 'Previous answer' }] } }]);
   const h = mainHarness(t, f);

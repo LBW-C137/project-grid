@@ -25,13 +25,22 @@ function CliBlocks({ rows, live = false }: { rows: readonly string[]; live?: boo
 // Escape or a click outside closes it (onClose closes what the command opened in the CLI as well).
 export function ReadingCliPanel({ command, rows, done, terminalId, onClose }: { command: string; rows: string[]; done: boolean; terminalId: string; onClose: () => void }) {
   const card = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => { card.current?.focus({ preventScroll: true }); }, []);
+  // A live dialog takes the keys when the reader is here (in this reading view, or nowhere in particular); a result
+  // that is done never takes focus from what is being typed, and another card's typing stays where it is.
+  useLayoutEffect(() => {
+    const active = document.activeElement, view = card.current?.closest('.reading-view');
+    if (!done && (!active || active === document.body || (view && view.contains(active)))) card.current?.focus({ preventScroll: true });
+  }, []);
   const write = (key: string) => window.agentrix.writeTerminal(terminalId, key);
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation();
     if (event.nativeEvent.isComposing) return;
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
     if (done) return;
+    // Ctrl+C with text selected copies it (twice to the CLI would quit it); Ctrl+V pastes the text through onPaste.
+    const control = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+    if (control && event.key.toLowerCase() === 'c' && window.getSelection()?.toString()) return;
+    if (control && event.key.toLowerCase() === 'v') return;
     const key = cliPanelKey(event);
     if (key === null) return;
     event.preventDefault(); write(key);

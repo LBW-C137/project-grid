@@ -8,6 +8,8 @@
   position: absolute; inset: 0; z-index: 4; overflow: auto; background: transparent;
 }
 .main-workspace[inert] { visibility: hidden; }
+/* An open project's file sidebar sits beside the workbench, not in it: it goes with it under the home pages. */
+.workspace-layout:has(> .home-layer) > .focus-sidebar { visibility: hidden; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-layer {
   --home-row: var(--theme-hover); --home-line: var(--theme-line); --home-ink: var(--theme-ink); --home-muted: var(--theme-muted); --home-faint: var(--theme-muted);
   --home-ok: var(--theme-ink); --home-blue: var(--theme-ink); --home-pink: var(--mono-orange); --home-amber: var(--mono-orange); --home-red: var(--mono-alert-ink);

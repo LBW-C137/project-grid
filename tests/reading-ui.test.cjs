@@ -44,6 +44,7 @@ function loadUI(name, overrides = {}) {
     if (key === './ReadingSignIn') return { ReadingSignIn: () => null };
     if (key === './composer-prefill') return require('../src/features/reading/composer-prefill.ts');
     if (key === './image-thumbnail') return require('../src/features/reading/image-thumbnail.ts');
+    if (key === './markdown-escape') return require('../src/features/reading/markdown-escape.ts');
     if (key === './sign-in-screen') return require('../src/features/agents/sign-in-screen.ts');
     if (key === './file-popup') return { showPopup: () => {}, closePopup: () => {}, usePopup: () => null };
     return originalRequire(name);
@@ -170,11 +171,14 @@ test('native session card arrows highlight, Enter types a targeted resume and fo
   h.press('ArrowDown'); assert.equal(h.options()[1].props['data-highlighted'], true);
   h.press('ArrowUp'); assert.equal(h.options()[0].props['data-highlighted'], true);
   h.press('ArrowDown'); h.press('Enter'); h.press('Enter'); h.press('Escape');
-  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '/resume second' }]); assert.deepEqual(h.followed, []);
+  // What waits in Claude's input is cleared first, then the command is typed.
+  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '\x15' }]); assert.deepEqual(h.followed, []);
   assert.ok(h.options().every(option => option.props.disabled));
+  t.mock.timers.tick(60); for (let index = 0; index < 6; index++) await Promise.resolve();
+  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '\x15' }, { id: 'resume-terminal', text: '/resume second' }]);
   t.mock.timers.tick(150);
   for (let index = 0; index < 6; index++) await Promise.resolve();
-  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '/resume second' }, { id: 'resume-terminal', text: '\r' }]);
+  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '\x15' }, { id: 'resume-terminal', text: '/resume second' }, { id: 'resume-terminal', text: '\r' }]);
   assert.deepEqual(h.followed, [{ id: 'resume-terminal', sessionId: 'second' }]);
   assert.deepEqual(h.sent, ['/resume second']); assert.equal(h.closed(), 1); assert.deepEqual(h.errors, []);
 });
@@ -182,8 +186,9 @@ test('native session card arrows highlight, Enter types a targeted resume and fo
 test('native session card click chooses and Esc closes without sending terminal keys', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const h = sessionsHarness(t, [{ id: 'clicked', title: 'Restore this prompt', updatedAt: Date.now(), messages: 2 }]);
-  const option = h.options()[0]; await option.props.onClick();
-  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '/resume clicked' }]);
+  const option = h.options()[0]; void option.props.onClick();
+  t.mock.timers.tick(60); for (let index = 0; index < 6; index++) await Promise.resolve();
+  assert.deepEqual(h.written, [{ id: 'resume-terminal', text: '\x15' }, { id: 'resume-terminal', text: '/resume clicked' }]);
   t.mock.timers.tick(150); for (let index = 0; index < 6; index++) await Promise.resolve();
   assert.equal(h.closed(), 1);
   const empty = sessionsHarness(t);
@@ -272,6 +277,15 @@ test('choice number keys target printed numbers and write relative to the CLI cu
   assert.deepEqual(harness.written, [{ id: 'native-choice', key: '\x1b[A' }]);
   t.mock.timers.tick(25); await Promise.resolve();
   assert.deepEqual(harness.written, [{ id: 'native-choice', key: '\x1b[A' }, { id: 'native-choice', key: '\r' }]);
+});
+
+test('Enter on a focused button presses that button, never the highlighted option (Cancel never approves)', t => {
+  const harness = choiceHarness(t);
+  let prevented = false;
+  const button = { closest: selector => selector === 'button' ? button : null };
+  harness.render().props.onKeyDown({ key: 'Enter', target: button, nativeEvent: { isComposing: false }, preventDefault: () => { prevented = true; }, stopPropagation: () => {} });
+  assert.equal(prevented, false, 'the button keeps its own Enter');
+  assert.deepEqual(harness.written, [], 'nothing chosen for it');
 });
 
 test('choice Esc and cancel button each send a single Escape and wait for CLI dismissal', t => {
@@ -372,7 +386,7 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
   let entries = Array.from({ length: 400 }, (_, index) => ({ id: String(index), at: 0, role: 'assistant', text: `answer-${index}` }));
   const parsed = [], icon = () => React.createElement('svg');
   const { ReadingView } = loadUI('features/reading/ReadingView.tsx', {
-    marked: { marked: { parse: text => { parsed.push(text); return text; } } },
+    './markdown-escape': { readingMarked: { parse: text => { parsed.push(text); return text; } } },
     dompurify: { default: () => ({ sanitize: html => html }) },
     '@phosphor-icons/react': Object.fromEntries(['ArrowDown', 'CaretDown', 'CaretRight', 'CircleNotch', 'Image', 'PaperPlaneRight', 'Stop'].map(name => [name, icon])),
     './ActivityPane': {}, './voice-input': {}, './terminal-screen': { useScreen: () => null },

@@ -27,7 +27,8 @@ export function ReadingSignIn({ agent, screen, terminalId, projectId, onError }:
       onKeyDown={event => {
         event.stopPropagation();
         if (event.key === 'Escape' && screen.cancel) { event.preventDefault(); write('\x1b'); }
-        else if (event.key === 'Enter' && !screen.input && screen.enter) { event.preventDefault(); write('\r'); }
+        // Enter on a focused button (Cancel) presses that button, not the CLI's Enter.
+        else if (event.key === 'Enter' && !screen.input && screen.enter && !(event.target as HTMLElement | null)?.closest?.('button')) { event.preventDefault(); write('\r'); }
       }}>
       <div className="reading-cli-head"><strong><SignIn size={14} />{t('登录 {name}', { name })}</strong></div>
       <div className="reading-cli-body reading-sign-in-body">

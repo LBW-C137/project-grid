@@ -149,8 +149,19 @@ test('a prompt received after one Claude put back in its input still acknowledge
 test('a message still held in the CLI input is recognised through wrapping, image marks and long-paste summaries', () => {
   const message = '合并远端的主分支的内容，然后解决冲突并提交';
   assert.equal(sameMessage(message, '合并远端的主分支的内容，然后解决\n冲突并提交'), true);
-  assert.equal(sameMessage(message, '[Image #1] 合并远端的主分支的内容'), true);
+  assert.equal(sameMessage(message, '[Image #1] 合并远端的主分支的内容，然后解决冲突并提交'), true);
+  assert.equal(sameMessage(message, '合并远端的主分支的内容，然后…'), true, 'a line the CLI cut short');
   assert.equal(sameMessage('first line\nsecond line', '[Pasted text #1 +2 lines]'), true);
+  assert.equal(sameMessage('a'.repeat(300), '[Pasted Content 300 chars]'), true, "Codex's paste summary");
   assert.equal(sameMessage(message, ''), false);
   assert.equal(sameMessage(message, '继续'), false, 'a different prompt put back after an interrupt');
+});
+
+test('a leftover that only begins like the message is not the message', () => {
+  // Enter on it would send the leftover instead of what was written.
+  assert.equal(sameMessage('delete nothing', 'delete'), false);
+  assert.equal(sameMessage('delete', 'delete nothing'), false);
+  assert.equal(sameMessage('合并远端的主分支的内容，然后解决冲突并提交', '[Image #1] 合并远端的主分支的内容'), false);
+  assert.equal(sameMessage('fix it', '[Pasted text #1 +40 lines]'), false, 'a short message is never shown as a paste');
+  assert.equal(sameMessage('fix', 'f…'), false, 'too little left to tell');
 });

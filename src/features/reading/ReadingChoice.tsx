@@ -11,6 +11,12 @@ export function ReadingChoice({ choice, terminalId, onError }: { choice: ScreenC
   latest.current = choice;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { card.current?.querySelector<HTMLElement>('[data-highlighted="true"]')?.scrollIntoView({ block: 'nearest' }); }, [highlight]);
+  // Keys the CLI did not act on (lost, or the same choice drawn again) leave the card free after a moment, Cancel too.
+  useEffect(() => {
+    if (pending === null) return;
+    const timer = setTimeout(() => { sending.current = false; setPending(null); }, 2500);
+    return () => clearTimeout(timer);
+  }, [pending]);
   const choose = async (index: number) => {
     if (sending.current || !latest.current.options[index]) return;
     sending.current = true; card.current?.focus(); setHighlight(index); setPending(index);
@@ -29,6 +35,9 @@ export function ReadingChoice({ choice, terminalId, onError }: { choice: ScreenC
     event.stopPropagation();
     if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (!['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(event.key) && !/^[1-9]$/.test(event.key)) return;
+    // Enter on a focused button presses that button (Cancel, or the option tabbed to), never the highlighted option:
+    // Enter on Cancel must not approve a permission.
+    if (event.key === 'Enter' && (event.target as HTMLElement | null)?.closest?.('button')) return;
     event.preventDefault();
     if (sending.current) return;
     if (event.key === 'Escape') cancel();

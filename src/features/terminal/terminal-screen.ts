@@ -11,7 +11,9 @@ const pending = new Map<string, Set<(screen: Screen) => void>>();
 
 function read(terminal: Terminal): Screen {
   const buffer = terminal.buffer.active, rows: string[] = [];
-  for (let index = 0; index < terminal.rows; index++) rows.push(buffer.getLine(buffer.viewportY + index)?.translateToString(true) ?? '');
+  // The live screen, from baseY: viewportY stays wherever the reader scrolled the terminal back to, and writes made from
+  // the reading view never scroll it down again, so the questions and command output would be read from old rows.
+  for (let index = 0; index < terminal.rows; index++) rows.push(buffer.getLine(buffer.baseY + index)?.translateToString(true) ?? '');
   return { rows };
 }
 

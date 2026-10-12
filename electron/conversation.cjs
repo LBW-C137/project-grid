@@ -1,5 +1,5 @@
-const path = require('node:path');
-const { claudeAction, codexActions } = require('./agent-actions.cjs');
+const { claudeAction, claudeOwnRecord, codexActions, codexFailed, resolvePath } = require('./agent-actions.cjs');
+const { IMAGE_LIMIT } = require('./oversized-record.cjs');
 
 // The conversation of a terminal's agent, for the reading view: what the user asked, what the agent
 // answered (Markdown), and the tools it called in between. It is read from the records each agent already
@@ -19,7 +19,6 @@ const PASTED = /<\/?pasted_content\b[^>]*>\n?/g;
 const clean = text => String(text || '').slice(0, CLEAN_LIMIT).replace(WRAPPERS, '').replace(PASTED, '').replace(/\[Image #\d+\]\s?/g, '').trim();
 // Images the user attached to a message, as data URLs the reading view shows: at most four, none over about 2 MB,
 // each made small by the main process (setThumbnailer) so a conversation full of screenshots stays light to send.
-const IMAGE_LIMIT = 2_800_000;
 let shrink = url => url;
 function images(parts) {
   return pictures(parts).map(url => { try { return shrink(url) || url; } catch { return url; } });
@@ -59,7 +58,7 @@ const bounded = text => text.length > TEXT_LIMIT ? `${text.slice(0, TEXT_LIMIT)}
 // A step as the reading view shows it; an edit names the files it left (not deleted ones), so the documents, pages and
 // videos among them can be previewed. Keep their cwd here; the project folder may be a parent of it.
 const brief = (action, cwd = action.cwd) => ({ kind: action.kind, tool: action.tool, target: action.target, detail: action.detail, done: action.done, failed: action.failed, phrase: action.phrase, object: action.object,
-  ...(action.kind === 'edit' && action.files?.length ? { written: action.files.filter(file => file.change !== 'delete').map(file => cwd ? path.resolve(cwd, file.path.replace(/\\/g, '/')) : file.path).slice(0, 8) } : {}) });
+  ...(action.kind === 'edit' && action.files?.length ? { written: action.files.filter(file => file.change !== 'delete').map(file => cwd ? resolvePath(cwd, file.path.replace(/\\/g, '/')) : file.path).slice(0, 8) } : {}) });
 
 // Entries keep their order; a later record about the same entry (a tool that finished) replaces it.
 class ConversationLog {
@@ -97,6 +96,7 @@ class ConversationLog {
 }
 
 function claudeConversation(log, record, cwd) {
+  if (claudeOwnRecord(record)) return;
   const queued = record?.type === 'attachment' && record.attachment?.type === 'queued_command' && record.attachment.commandMode !== 'bash' ? record.attachment : null;
   if (queued && !record.isSidechain) {
     const text = clean(typeof queued.prompt === 'string' ? queued.prompt : Array.isArray(queued.prompt) ? queued.prompt.filter(block => block?.type === 'text').map(block => block.text).join('\n') : '');
@@ -162,7 +162,7 @@ function codexConversation(log, record, cwd) {
     return;
   }
   if (record.type !== 'response_item') return;
-  if (['custom_tool_call_output', 'function_call_output', 'local_shell_call_output'].includes(payload.type)) { log.finish(String(payload.call_id || ''), false, true); return; }
+  if (['custom_tool_call_output', 'function_call_output', 'local_shell_call_output'].includes(payload.type)) { log.finish(String(payload.call_id || ''), codexFailed(payload), true); return; }
   for (const action of codexActions(payload, at, log.cwd || cwd)) log.put({ id: action.id, at, role: 'tool', tool: brief(action) });
 }
 

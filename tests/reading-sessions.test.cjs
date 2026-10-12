@@ -14,11 +14,14 @@ test('targeted resume is typed before Enter, aborts when unmounted, and propagat
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const written = [], followed = []; let active = true;
   const pending = resumeReadingSession('session-id', text => written.push(text), async id => { followed.push(id); return { ok: true, value: true }; }, () => active);
-  assert.deepEqual(written, ['/resume session-id']); assert.deepEqual(followed, []);
-  t.mock.timers.tick(149); await Promise.resolve(); assert.equal(written.length, 1);
+  // What waits in Claude's input (a prompt put back after an interrupt) is cleared before the command is typed.
+  assert.deepEqual(written, ['\x15']);
+  t.mock.timers.tick(60); await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(written, ['\x15', '/resume session-id']); assert.deepEqual(followed, []);
+  t.mock.timers.tick(149); await Promise.resolve(); assert.equal(written.length, 2);
   active = false; t.mock.timers.tick(1); assert.equal(await pending, false); assert.deepEqual(followed, []);
   const failing = resumeReadingSession('session-id', text => written.push(text), async () => ({ ok: false, error: 'Read failed' }), () => true);
-  const rejection = assert.rejects(failing, /Read failed/); t.mock.timers.tick(150); await rejection;
+  const rejection = assert.rejects(failing, /Read failed/); t.mock.timers.tick(60); await Promise.resolve(); await Promise.resolve(); t.mock.timers.tick(150); await rejection;
   assert.equal(written.at(-1), '\r');
   await assert.rejects(resumeReadingSession('../unsafe', () => assert.fail(), () => assert.fail(), () => true), /Invalid session/);
 });

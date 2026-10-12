@@ -1,6 +1,7 @@
 import { parseAgentScreen } from '../agents/agent-screen';
 import { cliInputDraft, isAtPrompt } from '../reading/cli-panel';
 import { readScreen } from '../terminal/terminal-screen';
+import { sameMessage } from '../reading/pending-prompts';
 import { t } from '../../shared/i18n';
 
 type Agent = 'claude' | 'codex';
@@ -27,7 +28,8 @@ export async function sendToAgent(terminalId: string, sessionId: string, agent: 
   for (let attempt = 0; attempt < 2; attempt++) {
     await pause(700);
     const after = look(terminalId, agent);
-    if (!after || !cliInputDraft(agent, after.rows, after.screen).trim()) break;
+    // Enter again only on this message still waiting there, never on something else typed in the meantime.
+    if (!after || !sameMessage(text, cliInputDraft(agent, after.rows, after.screen))) break;
     window.agentrix.writeTerminal(terminalId, '\r');
   }
   return null;
