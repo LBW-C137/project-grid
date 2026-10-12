@@ -124,9 +124,16 @@ test('Linux remote worker reads real files, enforces boundaries and emits Codex 
   const activityFile = path.join(sessions, `rollout-${activityThread}.jsonl`);
   const activityRecord = type => JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type, turn_id: 'parent-turn' } }) + '\n';
   await fs.writeFile(activityFile, JSON.stringify({ type: 'session_meta', payload: { id: activityThread, cwd: fixture.project, source: 'cli' } }) + '\n' + activityRecord('task_started'));
-  assert.equal((await connection.request('codex-status', { since: activitySince })).state, 'working');
+  // The status comes with the conversation's records, compacted, for the reading view here.
+  const working = await connection.request('codex-status', { since: activitySince });
+  assert.equal(working.snapshot.state, 'working');
+  assert.equal(working.reset, true); assert.equal(working.historyDone, true);
+  assert.deepEqual(working.records.map(record => record.type + ':' + (record.payload.type || '')), ['session_meta:', 'event_msg:task_started']);
   await fs.appendFile(activityFile, activityRecord('task_complete'));
-  assert.equal((await connection.request('codex-status', { since: activitySince })).state, 'complete');
+  const complete = await connection.request('codex-status', { since: activitySince });
+  assert.equal(complete.snapshot.state, 'complete');
+  assert.equal(complete.reset, false);
+  assert.deepEqual(complete.records.map(record => record.payload.type), ['task_complete']);
   await waitFor(() => events.some(event => event.type === 'codex-exited'));
   assert.ok(output.includes('REMOTE_CODEX_DONE'));
   let clipboard = [];
