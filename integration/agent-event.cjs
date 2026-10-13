@@ -65,11 +65,13 @@ function claudeEvent(input, projectId, sessionKey, kind) {
 
 // A shell's own report (shell-ready, shell-prompt, codex-started, codex-exited), as zsh-integration.zsh writes it.
 const shellEvents = ['shell-ready', 'shell-prompt', 'codex-started', 'codex-exited'];
-function shellEvent([type, sequence, exitCode, agent, codex, claude, codexHome, cwd], projectId, sessionKey) {
+// command: the first word given to the CLI when it is a subcommand or an option (update, --version), else empty.
+function shellEvent([type, sequence, exitCode, agent, codex, claude, codexHome, cwd, command], projectId, sessionKey) {
   if (!shellEvents.includes(type) || !/^\d+$/.test(String(sequence))) return null;
   return {
     projectId, sessionKey, type, sequence: Number(sequence), exitCode: Number.parseInt(exitCode, 10) || 0, agent: agent === 'claude' ? 'claude' : 'codex',
     codexAvailable: codex === 'true', claudeAvailable: claude === 'true', codexHome: String(codexHome ?? ''), cwd: String(cwd ?? ''),
+    ...(command ? { command: String(command).slice(0, 24) } : {}),
   };
 }
 

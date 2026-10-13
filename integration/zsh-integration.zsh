@@ -73,15 +73,24 @@ __pg_program() {
 __pg_send() {
   emulate -L zsh
   (( ++__pg_sequence ))
-  local project key cwd home codex=false claude=false
+  local project key cwd home command codex=false claude=false
+  __pg_json "${4:-}"; command=$REPLY
   __pg_json $__pg_project; project=$REPLY
   __pg_json $__pg_key; key=$REPLY
   __pg_json $PWD; cwd=$REPLY
   __pg_json ${CODEX_HOME:-$HOME/.codex}; home=$REPLY
   __pg_program codex && codex=true
   __pg_program claude && claude=true
-  local line="{\"projectId\":$project,\"sessionKey\":$key,\"type\":\"$1\",\"sequence\":$__pg_sequence,\"exitCode\":${2:-0},\"agent\":\"${3:-codex}\",\"codexAvailable\":$codex,\"claudeAvailable\":$claude,\"codexHome\":$home,\"cwd\":$cwd}"
+  local line="{\"projectId\":$project,\"sessionKey\":$key,\"type\":\"$1\",\"sequence\":$__pg_sequence,\"exitCode\":${2:-0},\"agent\":\"${3:-codex}\",\"codexAvailable\":$codex,\"claudeAvailable\":$claude,\"codexHome\":$home,\"cwd\":$cwd,\"command\":$command}"
   ( zsocket $__pg_socket && print -r -u $REPLY -- $line ) 2>/dev/null
+  return 0
+}
+
+# The first word given to an agent's CLI when it is a subcommand or an option (update, --version): Agentrix tells such a
+# run from a conversation by it (electron/features/agents/agent-command.cjs). Anything else is not sent.
+__pg_command() {
+  emulate -L zsh
+  [[ ${1-} =~ '^-{0,2}[A-Za-z][A-Za-z-]{0,23}$' ]] && print -rn -- "$1"
   return 0
 }
 
@@ -98,7 +107,7 @@ codex() {
   for word in /usr/bin/env ELECTRON_RUN_AS_NODE=1 "$__pg_node" "$__pg_helper" codex-notify "$__pg_socket" "$__pg_project" "$__pg_key"; do
     __pg_json "$word"; notify+=${notify:+,}$REPLY
   done
-  __pg_send codex-started
+  __pg_send codex-started 0 codex "$(__pg_command "$@")"
   # What the reading view can show (electron/features/agents/reading-note.cjs); the user's own -c comes later and wins.
   local -a note=()
   [[ -n $__pg_note ]] && note=(-c "developer_instructions=\"$__pg_note\"")
@@ -125,7 +134,7 @@ claude() {
   __pg_json "$hook notify"; notify=$REPLY
   __pg_json "$hook session"; session=$REPLY
   local settings="{\"hooks\":{\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":$start,\"timeout\":10}]}],\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":$stop,\"timeout\":10}]}],\"Notification\":[{\"hooks\":[{\"type\":\"command\",\"command\":$notify,\"timeout\":10}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":$session,\"timeout\":10}]}]}}"
-  __pg_send codex-started 0 claude
+  __pg_send codex-started 0 claude "$(__pg_command "$@")"
   # What the reading view can show; a later --append-system-prompt of the user's wins.
   local -a note=()
   [[ -n $__pg_note ]] && note=(--append-system-prompt "$__pg_note")

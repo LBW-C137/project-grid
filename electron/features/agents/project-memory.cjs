@@ -113,11 +113,15 @@ function renderRound(round) {
   if (round.checks?.length) lines.push(`Checks: ${round.checks.join(', ')}`);
   return lines.join('\n') + '\n';
 }
+// Text an agent reads with its own tools. On Windows they read it through PowerShell 5.1, whose Get-Content takes a
+// file without a byte-order mark for the system code page (GBK on a Chinese system) and turns every Chinese word into
+// garbage; with the mark it reads UTF-8.
+const forAgents = text => (process.platform === 'win32' ? '\uFEFF' : '') + text;
 async function writeMemoryBook(dir, folder) {
   const rounds = await readArchive(dir, folder), file = path.join(dir, `${folderKey(folder)}.md`);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(file, `# Development memory of ${folder}\n\nEvery round worked in this folder with Claude Code or Codex, newest first. Kept by Agentrix.\n\n${rounds.slice().reverse().map(renderRound).join('\n')}`, 'utf8');
+  await fs.writeFile(file, forAgents(`# Development memory of ${folder}\n\nEvery round worked in this folder with Claude Code or Codex, newest first. Kept by Agentrix.\n\n${rounds.slice().reverse().map(renderRound).join('\n')}`), 'utf8');
   return { file, rounds };
 }
 
-module.exports = { folderKey, roundsOf, readArchive, remember, gather, writeMemoryBook, renderRound };
+module.exports = { folderKey, roundsOf, readArchive, remember, gather, writeMemoryBook, renderRound, forAgents };

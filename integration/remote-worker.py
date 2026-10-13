@@ -36,8 +36,25 @@ try:
         identity=str(payload.get("thread-id",""))+":"+str(payload.get("turn-id",""))
         if identity==":": sys.exit(0)
         event.update(type="turn-complete",eventId=hashlib.sha256(identity.encode()).hexdigest(),threadId=payload.get("thread-id"),turnId=payload.get("turn-id"))
-    elif mode=="shell-prompt": event["codexAvailable"]=len(sys.argv)>2 and sys.argv[2]=="1"
-    elif mode=="codex-exited": event["exitCode"]=int(sys.argv[2])
+    elif mode=="claude-hook":
+        states={"start":"working","stop":"complete","notify":"attention","session":"session"}
+        kind=sys.argv[2]
+        if kind not in states: sys.exit(0)
+        hook=json.load(sys.stdin)
+        if kind=="notify" and hook.get("notification_type") not in ("permission_prompt","elicitation_dialog"): sys.exit(0)
+        identity=str(hook.get("session_id") or "")
+        if not identity: sys.exit(0)
+        event.update(type="agent-activity",agent="claude",state=states[kind],sessionId=identity,
+                     transcriptPath=str(hook.get("transcript_path") or ""),eventId=identity+":"+str(time.time_ns() if hasattr(time,"time_ns") else int(time.time()*1000000000)),
+                     message=str(hook.get("message") or "")[:300] if kind=="notify" else None,
+                     prompt=str(hook["prompt"])[:2000] if kind=="start" and hook.get("prompt") else None)
+    elif mode=="shell-prompt":
+        event["codexAvailable"]=len(sys.argv)>2 and sys.argv[2]=="1"
+        event["claudeAvailable"]=len(sys.argv)>3 and sys.argv[3]=="1"
+    elif mode in ("codex-started","codex-exited"):
+        event["agent"]="claude" if len(sys.argv)>3 and sys.argv[3]=="claude" else "codex"
+        if mode=="codex-exited": event["exitCode"]=int(sys.argv[2])
+        elif len(sys.argv)>2 and sys.argv[2]: event["command"]=sys.argv[2][:24]
     with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as client:
         client.settimeout(2)
         client.connect(os.environ["AGENTRIX_SOCKET"])
@@ -49,12 +66,16 @@ BASH_SOURCE = r'''if [ -r "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi
 cd -- "$AGENTRIX_ROOT" || exit 1
 __pg_note=$AGENTRIX_READING_NOTE; unset AGENTRIX_READING_NOTE
 unalias codex 2>/dev/null || true
+unalias claude 2>/dev/null || true
 __pg_emit() { "$AGENTRIX_PYTHON" "$AGENTRIX_NOTIFY_FILE" "$@" >/dev/null 2>&1; }
+# The first word given to an agent when it is a subcommand or an option (update, --version): Agentrix tells such a run
+# from a conversation by it. Anything else is not sent.
+__pg_command() { local pattern='^-{0,2}[A-Za-z][A-Za-z-]{0,23}$'; [[ ${1-} =~ $pattern ]] && printf '%s' "$1"; return 0; }
 function codex {
     local executable result
     executable=$(type -P codex)
     if [ -z "$executable" ]; then printf 'Codex CLI was not found on this SSH host.\n'; return 127; fi
-    __pg_emit codex-started
+    __pg_emit codex-started "$(__pg_command "$@")"
     # What the reading view can show (electron/features/agents/reading-note.cjs); the user's own -c comes later and wins.
     local -a note=()
     [ -n "$__pg_note" ] && note=(-c "developer_instructions=\"$__pg_note\"")
@@ -63,10 +84,32 @@ function codex {
     __pg_emit codex-exited "$result"
     return "$result"
 }
+function claude {
+    local executable result settings
+    executable=$(type -P claude)
+    if [ -z "$executable" ]; then printf 'Claude Code CLI was not found on this SSH host.\n'; return 127; fi
+    __pg_emit codex-started "$(__pg_command "$@")" claude
+    # Claude runs hooks with sh, so quote each argument for that shell, including paths with spaces.
+    settings=$("$AGENTRIX_PYTHON" - "$AGENTRIX_NOTIFY_FILE" <<'PY'
+import json,shlex,sys
+command=" ".join(shlex.quote(word) for word in (sys.executable,sys.argv[1],"claude-hook"))
+hooks={name:[{"hooks":[{"type":"command","command":command+" "+kind}]}] for name,kind in
+       (("UserPromptSubmit","start"),("Stop","stop"),("Notification","notify"),("SessionStart","session"))}
+print(json.dumps({"hooks":hooks}))
+PY
+    )
+    local -a note=()
+    [ -n "$__pg_note" ] && note=(--append-system-prompt "$__pg_note")
+    "$executable" --settings "$settings" "${note[@]}" "$@"
+    result=$?
+    __pg_emit codex-exited "$result" claude
+    return "$result"
+}
 __pg_prompt() {
-    local result=$? available=0
+    local result=$? available=0 claude_available=0
     if type -P codex >/dev/null; then available=1; fi
-    __pg_emit shell-prompt "$available"
+    if type -P claude >/dev/null; then claude_available=1; fi
+    __pg_emit shell-prompt "$available" "$claude_available"
     return "$result"
 }
 if declare -p PROMPT_COMMAND 2>/dev/null | grep -q 'declare -a'; then
@@ -78,7 +121,7 @@ fi
 # TUIs such as Codex. These bindings are private to this generated shell rc.
 bind -m emacs-standard '"\e[13;2u":"\C-v\C-j"' 2>/dev/null || true
 bind -m vi-insertion '"\e[13;2u":"\C-v\C-j"' 2>/dev/null || true
-printf '\033[36m  AGENTRIX / SSH\033[0m\n  Type codex to start, or codex resume to continue.\n\n'
+printf '\033[36m  AGENTRIX / SSH\033[0m\n  Type codex or claude to start, codex resume or claude --resume to continue.\n\n'
 '''
 
 def image_type(data):
@@ -117,9 +160,16 @@ def json_records(filename, history_window=False):
             except (ValueError, UnicodeError): continue
 
 def compact_claude_record(record):
-    """What the development memory on the other computer takes from one Claude Code transcript record: the messages'
-    text, each tool call's name and short arguments, and whether a result failed; pictures and outputs stay here."""
-    if not isinstance(record, dict) or record.get("isSidechain") or record.get("type") not in ("user", "assistant"): return None
+    """The messages, tool calls, results and settings the other computer needs; pictures and outputs stay here."""
+    if not isinstance(record, dict) or record.get("isSidechain"): return None
+    if record.get("type") == "attachment":
+        attachment = record.get("attachment") or {}
+        if not isinstance(attachment, dict) or attachment.get("type") != "queued_command" or attachment.get("commandMode") == "bash": return None
+        prompt = attachment.get("prompt")
+        if isinstance(prompt, list): prompt = [{"type": "text", "text": clip(block.get("text"))} for block in prompt if isinstance(block, dict) and block.get("type") == "text"]
+        return {"type": "attachment", "uuid": record.get("uuid"), "timestamp": record.get("timestamp"),
+                "attachment": {"type": "queued_command", "commandMode": attachment.get("commandMode"), "prompt": clip(prompt)}}
+    if record.get("type") not in ("user", "assistant"): return None
     message = record.get("message") if isinstance(record.get("message"), dict) else {}
     content = message.get("content")
     if isinstance(content, str): parts = clip(content)
@@ -135,8 +185,11 @@ def compact_claude_record(record):
                               "input": {key: clip(value, 600) for key, value in arguments.items() if isinstance(value, (str, int, float, bool))}})
             elif kind == "tool_result": parts.append({"type": "tool_result", "tool_use_id": block.get("tool_use_id"), "is_error": bool(block.get("is_error")), "content": ""})
     else: return None
-    kept = {key: record.get(key) for key in ("type", "uuid", "timestamp", "cwd", "sessionId", "isMeta", "isCompactSummary", "isVisibleInTranscriptOnly") if key in record}
+    kept = {key: record.get(key) for key in ("type", "uuid", "timestamp", "cwd", "sessionId", "isMeta", "isCompactSummary", "isVisibleInTranscriptOnly", "effort") if key in record}
     kept["message"] = {"role": message.get("role"), "content": parts}
+    if isinstance(message.get("model"), str): kept["message"]["model"] = message["model"]
+    usage = message.get("usage") or {}
+    if isinstance(usage, dict) and isinstance(usage.get("speed"), str): kept["message"]["usage"] = {"speed": usage["speed"]}
     return kept
 
 def history_records(root, codex_home, claude_home, per_agent=4, budget=1200 * 1024):
@@ -268,6 +321,53 @@ def compact_record(record):
         return {"type": kind, "timestamp": at, "payload": {key: clip(value) for key, value in payload.items() if key in ("type", "name", "call_id", "id", "input", "arguments", "action")}}
     return None
 
+def take_records(reader):
+    """The records waiting, up to a budget per answer; the rest go with the next one."""
+    batch, size = [], 0
+    while reader.outbox and (not batch or size + len(json.dumps(reader.outbox[0], ensure_ascii=True)) <= RECORDS_BUDGET):
+        record = reader.outbox.pop(0); size += len(json.dumps(record, ensure_ascii=True)); batch.append(record)
+    reset, reader.reset = reader.reset, False
+    return {"records": batch, "reset": reset, "historyDone": bool(reader.filename) and not reader.history_pending and not reader.outbox}
+
+class ClaudeTranscriptReader:
+    """Follow the transcript named by Claude's hooks, with bounded history and the same response budget as Codex."""
+    def __init__(self, filename, since):
+        self.filename, self.since = filename, since
+        self.offset, self.buffer, self.skipping = 0, b"", False
+        self.file_identity, self.file_size, self.history_pending = None, 0, True
+        self.outbox, self.reset = [], True
+
+    def read(self):
+        try: source = open(self.filename, "rb")
+        except FileNotFoundError: return
+        with source:
+            info = os.fstat(source.fileno())
+            size, identity = info.st_size, (info.st_dev, info.st_ino)
+            if self.file_identity != identity or size < self.file_size:
+                self.offset, self.skipping = transcript_window(size)
+                self.buffer, self.history_pending = b"", True
+                self.outbox, self.reset = [], True
+            self.file_identity, self.file_size = identity, size
+            source.seek(self.offset)
+            end = size if self.history_pending else min(size, self.offset + LIVE_READ_LIMIT)
+            while self.offset < end:
+                chunk = source.read(min(65536, end - self.offset))
+                if not chunk: break
+                self.offset += len(chunk)
+                self.buffer += chunk
+                while b"\n" in self.buffer:
+                    line, self.buffer = self.buffer.split(b"\n", 1)
+                    if not self.skipping and len(line) <= 1024 * 1024:
+                        try:
+                            record = compact_claude_record(json.loads(line))
+                            if record is not None: self.outbox.append(record)
+                        except (ValueError, UnicodeError, TypeError): pass
+                    self.skipping = False
+                if len(self.buffer) > 1024 * 1024: self.buffer, self.skipping = b"", True
+            if self.offset >= size: self.history_pending = False
+
+    def take(self): return take_records(self)
+
 class CodexActivityReader:
     """Incrementally read the interactive parent's records: its lifecycle, and (compacted) what the reading view shows."""
     def __init__(self, root, home, since, thread_id=None):
@@ -280,12 +380,7 @@ class CodexActivityReader:
         self.outbox, self.reset = [], False
 
     def take(self):
-        """The records waiting, up to a budget per answer; the rest go with the next one."""
-        batch, size = [], 0
-        while self.outbox and (not batch or size + len(json.dumps(self.outbox[0], ensure_ascii=True)) <= RECORDS_BUDGET):
-            record = self.outbox.pop(0); size += len(json.dumps(record, ensure_ascii=True)); batch.append(record)
-        reset, self.reset = self.reset, False
-        return {"records": batch, "reset": reset, "historyDone": bool(self.filename) and not self.history_pending and not self.outbox}
+        return take_records(self)
 
     def discover(self):
         if time.monotonic() < self.next_discovery: return
@@ -374,8 +469,10 @@ class Worker:
         self.sequence = 0
         self.sequence_lock = threading.Lock()
         self.codex_home = os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex"))
+        self.claude_home = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
         self.uploads = {}
         self.activity_reader = None
+        self.claude_reader = None
         self.activity_lock = threading.Lock()
 
     def codex_status(self, since, thread_id=None):
@@ -387,6 +484,18 @@ class Worker:
             # The lifecycle snapshot (None while history is still being read), with the conversation's records.
             snapshot = self.activity_reader.read()
             return {"snapshot": snapshot, **self.activity_reader.take()}
+
+    def claude_status(self, path, since):
+        if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096 or "\0" in path: raise ValueError("Invalid Claude transcript path.")
+        if not isinstance(since, (int, float)) or since <= 0: raise ValueError("Invalid session time.")
+        projects = os.path.realpath(os.path.join(self.claude_home, "projects"))
+        filename = os.path.realpath(path)
+        if filename == projects or os.path.commonpath([projects, filename]) != projects: raise ValueError("Claude transcript lies outside the projects folder.")
+        with self.activity_lock:
+            if self.claude_reader is None or self.claude_reader.filename != filename or self.claude_reader.since != since:
+                self.claude_reader = ClaudeTranscriptReader(filename, since)
+            self.claude_reader.read()
+            return self.claude_reader.take()
 
     def initialize(self, config):
         self.root = os.path.realpath(os.path.expanduser(config["path"]))
@@ -845,6 +954,7 @@ def main():
             elif op == "save-file": value = worker.save_file(message["path"], message.get("page", 0), message.get("revision"), message["data"])
             elif op == "resume-info": value = recent_session(worker.coding_root, worker.codex_home, message.get("threadId"))
             elif op == "codex-status": value = worker.codex_status(message.get("since"), message.get("threadId"))
+            elif op == "claude-status": value = worker.claude_status(message.get("path"), message.get("since"))
             elif op == "history": value = history_records(worker.coding_root, worker.codex_home, os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"))
             elif op == "write-handoff": value = worker.write_handoff(message.get("text"))
             elif op == "create": value = worker.create(message.get("path", ""), message["name"], message["kind"], message.get("unique", False))

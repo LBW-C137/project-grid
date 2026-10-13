@@ -51,7 +51,7 @@ function global:ConvertTo-AgentrixArgument {
 }
 
 function global:Send-AgentrixEvent {
-    param([string]$Type, [int]$ExitCode = 0, [string]$Agent = 'codex')
+    param([string]$Type, [int]$ExitCode = 0, [string]$Agent = 'codex', [string]$Command = '')
     $global:AgentrixEventSequence++
     try {
         $eventData = @{
@@ -65,6 +65,7 @@ function global:Send-AgentrixEvent {
             claudeAvailable = [bool]$global:AgentrixClaudeCommand
             codexHome = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.codex' })
             cwd = (Get-Location).Path
+            command = $Command
         } | ConvertTo-Json -Compress
         $pipe = [System.IO.Pipes.NamedPipeClientStream]::new('.', $global:AgentrixSession.pipeName, [System.IO.Pipes.PipeDirection]::Out)
         try {
@@ -73,6 +74,13 @@ function global:Send-AgentrixEvent {
             try { $writer.WriteLine($eventData); $writer.Flush() } finally { $writer.Dispose() }
         } finally { $pipe.Dispose() }
     } catch { }
+}
+
+# The first word given to an agent's CLI when it is a subcommand or an option (update, --version): Agentrix tells such a
+# run from a conversation by it (electron/features/agents/agent-command.cjs). Anything else is not sent.
+function global:Get-AgentrixCommand($arguments) {
+    $first = if ($arguments.Count) { [string]$arguments[0] } else { '' }
+    if ($first -cmatch '^-{0,2}[A-Za-z][A-Za-z-]{0,23}$') { $first } else { '' }
 }
 
 function global:codex {
@@ -89,7 +97,7 @@ function global:codex {
         '-ProjectId', $global:AgentrixSession.projectId,
         '-SessionKey', $global:AgentrixSession.sessionKey
     ) | ConvertTo-Json -Compress
-    Send-AgentrixEvent 'codex-started'
+    Send-AgentrixEvent 'codex-started' -Command (Get-AgentrixCommand $args)
     $codexExit = 0
     try {
         if ([IO.Path]::GetExtension($global:AgentrixCodexExecutable) -ne '.exe') {
@@ -136,7 +144,7 @@ function global:claude {
     ) -join ' '
     $hook = { param($kind) @{ hooks = @(@{ type = 'command'; command = ($hookCommand + ' -Kind ' + $kind); timeout = 10 }) } }
     $settings = @{ hooks = @{ UserPromptSubmit = @(& $hook 'start'); Stop = @(& $hook 'stop'); Notification = @(& $hook 'notify'); SessionStart = @(& $hook 'session') } } | ConvertTo-Json -Depth 6 -Compress
-    Send-AgentrixEvent 'codex-started' -Agent 'claude'
+    Send-AgentrixEvent 'codex-started' -Agent 'claude' -Command (Get-AgentrixCommand $args)
     $claudeExit = 0
     try {
         $startInfo = [Diagnostics.ProcessStartInfo]::new()

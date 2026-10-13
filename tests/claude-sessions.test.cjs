@@ -11,6 +11,8 @@ const { ConversationLog, claudeConversation } = require('../electron/conversatio
 const { monitorActivity } = require('../electron/codex-activity.cjs');
 const { claudeResumeCommand } = require('../electron/session-restore.cjs');
 const { HISTORY_WINDOW } = require('../electron/transcript-window.cjs');
+const { agentCommand } = require('../electron/features/agents/agent-command.cjs');
+const { agentSettings } = require('../electron/features/agents/agent-settings.cjs');
 
 const user = content => ({ type: 'user', uuid: 'prompt', message: { content } });
 async function fixture(t) {
@@ -110,8 +112,8 @@ function mainHarness(t, f) {
   // while a large file is still being written.
   const context = vm.createContext({ path, sessions, store, TranscriptTail, monitorActivity: (read, changed, options) => monitorActivity(read, changed, { ...options, watch: null }), claudeConversation, claudeRecord,
     claudeConfigDir: () => f.home, findClaudeSession: (cwd, id) => findClaudeSession(cwd, id, f.home),
-    describeActions() {}, broadcast() {}, acceptShellEvent: () => true, noteSettings() {}, readEvery: () => 1000,
-    quitting: false, Date, claudeResumeCommand, restorePlans: new Map(),
+    describeActions() {}, broadcast() {}, acceptShellEvent: () => true, noteSettings() {}, readEvery: () => 1000, agentCommand: require('../electron/features/agents/agent-command.cjs').agentCommand,
+    quitting: false, Date, claudeResumeCommand, restorePlans: new Map(), agentCommand, sshHandoff: async () => false,
     // The handoff of earlier work is written on start (handoff.cjs, tested on its own).
     writeHandoff: async () => false, handoffFile: id => path.join(f.home, 'handoff', `${id}.md`), memoryDir: () => path.join(f.home, 'memory'), scrubProjectSkills: async () => [],
   });
@@ -136,6 +138,76 @@ function activityHarness(t, f) {
 }
 
 const pendingTool = id => ({ type: 'assistant', uuid: id, message: { content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: `${id}.txt` } }] } });
+
+test('SSH Claude hooks poll remote records with history, tools and settings through the local consumers', async t => {
+  const f = await fixture(t), h = activityHarness(t, f), requests = [], described = [];
+  h.project.kind = 'ssh'; h.project.path = '/srv/project'; h.s.activitySince = 1000;
+  h.context.claudeConfigDir = () => { throw new Error('SSH must use the server config directory'); };
+  h.context.noteSettings = (s, agent, record) => { s.agentSettings = agentSettings(s.agentSettings || null, agent, record); };
+  h.context.describeActions = (_s, cwd, actions) => { for (const action of actions || []) described.push([cwd, action.target]); };
+  h.context.monitorActivity = (read, _changed, options) => ({ poll: read, stop() {}, options });
+  const file = '/srv/claude/projects/-srv-project/session.jsonl';
+  const records = [user('Remote prompt'), { ...pendingTool('read'), message: { model: 'claude-test', usage: { speed: 'fast' }, content: pendingTool('read').message.content }, effort: 'high' }];
+  const responses = [
+    { records, reset: true, historyDone: false },
+    { records: [user([{ type: 'tool_result', tool_use_id: 'read', is_error: true }])], reset: false, historyDone: true },
+    { records: [user('Replaced prompt')], reset: true, historyDone: true },
+  ];
+  h.s.terminal = { request: async (op, args) => { requests.push([op, { ...args }]); return responses.shift(); } };
+  h.context.claudeActivity(h.project, h.s, { state: 'session', sessionId: 'session', eventId: 'session:1', transcriptPath: file, sentAt: 900 });
+  await h.s.activityMonitor.poll();
+  assert.deepEqual(requests[0], ['claude-status', { path: file, since: 900 }]);
+  assert.equal(h.s.activityMonitor.options.watch(), null); assert.equal(h.s.activityMonitor.options.interval(), 1000);
+  assert.equal(h.s.conversation.loading, true); assert.equal(h.s.conversation.list[0].text, 'Remote prompt');
+  assert.deepEqual(h.s.agentSettings, { model: 'claude-test', effort: 'high', fast: true });
+  assert.deepEqual(described, [['/srv/project', 'read.txt']]);
+  const tail = h.s.claudeTranscript;
+  h.context.followClaude(h.project, h.s, { sessionId: 'session', transcriptPath: file, sentAt: 1200 });
+  await new Promise(setImmediate);
+  assert.equal(h.s.claudeTranscript, tail); assert.equal(h.resets(), 1);
+  assert.equal(requests[1][1].since, 900, 'later hooks keep the incremental reader');
+  assert.equal(h.s.conversation.loading, false); assert.equal(h.s.actions.list[0].failed, true);
+  assert.equal(h.s.conversation.list.find(entry => entry.role === 'tool').tool.failed, true);
+  await h.s.activityMonitor.poll();
+  assert.equal(h.resets(), 2); assert.deepEqual(h.s.conversation.list.map(entry => entry.text), ['Replaced prompt']);
+});
+
+test('SSH Claude ignores stale reads after a session change or terminal exit and rejects malformed paths', async t => {
+  const f = await fixture(t), h = mainHarness(t, f), pending = [];
+  h.project.kind = 'ssh'; h.s.activitySince = 1000;
+  h.context.monitorActivity = read => ({ poll: read, stop() {} });
+  h.s.terminal = { request: () => new Promise(resolve => pending.push(resolve)) };
+  for (const transcriptPath of ['relative/session.jsonl', 'C:\\local\\session.jsonl', '/srv/claude/other.jsonl']) {
+    h.context.followClaude(h.project, h.s, { sessionId: 'session', transcriptPath });
+    assert.equal(h.s.activityMonitor, undefined);
+  }
+  h.context.followClaude(h.project, h.s, { sessionId: 'first', transcriptPath: '/srv/claude/projects/project/first.jsonl' });
+  const old = h.s.activityMonitor.poll();
+  h.context.followClaude(h.project, h.s, { sessionId: 'second', transcriptPath: '/srv/claude/projects/project/second.jsonl' });
+  pending.shift()({ records: [user('Old answer')], reset: true, historyDone: true });
+  await old; assert.equal(h.resets(), 0); assert.equal(h.s.conversation.list.length, 0);
+  const exited = h.s.activityMonitor.poll();
+  h.context.onEvent({ projectId: 'terminal', sessionKey: 'key', type: 'codex-exited', agent: 'claude' });
+  pending.shift()({ records: [user('Late answer')], reset: true, historyDone: true });
+  await exited; assert.equal(h.resets(), 0); assert.equal(h.s.conversation.list.length, 0);
+});
+
+test('SSH Claude Stop reads the final tool results before settling the reading view', async t => {
+  const f = await fixture(t), h = activityHarness(t, f);
+  h.project.kind = 'ssh'; h.project.path = '/srv/project'; h.s.activitySince = 1000;
+  h.context.monitorActivity = read => ({ poll: read, stop() {} });
+  let response = { records: [user('Remote work'), pendingTool('failed'), pendingTool('last')], reset: true, historyDone: true };
+  h.s.terminal = { request: async () => response };
+  const transcriptPath = '/srv/claude/projects/project/session.jsonl';
+  h.context.followClaude(h.project, h.s, { sessionId: 'session', transcriptPath });
+  await h.s.activityMonitor.poll();
+  response = { records: [user([{ type: 'tool_result', tool_use_id: 'failed', is_error: true }])], reset: false, historyDone: true };
+  h.context.claudeActivity(h.project, h.s, { state: 'complete', sessionId: 'session', transcriptPath, eventId: 'session:stop' });
+  await new Promise(setImmediate);
+  assert.equal(h.s.codexActivity, 'complete');
+  assert.ok(h.s.actions.list.every(action => action.done)); assert.equal(h.s.actions.list[0].failed, true);
+  assert.ok(h.s.conversation.list.filter(entry => entry.role === 'tool').every(entry => entry.tool.done));
+});
 
 test('Claude Stop polls the last transcript records before settling both action and conversation tools', async t => {
   const f = await fixture(t), file = await f.write('session', [user('Question'), pendingTool('failed'), pendingTool('unanswered')]);

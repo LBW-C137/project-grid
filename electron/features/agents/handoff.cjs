@@ -5,7 +5,7 @@
 // the person does nothing to carry the work over. Kept in Agentrix's own data, never in the project.
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { gather, writeMemoryBook, renderRound } = require('./project-memory.cjs');
+const { gather, writeMemoryBook, renderRound, forAgents } = require('./project-memory.cjs');
 
 const ROUND_LIMIT = 12, FILE_LIMIT = 48 * 1024;
 
@@ -32,7 +32,7 @@ async function writeHandoff(file, cwd, { memoryDir, codexHome, claudeHome } = {}
   const text = await handoffText(memoryDir, cwd);
   if (!text) { await fs.rm(file, { force: true }); return false; }
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, text, 'utf8');
+  await fs.writeFile(file, forAgents(text), 'utf8');
   return true;
 }
 

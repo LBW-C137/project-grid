@@ -35,6 +35,7 @@ import { isTypedCommand, sameMessage, type PendingPrompt } from './pending-promp
 import { usePendingPrompts } from './usePendingPrompts';
 import { PendingPromptEntries, UserAvatar, UserImages, UserMessage } from './PendingPromptEntries';
 import { AgentSettingsTag } from './AgentSettingsTag';
+import { AgentCommandRun } from './AgentCommandRun';
 import { FileCards, previewable } from './FileCards';
 import { replyFiles } from './reply-files';
 import { onComposerPrefill } from './composer-prefill';
@@ -571,7 +572,9 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     : working || pending.some(prompt => prompt.sending) ? <WorkingLine key={terminal.sessionId} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} label={terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })} />
     : null;
   let body: ReactNode;
-  if (!entries.length && !pending.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} commands={commands} complete={complete} disabled={inputBlocked}
+  // A run of the CLI that is no conversation (codex update): what it does and what it prints, no message box.
+  if (terminal.agentCommand) body = <AgentCommandRun agent={terminal.agent === 'claude' ? 'claude' : 'codex'} command={terminal.agentCommand} rows={visibleScreen?.rows ?? []} onShowTerminal={onShowTerminal} />;
+  else if (!entries.length && !pending.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} commands={commands} complete={complete} disabled={inputBlocked}
     screen={screen} starting={welcomeIsStarting} />;
   else body = <>
     {tail.earlier > 0 && <button type="button" className="text-button reading-earlier" onClick={tail.showEarlier}>{t('显示更早的对话（{count}）', { count: tail.earlier })}</button>}
@@ -614,7 +617,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     {palette && <div className="reading-commands is-inline" id={listId} role="listbox" aria-label={t('命令')}>{matches.map((command, index) => <div key={command.name} id={optionId(index)} role="option" aria-selected={selection === index} className="reading-command" onMouseDown={event => event.preventDefault()} onClick={() => complete(command)}>
         <code>{command.name}</code><span>{command.source === 'builtin' ? t(command.description) : command.description}</span>{command.source !== 'builtin' && <small>{command.source === 'project' ? t('项目') : command.source === 'user' ? t('用户') : t('技能')}</small>}
     </div>)}</div>}
-    <div className="reading-composer">
+    <div className="reading-composer" style={terminal.agentCommand ? { display: 'none' } : undefined}>
       {terminal.codexActive && <AgentSettingsTag settings={terminal.agentSettings} status={screen.status} />}
       <MentionPalette mentions={mentions} />
       <textarea ref={input} rows={1} disabled={inputBlocked} onPaste={pasteImage} onSelect={mentions.trackCaret} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette || mentions.open} aria-controls={palette ? listId : mentions.open ? mentions.listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : mentions.open && mentions.files[mentions.selection] ? mentions.optionId(mentions.selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，@ 提及文件，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}

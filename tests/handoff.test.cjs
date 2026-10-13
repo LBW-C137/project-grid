@@ -36,6 +36,9 @@ test('a CLI starting in a folder gets the latest rounds of both CLIs there, newe
 
   assert.equal(await writeHandoff(file, cwd, { memoryDir, codexHome, claudeHome }), true);
   const text = await fs.readFile(file, 'utf8');
+  // On Windows the agents read it through PowerShell 5.1, which takes a file without a byte-order mark for the system
+  // code page and garbles every Chinese word (Codex did, and knew nothing of the work).
+  assert.equal(text.startsWith('﻿'), process.platform === 'win32', 'a byte-order mark on Windows, none elsewhere');
   assert.ok(text.indexOf('· Codex') < text.indexOf('· Claude Code'), 'newest first');
   assert.match(text, /The whole history is kept in .+\.md/);
   for (const part of ['**User:** 把验证码的过期时间改成 5 分钟', '**Codex:** 改成 5 分钟了。', '**User:** 给登录页加上验证码', '**Claude Code:** 验证码加好了，测试通过。', `Changed: ${path.join(cwd, 'login.ts')}`, 'Checks: 运行测试'])
@@ -49,7 +52,9 @@ test('a CLI starting in a folder gets the latest rounds of both CLIs there, newe
   const again = await fs.readFile(file, 'utf8');
   for (const part of ['把验证码的过期时间改成 5 分钟', '给登录页加上验证码', 'Checks: 运行测试']) assert.ok(again.includes(part), part);
   const book = (await fs.readdir(memoryDir)).find(name => name.endsWith('.md'));
-  assert.ok((await fs.readFile(path.join(memoryDir, book), 'utf8')).includes('验证码加好了'));
+  const whole = await fs.readFile(path.join(memoryDir, book), 'utf8');
+  assert.ok(whole.includes('验证码加好了'));
+  assert.equal(whole.startsWith('﻿'), process.platform === 'win32', 'the whole memory is read the same way');
   // A folder where nothing was ever done gets no handoff.
   const empty = path.join(root, 'empty'); await fs.mkdir(empty);
   assert.equal(await writeHandoff(path.join(root, 'out', 'empty.md'), empty, { memoryDir, codexHome, claudeHome }), false);

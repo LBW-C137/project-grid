@@ -15,6 +15,7 @@ const { READING_NOTE } = require('./features/agents/reading-note.cjs');
 const { writeHandoff, handoffText, startupNote } = require('./features/agents/handoff.cjs');
 const { remember, roundsOf } = require('./features/agents/project-memory.cjs');
 const { agentSettings } = require('./features/agents/agent-settings.cjs');
+const { agentCommand } = require('./features/agents/agent-command.cjs');
 const { scrubSkills } = require('./features/agents/skill-privacy.cjs');
 const { setThumbnailer, isGeneratedImage } = require('./conversation.cjs');
 const { registerVoiceIpc } = require('./features/voice/ipc.cjs');
@@ -136,6 +137,8 @@ function publicState() {
           agentStartedAt: s?.codexActive ? s.activitySince : null,
           // The model, effort and fast mode its records show, above the reading view's message box.
           agentSettings: s?.codexActive ? s.agentSettings || null : null,
+          // A run of the CLI that is no conversation (update, --version, login), for the reading view to say so.
+          agentCommand: s?.codexActive ? s.agentCommand || null : null,
           codexActivity: s?.codexActivity || 'unknown', needsInput: s?.needsInput?.message || null, shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null,
           // The step a working agent is on, for the card's one-line status; the full list is sent separately.
@@ -317,23 +320,38 @@ function describeActions(s, cwd, actions) {
 }
 // Claude Code writes each tool call to its transcript; follow it while the session lasts.
 function followClaude(project, s, event) {
-  const file = typeof event.transcriptPath === 'string' ? path.resolve(event.transcriptPath) : '';
-  const home = claudeConfigDir();
-  if (!file || path.basename(file) !== `${event.sessionId}.jsonl` || !file.toLowerCase().startsWith(home.toLowerCase() + path.sep)) return;
+  const remote = project.kind === 'ssh', paths = remote ? path.posix : path;
+  const file = typeof event.transcriptPath === 'string' && (!remote || paths.isAbsolute(event.transcriptPath)) ? paths.resolve(event.transcriptPath) : '';
+  if (!file || paths.basename(file) !== `${event.sessionId}.jsonl`) return;
+  // The worker checks remote paths against its own Claude projects folder before reading them.
+  if (!remote && !file.toLowerCase().startsWith(claudeConfigDir().toLowerCase() + path.sep)) return;
   s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
   s.claudeSessionId = event.sessionId;
   if (s.claudeTranscript?.filename !== file) {
-    s.claudeTranscript = new TranscriptTail(file, { onHistory: ready => {
+    const onHistory = ready => {
       if (ready) s.conversation.endHistory();
       else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); }
-    } });
+    };
+    s.claudeTranscript = remote ? { filename: file } : new TranscriptTail(file, { onHistory });
     s.activityMonitor?.stop();
     const tail = s.claudeTranscript;
-    s.activityMonitor = monitorActivity(async () => { await tail.read(record => {
+    const onRecord = record => {
       if (sessions.get(s.terminalId) !== s || s.claudeTranscript !== tail) return;
       claudeConversation(s.conversation, record, project.path); describeActions(s, project.path, claudeRecord(s.actions, record, project.path));
       noteSettings(s, 'claude', record);
-    }); return null; }, () => {}, { interval: () => readEvery(s), watch: () => tail.filename });
+    };
+    const since = Number.isFinite(event.sentAt) ? event.sentAt : s.activitySince || Date.now();
+    const remoteStatus = value => {
+      if (!value || sessions.get(s.terminalId) !== s || s.claudeTranscript !== tail || !s.activityMonitor) return null;
+      if (value.reset) onHistory(false);
+      for (const record of Array.isArray(value.records) ? value.records : []) { try { onRecord(record); } catch { } }
+      if (value.historyDone) onHistory(true);
+      return null;
+    };
+    s.activityMonitor = monitorActivity(async () => {
+      if (remote) return s.terminal.request('claude-status', { path: file, since }).then(remoteStatus);
+      await tail.read(onRecord); return null;
+    }, () => {}, { interval: () => readEvery(s), watch: () => remote ? null : tail.filename });
   } else void s.activityMonitor?.poll();
 }
 
@@ -422,7 +440,7 @@ function onEvent(event) {
   if (event.type === 'agent-activity') { claudeActivity(project, s, event); return; }
   if (event.type !== 'turn-complete' && !acceptShellEvent(s, event)) return;
   if (event.type === 'shell-ready' || event.type === 'shell-prompt') {
-    s.needsInput = null;
+    s.needsInput = null; s.agentCommand = null;
     s.claudeResumeId = null; s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
     s.activityMonitor?.stop(); s.activityMonitor = null;
     s.codexActive = false; s.codexActivity = 'unknown'; s.reportedThreadId = null; s.promptQueue.reset();
@@ -434,6 +452,15 @@ function onEvent(event) {
     if (typeof event.codexHome === 'string') s.codexHome = event.codexHome;
     if (!quitting && typeof event.cwd === 'string') store.setRestore(s.terminalId, { cwd: event.cwd });
   } else if (event.type === 'codex-started') {
+    // A run of the CLI that is no conversation (codex update, claude --version: agent-command.cjs): the reading view
+    // says what it does and shows its output; nothing is handed over, followed or restored for it.
+    s.agentCommand = agentCommand(event.agent, event.command);
+    if (s.agentCommand) {
+      s.ready = false; s.codexActive = true; s.status = 'codex'; s.error = null; s.codexActivity = 'unknown'; s.agentSettings = null;
+      s.agent = event.agent === 'claude' ? 'claude' : 'codex';
+      s.activityMonitor?.stop(); s.activityMonitor = null; s.actions.reset(); s.conversation.reset(); s.promptQueue.reset();
+      broadcast(); return;
+    }
     // The work done in this folder before, brought up to date for the CLI that starts now (handoff.cjs).
     if (project.kind !== 'ssh') {
       void writeHandoff(handoffFile(s.terminalId), event.cwd || project.path, { memoryDir: memoryDir(), codexHome: event.codexHome || s.codexHome || undefined }).catch(() => {});
@@ -498,7 +525,7 @@ function onEvent(event) {
     store.setRestore(s.terminalId, { terminal: true, codex: true, cwd: event.cwd });
     // Unread completion is independent of session activity. It survives new turns.
   } else if (event.type === 'codex-exited') {
-    s.needsInput = null;
+    s.needsInput = null; s.agentCommand = null;
     s.claudeResumeId = null; s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
     s.activityMonitor?.stop(); s.activityMonitor = null; s.codexActivity = 'unknown';
     s.ready = false;

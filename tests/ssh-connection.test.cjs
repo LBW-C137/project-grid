@@ -81,6 +81,60 @@ test('untrusted askpass requests are rejected without displaying a credential pr
   assert.equal(auth.getPending().length, 0);
 });
 
+test('Linux SSH Claude wrapper forwards hooks and reads compacted transcripts over the worker', { timeout: 40000, skip: process.platform === 'win32' }, async t => {
+  const fixture = await createSSHFixture({ nativeWorker: true });
+  const auth = await new SSHAuthServer().start(), events = [];
+  const project = { id: randomUUID(), kind: 'ssh', path: fixture.project, ssh: { host: 'fixture', configFile: fixture.configFile } };
+  const stub = `#!/usr/bin/env python3
+import json,os,subprocess,sys
+args=sys.argv[1:]
+if "--version" in args: sys.exit(7)
+assert args[args.index("--append-system-prompt")+1]=="SSH reading note"
+settings=json.loads(args[args.index("--settings")+1])
+folder=os.path.join(os.path.expanduser("~/.claude"),"projects","fixture")
+os.makedirs(folder,exist_ok=True)
+filename=os.path.join(folder,"session.jsonl")
+def write(record):
+    with open(filename,"a") as output: output.write(json.dumps(record)+"\\n")
+def hook(name,**values):
+    payload=dict(session_id="session",transcript_path=filename,**values)
+    command=settings["hooks"][name][0]["hooks"][0]["command"]
+    subprocess.run(command,shell=True,input=json.dumps(payload).encode(),check=True)
+write({"type":"user","uuid":"prompt","message":{"content":"Remote work"}})
+write({"type":"assistant","uuid":"reply","effort":"high","message":{"model":"claude-test","usage":{"speed":"fast"},"content":[{"type":"tool_use","id":"read","name":"Read","input":{"file_path":"/srv/project/a.py"}}]}})
+hook("SessionStart")
+hook("UserPromptSubmit",prompt="Remote work")
+hook("Notification",notification_type="idle_prompt",message="Idle")
+hook("Notification",notification_type="permission_prompt",message="Permission")
+write({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"read","is_error":True,"content":"hidden output"}]}})
+hook("Stop")
+`;
+  await fs.writeFile(path.join(fixture.home, 'bin', 'claude'), stub, { mode: 0o755 });
+  const connection = new RemoteConnection(project, { integrationDir, auth, sshPath, sessionKey: 'test-claude-key', readingNote: 'SSH reading note', onEvent: event => events.push(event) });
+  t.after(async () => { connection.close(); auth.close(); await fixture.close(); });
+  await connection.ready;
+  await waitFor(() => events.some(event => event.type === 'shell-prompt' && event.claudeAvailable));
+  connection.write('claude\r');
+  await waitFor(() => events.some(event => event.type === 'codex-exited' && event.agent === 'claude'));
+  const started = events.find(event => event.type === 'codex-started');
+  assert.equal(started.agent, 'claude'); assert.equal(started.command, undefined);
+  const hooks = events.filter(event => event.type === 'agent-activity');
+  assert.deepEqual(hooks.map(event => event.state), ['session', 'working', 'attention', 'complete']);
+  assert.equal(hooks[1].prompt, 'Remote work'); assert.equal(hooks[2].message, 'Permission');
+  assert.ok(hooks.every(event => event.projectId === project.id && event.sessionKey === 'test-claude-key'));
+  const args = { path: hooks[0].transcriptPath, since: started.sentAt };
+  const status = await connection.request('claude-status', args);
+  assert.equal(status.reset, true); assert.equal(status.historyDone, true);
+  assert.deepEqual(status.records.map(record => record.type), ['user', 'assistant', 'user']);
+  assert.equal(status.records[1].message.model, 'claude-test');
+  assert.equal(status.records[2].message.content[0].is_error, true); assert.equal(status.records[2].message.content[0].content, '');
+  assert.deepEqual((await connection.request('claude-status', args)).records, []);
+  await assert.rejects(connection.request('claude-status', { ...args, path: path.join(fixture.project, 'outside.jsonl') }));
+  connection.write('claude --version\r');
+  await waitFor(() => events.some(event => event.type === 'codex-exited' && event.agent === 'claude' && event.exitCode === 7));
+  assert.ok(events.some(event => event.type === 'codex-started' && event.command === '--version' && event.agent === 'claude'));
+});
+
 test('Linux remote worker reads real files, enforces boundaries and emits Codex completion', { timeout: 40000, skip: process.platform === 'win32' }, async t => {
   const fixture = await createSSHFixture({ nativeWorker: true });
   const auth = await new SSHAuthServer().start();

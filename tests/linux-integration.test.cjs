@@ -161,7 +161,7 @@ test('a real Bash terminal keeps the user start-up files and reports prompts, Co
   type('codex resume --last');
   const exited = await waitEvent(event => event.type === 'codex-exited', 'codex-exited');
   const started = events.find(event => event.type === 'codex-started');
-  assert.ok(started && started.sequence < exited.sequence); assert.equal(started.agent, 'codex'); assert.equal(exited.exitCode, 3);
+  assert.ok(started && started.sequence < exited.sequence); assert.equal(started.agent, 'codex'); assert.equal(started.command, 'resume', 'the first word goes with it (agent-command.cjs)'); assert.equal(exited.exitCode, 3);
   const codexArgs = JSON.parse(fs.readFileSync(path.join(log, 'codex.json'), 'utf8'));
   // What the reading view can show comes next, before the user's own arguments.
   assert.deepEqual(codexArgs.slice(2), ['-c', 'tui.terminal_title=["session-id"]', '-c', `developer_instructions="${NOTE}"`, 'resume', '--last']);
@@ -174,7 +174,7 @@ test('a real Bash terminal keeps the user start-up files and reports prompts, Co
   // claude: the user's alias still applies, and the hooks it is given report each turn.
   type('claude -p "中文 prompt"');
   await waitEvent(event => event.type === 'codex-exited' && event.agent === 'claude', 'claude to exit');
-  assert.ok(events.some(event => event.type === 'codex-started' && event.agent === 'claude'));
+  assert.ok(events.some(event => event.type === 'codex-started' && event.agent === 'claude' && event.command === '-p'));
   const claudeArgs = JSON.parse(fs.readFileSync(path.join(log, 'claude.json'), 'utf8'));
   assert.deepEqual([claudeArgs.slice(0, 2), claudeArgs.slice(4)], [['--model', 'opus'], ['--append-system-prompt', NOTE, '-p', '中文 prompt']]);
   assert.equal(claudeArgs[2], '--settings');

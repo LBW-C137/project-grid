@@ -1253,5 +1253,22 @@
   "放大 {name}": "Enlarge {name}",
   "决策页点开的卡片（交付审查、审批、提问）不再透明，后面的卡片和输入框不会透出来。": "A decision card opened on the decisions page (a review, an approval, a question) is no longer see-through: the cards and the box behind it stay hidden.",
   "你发出的图片都能点开放大：消息里的、输入框上方等着发送的、决策页输入框里的。": "Pictures you send open larger on a click: in a message, waiting above the message box, or in the decisions page box.",
-  "一轮做完的项目卡不再闪烁呼吸，改为稳定的彩色边框和柔光，直到你查看。": "A project card whose round is done no longer pulses: it keeps a steady coloured edge and a soft glow until you look at it."
+  "一轮做完的项目卡不再闪烁呼吸，改为稳定的彩色边框和柔光，直到你查看。": "A project card whose round is done no longer pulses: it keeps a steady coloured edge and a soft glow until you look at it.",
+  "正在更新 {agent}…": "Updating {agent}…",
+  "正在安装 {agent}…": "Installing {agent}…",
+  "正在登录 {agent}…": "Signing in to {agent}…",
+  "正在退出 {agent} 的登录…": "Signing out of {agent}…",
+  "正在检查 {agent}…": "Checking {agent}…",
+  "{agent} 正在执行一次性任务…": "{agent} is running a one-off task…",
+  "{agent} 的 MCP 设置": "{agent} MCP settings",
+  "{agent} 的设置": "{agent} settings",
+  "{agent} 的插件": "{agent} plugins",
+  "{agent} 的版本": "{agent} version",
+  "{agent} 的帮助": "{agent} help",
+  "正在运行 {agent} {command}…": "Running {agent} {command}…",
+  "正在等待它的输出…": "Waiting for its output…",
+  "在终端里查看": "Show in the terminal",
+  "在终端里运行 codex update、claude --version 这类不是对话的命令时，阅读视图显示“正在更新 Codex…”这样的状态和命令的输出，不再显示输入框。": "Running a command that is no conversation in the terminal, such as codex update or claude --version, shows its state in the reading view (\"Updating Codex…\") with its output, and no message box.",
+  "Windows 上新开的 Codex 能读懂之前的开发记忆了：交接和记忆文件改为带 BOM 的 UTF-8，PowerShell 不再把中文读成乱码。": "A newly started Codex on Windows now understands the earlier development memory: the handoff and memory files are UTF-8 with a byte order mark, so PowerShell no longer garbles Chinese in them.",
+  "SSH 项目里的 Claude Code 也能进入阅读视图，后来新开的 SSH 终端同样可以；回复、模型和思考深度都会显示。": "Claude Code in an SSH project opens the reading view too, also in SSH terminals opened later; its replies, model and effort show."
 }

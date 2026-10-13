@@ -1,12 +1,17 @@
 import base64
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import re
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 import uuid
 import time
 from datetime import datetime, timezone
@@ -35,6 +40,138 @@ class RemoteFilesTest(unittest.TestCase):
     def tearDown(self):
         self.worker.stop()
         self.temp.cleanup()
+
+    def claude_file(self):
+        self.worker.claude_home = str(Path(self.temp.name) / "claude")
+        folder = Path(self.worker.claude_home) / "projects" / "-srv-project"
+        folder.mkdir(parents=True)
+        return folder / "session.jsonl"
+
+    def test_claude_hooks_match_local_states_fields_and_ignore_idle_notifications(self):
+        def notify(kind, payload):
+            client = mock.MagicMock()
+            client.__enter__.return_value = client
+            with mock.patch("sys.argv", ["notify.py", "claude-hook", kind]), mock.patch("sys.stdin", io.StringIO(json.dumps(payload))), \
+                 mock.patch.dict(os.environ, {"AGENTRIX_TOKEN": "test", "AGENTRIX_SOCKET": "test.sock"}), \
+                 mock.patch("os.getcwd", return_value="/srv/project"), mock.patch("socket.AF_UNIX", 1, create=True), mock.patch("socket.socket", return_value=client):
+                try: exec(remote.NOTIFY_SOURCE, {})
+                except SystemExit as error: self.assertEqual(error.code, 0)
+            return json.loads(client.sendall.call_args[0][0]) if client.sendall.called else None
+        payload = {"session_id": "session", "transcript_path": "/srv/claude/projects/project/session.jsonl", "prompt": "p" * 2100, "message": "m" * 400, "notification_type": "permission_prompt"}
+        identities = []
+        for kind, state in (("start", "working"), ("stop", "complete"), ("notify", "attention"), ("session", "session")):
+            event = notify(kind, payload)
+            self.assertEqual((event["type"], event["agent"], event["state"], event["sessionId"]), ("agent-activity", "claude", state, "session"))
+            self.assertEqual(event["transcriptPath"], payload["transcript_path"])
+            self.assertEqual(event["prompt"], "p" * 2000 if kind == "start" else None)
+            self.assertEqual(event["message"], "m" * 300 if kind == "notify" else None)
+            self.assertEqual(event["token"], "test"); self.assertTrue(event["eventId"].startswith("session:"))
+            identities.append(event["eventId"])
+        self.assertEqual(len(set(identities)), 4)
+        self.assertIsNotNone(notify("notify", dict(payload, notification_type="elicitation_dialog")))
+        for kind, hook in (("notify", dict(payload, notification_type="idle_prompt")), ("start", {}), ("unknown", payload)):
+            self.assertIsNone(notify(kind, hook))
+
+    def test_notify_shell_events_name_claude_and_default_to_codex(self):
+        for args, expected in ((["codex-started", "--version", "claude"], {"agent": "claude", "command": "--version"}),
+                               (["codex-exited", "7", "claude"], {"agent": "claude", "exitCode": 7}),
+                               (["codex-started", ""], {"agent": "codex"}), (["codex-exited", "0"], {"agent": "codex", "exitCode": 0}),
+                               (["shell-prompt", "0", "1"], {"codexAvailable": False, "claudeAvailable": True})):
+            client = mock.MagicMock(); client.__enter__.return_value = client
+            with mock.patch("sys.argv", ["notify.py"] + args), mock.patch.dict(os.environ, {"AGENTRIX_TOKEN": "test", "AGENTRIX_SOCKET": "test.sock"}), \
+                 mock.patch("os.getcwd", return_value="/srv/project"), mock.patch("socket.AF_UNIX", 1, create=True), mock.patch("socket.socket", return_value=client):
+                exec(remote.NOTIFY_SOURCE, {})
+            event = json.loads(client.sendall.call_args[0][0])
+            for key, value in expected.items(): self.assertEqual(event[key], value)
+
+    def test_claude_wrapper_quotes_hook_commands_for_sh(self):
+        python, notify = "/opt/python's tools/python3", "/tmp/agent's path/notify.py"
+        source = remote.BASH_SOURCE.split("import json,shlex,sys\n", 1)[1].split("\nPY\n", 1)[0]
+        output = io.StringIO()
+        with mock.patch("sys.executable", python), mock.patch("sys.argv", ["-", notify]), contextlib.redirect_stdout(output):
+            exec("import json,shlex,sys\n" + source, {})
+        hooks = json.loads(output.getvalue())["hooks"]
+        for name, kind in (("UserPromptSubmit", "start"), ("Stop", "stop"), ("Notification", "notify"), ("SessionStart", "session")):
+            self.assertEqual(shlex.split(hooks[name][0]["hooks"][0]["command"]), [python, notify, "claude-hook", kind])
+
+    def test_claude_status_reads_incrementally_and_preserves_tools_settings_and_queued_prompts(self):
+        filename = self.claude_file()
+        rows = [
+            {"type": "user", "uuid": "u1", "message": {"content": "Remote prompt"}},
+            {"type": "assistant", "uuid": "a1", "effort": "high", "message": {"model": "claude-test", "usage": {"speed": "fast", "other": 1}, "content": [
+                {"type": "thinking", "thinking": "hidden"}, {"type": "text", "text": "Reading"},
+                {"type": "tool_use", "id": "read", "name": "Read", "input": {"file_path": "/srv/project/a.py"}},
+                {"type": "tool_use", "id": "skill", "name": "Skill", "input": {"skill": "test-skill", "args": "check"}}]}},
+            {"type": "assistant", "isSidechain": True, "message": {"content": "child"}},
+            {"type": "attachment", "uuid": "queued", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": [{"type": "text", "text": "Queued work"}, {"type": "image", "source": {"data": "hidden"}}]}},
+        ]
+        filename.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+        status = self.worker.claude_status(str(filename), 1000)
+        self.assertTrue(status["reset"]); self.assertTrue(status["historyDone"])
+        self.assertEqual([row["uuid"] for row in status["records"]], ["u1", "a1", "queued"])
+        reply = status["records"][1]
+        self.assertEqual(reply["message"]["model"], "claude-test"); self.assertEqual(reply["effort"], "high")
+        self.assertEqual(reply["message"]["usage"], {"speed": "fast"})
+        self.assertEqual([block["type"] for block in reply["message"]["content"]], ["text", "tool_use", "tool_use"])
+        result = {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "read", "is_error": True, "content": "output" * 10000}]}}
+        with filename.open("a", encoding="utf-8") as output: output.write(json.dumps(result))
+        self.assertEqual(self.worker.claude_status(str(filename), 1000)["records"], [])
+        with filename.open("a", encoding="utf-8") as output: output.write("\n")
+        status = self.worker.claude_status(str(filename), 1000)
+        self.assertFalse(status["reset"])
+        self.assertEqual(status["records"][0]["message"]["content"], [{"type": "tool_result", "tool_use_id": "read", "is_error": True, "content": ""}])
+        self.assertEqual(self.worker.claude_status(str(filename), 1000)["records"], [])
+
+    def test_claude_status_resets_on_replacement_truncation_or_new_run(self):
+        filename = self.claude_file()
+        def row(text): return json.dumps({"type": "user", "message": {"content": text}}) + "\n"
+        filename.write_text(row("old"), encoding="utf-8")
+        self.worker.claude_status(str(filename), 1000)
+        filename.rename(filename.with_suffix(".old"))
+        filename.write_text(row("replacement longer than old"), encoding="utf-8")
+        status = self.worker.claude_status(str(filename), 1000)
+        self.assertTrue(status["reset"]); self.assertEqual(status["records"][0]["message"]["content"], "replacement longer than old")
+        filename.write_text(row("short"), encoding="utf-8")
+        self.assertTrue(self.worker.claude_status(str(filename), 1000)["reset"])
+        self.assertTrue(self.worker.claude_status(str(filename), 2000)["reset"])
+
+    def test_claude_status_refuses_paths_outside_projects_and_invalid_times(self):
+        filename = self.claude_file()
+        filename.write_text("{}\n", encoding="utf-8")
+        for path in (None, "session.jsonl", str(self.root / "outside.jsonl"), str(filename.parent.parent),
+                     str(filename.parent / ".." / ".." / "outside.jsonl"), str(Path(self.worker.claude_home) / "projects-other" / "session.jsonl")):
+            with self.assertRaises(ValueError): self.worker.claude_status(path, 1000)
+        for since in (None, "1000", 0, -1):
+            with self.assertRaises(ValueError): self.worker.claude_status(str(filename), since)
+        missing = filename.with_name("missing.jsonl")
+        status = self.worker.claude_status(str(missing), 1000)
+        self.assertEqual(status["records"], []); self.assertFalse(status["historyDone"])
+
+    @unittest.skipUnless(os.name == "posix", "the remote side runs on Linux and macOS")
+    def test_claude_status_refuses_symlinks_outside_projects(self):
+        filename = self.claude_file()
+        outside = self.root / "outside.jsonl"; outside.write_text("{}\n", encoding="utf-8")
+        filename.symlink_to(outside)
+        with self.assertRaises(ValueError): self.worker.claude_status(str(filename), 1000)
+
+    def test_claude_status_uses_history_window_and_drains_response_budget_before_history_done(self):
+        filename = self.claude_file()
+        def row(text): return (json.dumps({"type": "user", "message": {"content": text}}) + "\n").encode()
+        filename.write_bytes(row("excluded") + (json.dumps({"padding": "x" * (remote.HISTORY_WINDOW + 1000)}) + "\n").encode()
+                             + row("recent") + row("a" * remote.RECORD_TEXT_LIMIT) * 20)
+        status = self.worker.claude_status(str(filename), 1000)
+        self.assertTrue(status["reset"]); self.assertFalse(status["historyDone"])
+        self.assertEqual(status["records"][0]["message"]["content"], "recent")
+        self.assertLessEqual(len(json.dumps(status)), remote.RECORDS_BUDGET + 100)
+        next_status = self.worker.claude_status(str(filename), 1000)
+        self.assertFalse(next_status["reset"]); self.assertTrue(next_status["historyDone"])
+        self.assertEqual(len(status["records"]) + len(next_status["records"]), 21)
+        before = self.worker.claude_reader.offset
+        with filename.open("ab") as output:
+            output.write((json.dumps({"padding": "x" * (remote.LIVE_READ_LIMIT + 1000)}) + "\n").encode() + row("live"))
+        self.assertEqual(self.worker.claude_status(str(filename), 1000)["records"], [])
+        self.assertEqual(self.worker.claude_reader.offset - before, remote.LIVE_READ_LIMIT)
+        self.assertEqual(self.worker.claude_status(str(filename), 1000)["records"][0]["message"]["content"], "live")
 
     @unittest.skipIf(GIT_TOO_OLD, "the Git panel needs Git 2.11; older Git is named instead")
     def test_git_reads_status_history_and_commit_paths_without_mutation(self):
