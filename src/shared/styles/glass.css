@@ -458,8 +458,9 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 :root[data-surface="solid"] :is(.project-panel, .focus-sidebar, .file-preview)::after { display: none; }
 :root[data-surface="solid"] .project-panel { border-color: rgba(255, 255, 255, .1); }
 /* Motion follows the app setting (src/motion.ts): "off" always stops it, "system" follows Windows. */
-:root[data-motion="off"] :is(*, *::before, *::after) { animation: none !important; transition: none !important; }
-@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] :is(*, *::before, *::after) { animation: none !important; transition: none !important; } }
+/* Pseudo-elements are no part of :is(), so they are named one by one. */
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] *, :root[data-motion="system"] *::before, :root[data-motion="system"] *::after { animation: none !important; transition: none !important; } }
 
 .panel-header .voice-button { width: 24px; height: 27px; }
 

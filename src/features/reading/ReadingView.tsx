@@ -210,7 +210,7 @@ function WorkingLine({ agent, label }: { agent: 'claude' | 'codex'; label: strin
   const [started] = useState(() => Date.now()), [now, setNow] = useState(started);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   return <div className={`reading-status is-working is-${agent}`} role="status">
-    <i className="reading-status-mark" aria-hidden="true">{agent === 'claude' ? '✻' : '•'}</i>
+    <i className="reading-status-mark" aria-hidden="true">{agent === 'claude' ? null : '•'}</i>
     <span>{label}…</span><small>{t('（{seconds} 秒 · Esc 中断）', { seconds: Math.floor((now - started) / 1000) })}</small>
   </div>;
 }
@@ -251,6 +251,9 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const leftOpen = useRef<string | null>(null);
   // Images pasted for the next message. The agent holds them itself; this only counts them.
   const [images, setImages] = useState<string[]>([]);
+  // An SSH project's pictures for the next message: files saved on that computer. Their paths join the message only as
+  // it is sent (both CLIs take a picture's path as the picture); the message box shows the words alone.
+  const [serverPictures, setServerPictures] = useState<string[]>([]);
   const scroller = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null);
   const cli = useReadingCli(terminal.id, terminal.sessionId, terminal.agent === 'claude' ? 'claude' : 'codex', input, autoFocus);
   // A question's own key hint with no card read from it (the question is taller than the view, or its hint wrapped):
@@ -371,8 +374,9 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   // The CLI recognises slash commands and shell mode from typed keys, not bracketed paste.
   // own: written in the composer here (it is cleared, with its pictures); otherwise a message sent again, which leaves
   // whatever is being written now alone and takes no pictures with it.
-  const deliver = async (text: string, own = true) => {
-    const attached = own ? images : [];
+  const deliver = async (words: string, own = true) => {
+    const attached = own ? images : [], pictures = own ? serverPictures : [];
+    const text = pictures.length ? (isTypedCommand(words) ? [words, ...pictures] : [...pictures, words]).filter(Boolean).join(' ') : words;
     if (inputBlocked || (!text && !attached.length) || !terminal.sessionId) return;
     const typed = isTypedCommand(text), sessionId = terminal.sessionId, agentKind = terminal.agent === 'claude' ? 'claude' : 'codex';
     if (closing.current) await closing.current;
@@ -405,11 +409,13 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     // Ctrl+U. With pictures attached it was cleared when the first one was pasted, and Ctrl+U would take them too.
     const left = text && !attached.length ? inputDraft(agentKind) : '';
     // The composer is empty from here: what is written next is the next message, never wiped when this one is typed.
-    if (own) { edit(''); setImages([]); }
+    if (own) { edit(''); setImages([]); setServerPictures([]); }
+    // What the message box gives back on Up: the words, never a picture's path.
+    const remember = () => { if (words) history.set(terminal.id, [...(history.get(terminal.id) || []), words].slice(-50)); };
     // Sent again while it still waits there: Enter is all it needs.
     if (left && !typed && sameMessage(text, left)) {
       toBottom(); window.agentrix.writeTerminal(terminal.id, '\r'); await submitted(agentKind, text);
-      history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50));
+      remember();
       return;
     }
     if (left && pending.some(prompt => sameMessage(prompt.text, left))) { window.agentrix.writeTerminal(terminal.id, '\r'); await submitted(agentKind, left); }
@@ -420,13 +426,13 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
         const pasted = await window.agentrix.pasteTerminal(terminal.id, text, terminal.sessionId);
         if (!pasted.ok) {
           if (pendingId) cancelEcho(pendingId);
-          // Not sent: the words come back to the composer unless something new was written there meanwhile.
-          if (own && mounted.current && !input.current?.value) edit(text);
+          // Not sent: the words and pictures come back to the composer unless something new was written there meanwhile.
+          if (own && mounted.current && !input.current?.value) { edit(words); setServerPictures(pictures); }
           onError(pasted.error); return;
         }
         if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
       }
-      history.set(terminal.id, [...(history.get(terminal.id) || []), text].slice(-50));
+      remember();
     }
     toBottom();
     if (text) await new Promise(resolve => setTimeout(resolve, typed ? 150 : 400));
@@ -509,18 +515,16 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', left = !images.length && !remote ? inputDraft(agentKind) : '';
     const clearFirst = !!left && !pending.some(prompt => sameMessage(prompt.text, left));
     if (clearFirst) window.agentrix.writeTerminal(terminal.id, '\x15');
-    // Over SSH the CLI cannot reach this computer's clipboard: the picture goes over as a file on that computer and its
-    // path joins the message, which both CLIs take as an attached picture.
+    // Over SSH the CLI cannot reach this computer's clipboard: the picture goes over as a file on that computer, whose
+    // path joins the message when it is sent (serverPictures).
     if (remote) {
       const file = [...data.items].find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
       if (!file) return;
-      const target = event.currentTarget, at = target.selectionStart ?? draft.length, until = target.selectionEnd ?? at;
       void file.arrayBuffer().then(bytes => window.agentrix.saveImage(terminal.id, bytes, file.type)).then(saved => {
         if (!saved.ok) { onError(saved.error); return; }
-        // The picture shows as itself here (in the box above the composer and in the message), not as its long path.
+        // The picture shows as itself (in the box above the composer and in the message), never as its long path.
         void thumbnail(file).catch(() => dataUrl(file)).then(small => { rememberPicture(saved.value, small); setPictureTick(tick => tick + 1); }).catch(() => {});
-        const current = input.current?.value ?? draft, before = current.slice(0, at), after = current.slice(until);
-        edit(`${before}${before && !/\s$/.test(before) ? ' ' : ''}${saved.value} ${after}`);
+        setServerPictures(list => [...list, saved.value].slice(-4));
       }).catch(error => onError(String(error)));
       return;
     }
@@ -538,12 +542,12 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     }).catch(() => onError(t('无法读取这张图片。')));
   };
   // The attached pictures wait in the CLI's own input as "[Image #1]" placeholders, which Ctrl+U clears with them.
-  // An SSH project's pictures are paths in the draft: they show above it, and removing them takes the paths out.
+  // An SSH project's pictures show above the composer by the copies made when they were pasted.
   const [, setPictureTick] = useState(0);
-  const draftPictures = remote ? withPictures(draft).images : [];
-  const shownImages = [...images, ...draftPictures];
+  const shownImages = [...images, ...withPictures(serverPictures.join(' ')).images];
+  const attachedCount = images.length + serverPictures.length;
   const removeImages = () => {
-    if (draftPictures.length) edit(withPictures(draft).text);
+    setServerPictures([]);
     if (!images.length) { input.current?.focus(); return; }
     window.agentrix.writeTerminal(terminal.id, '');
     setImages([]); input.current?.focus();
@@ -614,7 +618,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
         <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={() => toBottom('smooth')}><ArrowDown size={18} /></button>
       </div>}
     </div>
-    {shownImages.length > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: shownImages.length })}<UserImages images={shownImages} />
+    {attachedCount > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: attachedCount })}<UserImages images={shownImages} />
       <button type="button" className="reading-attachments-remove" onClick={removeImages} title={t('移除图片')} aria-label={t('移除图片')}><X size={12} weight="bold" /></button></div>}
     {screen.choice && !sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
@@ -636,7 +640,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       <textarea ref={input} rows={1} disabled={inputBlocked} onPaste={pasteImage} onSelect={mentions.trackCaret} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette || mentions.open} aria-controls={palette ? listId : mentions.open ? mentions.listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : mentions.open && mentions.files[mentions.selection] ? mentions.optionId(mentions.selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，@ 提及文件，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
         onFocus={() => window.agentrix.terminalFocus(terminal.id, false)} />
       {working && <button type="button" className="icon-button" disabled={inputBlocked} title={t('中断（Esc）')} aria-label={t('中断（Esc）')} onClick={interrupt}><Stop size={15} weight="fill" /></button>}
-      <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={inputBlocked || (!draft.trim() && !images.length) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
+      <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={inputBlocked || (!draft.trim() && !attachedCount) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
     </div>
   </div>;
 }

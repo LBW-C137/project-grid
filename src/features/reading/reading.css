@@ -64,11 +64,16 @@
 .reading-status > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reading-status > small { flex: none; font-size: 12px; opacity: .7; font-variant-numeric: tabular-nums; }
 .reading-status-mark { flex: none; width: 14px; font-style: normal; text-align: center; }
-.reading-status.is-claude .reading-status-mark { color: #e8875f; animation: reading-mark-turn 2.4s linear infinite; }
+/* Claude's mark changes shape as its CLI's spinner does (· ✢ ✳ ✶ ✻ ✽ and back): a turning ✻ looks the same every 60°
+   and, small and over Remote Desktop, seems not to move. With motion off it stays ✻. Codex's dot pulses. */
+.reading-status.is-claude .reading-status-mark { color: #e8875f; }
+.reading-status.is-claude .reading-status-mark::before { content: '✻'; animation: reading-mark-claude 1.2s step-end infinite; }
 .reading-status.is-codex .reading-status-mark { color: #8fd0ff; animation: reading-mark-pulse 1.2s ease-in-out infinite; }
-@keyframes reading-mark-turn { to { transform: rotate(360deg); } }
+@keyframes reading-mark-claude {
+  0% { content: '·'; } 10% { content: '✢'; } 20% { content: '✳'; } 30% { content: '✶'; } 40% { content: '✻'; } 50% { content: '✽'; }
+  60% { content: '✻'; } 70% { content: '✶'; } 80% { content: '✳'; } 90% { content: '✢'; }
+}
 @keyframes reading-mark-pulse { 50% { opacity: .3; } }
-@media (prefers-reduced-motion: reduce) { .reading-status-mark { animation: none !important; } }
 /* The message box at the foot. */
 .reading-composer { position: relative; display: flex; align-items: flex-end; gap: 6px; margin: 0 12px 12px; padding: 6px 6px 6px 12px; border-radius: 6px; background: rgba(3, 12, 20, .5); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); transition: box-shadow .16s ease; }
 .reading-commands.dropdown { position: absolute; top: auto; bottom: calc(100% + 5px); left: 0; right: 0; width: auto; z-index: 3; padding: 4px; border: 1px solid #e8f5ff80; max-height: 266px; overflow-y: auto; transform-origin: bottom center; }
@@ -158,7 +163,9 @@
 .reading-generating-bar { grid-row: span 2; position: relative; width: 120px; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, .1); overflow: hidden; }
 .reading-generating-bar i { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: inherit; background: linear-gradient(90deg, #3c8dff, #46d0ff); animation: reading-generating 1.4s ease-in-out infinite; }
 @keyframes reading-generating { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
-@media (prefers-reduced-motion: reduce) { .reading-generating-bar i { animation: none; width: 100%; opacity: .6; } }
+/* With motion stopped (the app's setting: glass.css) the bar stands full and faint instead. */
+:root[data-motion="off"] .reading-generating-bar i { width: 100%; opacity: .6; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .reading-generating-bar i { width: 100%; opacity: .6; } }
 /* A run of the CLI that is no conversation (codex update): what it does over what it prints. */
 .reading-command-run { display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; width: min(860px, 100%); margin: 24px auto; padding: 18px 20px; border-radius: 14px; background: rgba(8, 12, 20, .55); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
 .reading-command-run header { display: flex; align-items: center; gap: 10px; font-size: 15px; }

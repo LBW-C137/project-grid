@@ -1273,5 +1273,9 @@
   "SSH 项目里的 Claude Code 也能进入阅读视图，后来新开的 SSH 终端同样可以；回复、模型和思考深度都会显示。": "Claude Code in an SSH project opens the reading view too, also in SSH terminals opened later; its replies, model and effort show.",
   "回复里的 Markdown 代码块（比如“内容如下”展示的文件内容）直接排好版显示，点“源码”可以看原文。": "A Markdown block in a reply (a file's content shown \"as follows\") is laid out right there; \"Source\" shows the text it was written in.",
   "Codex 请求修改文件或授予权限时，阅读视图也会弹出选框让你选择，不再只有执行命令的请求才弹出。": "When Codex asks to edit files or for more permissions, the reading view shows the choice too, not only when it asks to run a command.",
-  "Codex 0.162 修改的文件在步骤里显示文件名，下方出现文件卡片，不再显示一长串补丁原文。": "Files Codex 0.162 edits are named in its steps and shown as cards below them, instead of the raw patch."
+  "Codex 0.162 修改的文件在步骤里显示文件名，下方出现文件卡片，不再显示一长串补丁原文。": "Files Codex 0.162 edits are named in its steps and shown as cards below them, instead of the raw patch.",
+  "复制图片": "Copy image",
+  "点开放大的图片可以右键“复制图片”，直接粘贴到别处。": "A picture enlarged in its popup has \"Copy image\" on its right-click menu, to paste anywhere.",
+  "SSH 项目里粘贴图片，输入框只留你打的字，不再出现服务器上的图片路径；图片显示在输入框上方，随消息一起发送。": "Pasting a picture in an SSH project leaves the message box with your words alone, no path on the server; the picture shows above the box and goes with the message.",
+  "Claude 工作时，阅读视图里的标记像 Claude Code 终端一样变换形状，远程桌面下也看得出在动；所有动画统一听“动效”设置。": "While Claude works, its mark in the reading view changes shape as in Claude Code's terminal, visibly moving over Remote Desktop too; every animation follows the Motion setting."
 }

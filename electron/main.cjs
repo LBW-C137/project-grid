@@ -1011,8 +1011,10 @@ if (!app.requestSingleInstanceLock()) {
     window.on('restore', () => window.webContents.setBackgroundThrottling(false));
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('context-menu', (_event, params) => {
-      if (activeTerminal || (!params.isEditable && !params.selectionText)) return;
-      const items = params.isEditable ? [
+      // A picture (one enlarged in its popup, one in a reply) copies whole, as a browser's "Copy image" does.
+      const picture = params.mediaType === 'image' && params.hasImageContents;
+      if (!picture && (activeTerminal || (!params.isEditable && !params.selectionText))) return;
+      const items = picture ? [{ label: t('复制图片'), click: () => window.webContents.copyImageAt(params.x, params.y) }] : params.isEditable ? [
         { label: t('撤销'), role: 'undo' }, { label: t('重做'), role: 'redo' }, { type: 'separator' },
         { label: t('剪切'), role: 'cut' }, { label: t('复制'), role: 'copy' }, { label: t('粘贴'), role: 'paste' }, { type: 'separator' }, { label: t('全选'), role: 'selectAll' },
       ] : [{ label: t('复制'), role: 'copy' }];

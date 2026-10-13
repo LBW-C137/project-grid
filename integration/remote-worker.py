@@ -45,7 +45,7 @@ try:
         identity=str(hook.get("session_id") or "")
         if not identity: sys.exit(0)
         event.update(type="agent-activity",agent="claude",state=states[kind],sessionId=identity,
-                     transcriptPath=str(hook.get("transcript_path") or ""),eventId=identity+":"+str(time.time_ns() if hasattr(time,"time_ns") else int(time.time()*1000000000)),
+                     transcriptPath=str(hook.get("transcript_path") or ""),eventId=identity+":"+kind+":"+str(time.time_ns() if hasattr(time,"time_ns") else int(time.time()*1000000000)),
                      message=str(hook.get("message") or "")[:300] if kind=="notify" else None,
                      prompt=str(hook["prompt"])[:2000] if kind=="start" and hook.get("prompt") else None)
     elif mode=="shell-prompt":
