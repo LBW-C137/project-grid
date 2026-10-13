@@ -53,7 +53,13 @@ async function chooseTheme(id, name) {
     const image = new Image(); image.src = url(surface); await image.decode();
     return { theme: id, url: image.src, preview: url(swatch), width: image.naturalWidth, height: image.naturalHeight, fit: surface.backgroundSize, position: surface.backgroundPosition, previewPosition: swatch.backgroundPosition, online: navigator.onLine };
   }, id);
-  assert.equal(wallpaper.url, wallpaper.preview, 'settings preview reuses the actual wallpaper');
+  // The settings preview shows the same picture, from a small copy: eight full wallpapers decoded at once stalled the
+  // window opening the settings.
+  const named = url => url?.split('/').pop().replace(/-[\w-]{8}\.webp$/, '');
+  assert.equal(named(wallpaper.preview), named(wallpaper.url), 'settings preview shows the actual wallpaper');
+  assert.notEqual(wallpaper.preview, wallpaper.url, 'settings preview uses its small copy');
+  const preview = await page.evaluate(async src => { const image = new Image(); image.src = src; await image.decode(); return image.naturalWidth; }, wallpaper.preview);
+  assert.ok(preview <= 480, `settings preview is ${preview}px wide`);
   assert.ok(!/^https?:/.test(wallpaper.url), 'wallpaper is a packaged local asset');
   assert.equal(wallpaper.width, 2560, 'wallpaper is 2560px: the background is softened, so larger images only add size');
   assert.ok(wallpaper.height >= 1440 && wallpaper.fit.includes('cover'), 'wallpaper fills without stretching');
