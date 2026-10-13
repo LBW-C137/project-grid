@@ -50,10 +50,12 @@
 
 /* A card drawn out, in full over the page. */
 .decision-sheet-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 36px 24px; background: rgba(8, 12, 18, .3); animation: deck-backdrop .25s ease-out; }
-.decision-sheet { position: relative; width: min(860px, 100%); max-height: 100%; overflow: auto; border-radius: 18px; transform-origin: 0 0; will-change: transform, opacity; }
+/* Transform only in will-change: opacity there would make the sheet a backdrop root, and the glass inside would blur nothing. */
+.decision-sheet { position: relative; width: min(860px, 100%); max-height: 100%; overflow: auto; border-radius: 18px; transform-origin: 0 0; will-change: transform; }
 /* Drawn out, the card holds a whole round of work: the denser pane the workbench uses for an expanded card. */
-.home-layer .decision-sheet .decision-card { margin: 0; background: var(--pane-dim, rgba(16, 20, 28, .36)); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .decision-sheet .decision-card { background: var(--theme-editor); }
+/* An opened card is read, not glanced at: a near-solid pane, so the deck and the page behind never show through it. */
+.home-layer .decision-sheet .decision-card { margin: 0; background: rgba(14, 19, 28, .96); }
+:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .decision-sheet .decision-card { background: var(--glass-solid); }
 .decision-sheet-close { position: absolute; top: 14px; right: 14px; z-index: 2; }
 @keyframes deck-backdrop { from { opacity: 0; } }
 

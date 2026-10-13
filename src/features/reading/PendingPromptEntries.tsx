@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { User } from '@phosphor-icons/react';
 import type { PendingPrompt } from './pending-prompts';
 import { withPictures } from './pasted-pictures';
+import { showPopup } from '../files/file-popup';
 import { t } from '../../shared/i18n';
 import './pending-prompts.css';
 
@@ -35,8 +36,13 @@ export function UserMessage({ text, images }: { text: string; images?: readonly 
   return <>{shown.text && <UserText text={shown.text} />}{shown.images.length > 0 && <UserImages images={shown.images} />}</>;
 }
 
+// A click shows the picture larger, in the popup over the conversation.
 export function UserImages({ images }: { images: readonly string[] }) {
-  return <div className="reading-user-images">{images.map((src, index) => <img key={index} src={src} alt={t('附加的图片 {n}', { n: index + 1 })} loading="lazy" decoding="async" />)}</div>;
+  return <div className="reading-user-images">{images.map((src, index) => {
+    const name = t('附加的图片 {n}', { n: index + 1 });
+    return <button type="button" key={index} title={t('点击放大')} aria-label={t('放大 {name}', { name })} onClick={() => showPopup({ kind: 'picture', src, path: name })}>
+      <img src={src} alt={name} loading="lazy" decoding="async" /></button>;
+  })}</div>;
 }
 
 // Messages sent from here that no record has shown yet. One the agent never took, even after it was sent again,

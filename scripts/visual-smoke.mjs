@@ -69,7 +69,6 @@ async function checkDaylightContrast() {
     await fs.writeFile(path.join(output, 'daylight-contrast.json'), JSON.stringify(contrasts, null, 2));
   } finally { await mask.evaluate(node => node.remove()); }
 }
-const pauseBreath = (time, play = false) => panel(0).evaluate((node, { time, play }) => { for (const animation of node.getAnimations({ subtree: true })) if (animation.animationName === 'signal-breathe') { animation.pause(); animation.currentTime = time; if (play) animation.play(); } }, { time, play });
 const errors = [];
 try {
   app = await electron.launch({ executablePath: packaged ? path.join(root, 'release/win-unpacked/Agentrix.exe') : require('electron'), args: packaged ? [] : [root], cwd: root, env });
@@ -175,45 +174,16 @@ try {
   await page.getByRole('button', { name: '返回总览', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));
   await fs.appendFile(transcript, record('task_complete', 'visual-turn'));
-  await waitFor(async () => panel(0).evaluate(node => node.classList.contains('attention-active')), 'new completion breathes');
-  assert.equal(await breathing(0), 3, 'the edge, the status dot and the inner glow breathe');
-  const timings = await panel(0).evaluate(node => ['.panel-signal', '.status-dot', '.panel-glow'].map(selector => {
-    const animation = node.querySelector(selector).getAnimations()[0];
-    return { start: animation.startTime, duration: animation.effect.getTiming().duration, iterations: animation.effect.getTiming().iterations };
-  }));
-  assert.ok(timings.every(timing => Math.abs(timing.start - timings[0].start) < 35), 'edge, dot and glow breathe in one phase');
-  assert.ok(timings.every(timing => timing.duration === 3000 && timing.iterations === 3), `three slow 3 s breaths: ${JSON.stringify(timings)}`);
-  // At the peak the glow lights the terminal surface well inside the edge, not only the thin ring.
-  const shots = {};
-  for (const [name, time] of [['low', 0], ['peak', 1500]]) {
-    await pauseBreath(time);
-    shots[name] = await page.screenshot({ path: path.join(output, `forest-${name}.png`) });
-    const opacity = await panel(0).locator('.panel-glow').evaluate(node => Number(getComputedStyle(node).opacity));
-    assert.ok(name === 'peak' ? opacity >= .95 : opacity <= .05, `${name} glow: ${opacity}`);
-  }
-  const area = await panel(0).locator('.panel-terminal-area').boundingBox(), viewport = await page.evaluate(() => innerWidth);
-  const glowReach = await app.evaluate(({ nativeImage }, { low, peak, area, viewport }) => {
-    const a = nativeImage.createFromBuffer(Buffer.from(low, 'base64')), b = nativeImage.createFromBuffer(Buffer.from(peak, 'base64'));
-    const { width } = a.getSize(), scale = width / viewport, first = a.toBitmap(), second = b.toBitmap();
-    const mean = (from, to) => {
-      let total = 0, count = 0;
-      for (let y = Math.round((area.y + area.height * .45) * scale); y < (area.y + area.height * .55) * scale; y++) {
-        for (let x = Math.round((area.x + from) * scale); x < (area.x + to) * scale; x++) {
-          const at = (y * width + x) * 4; total += Math.max(...[0, 1, 2].map(channel => Math.abs(first[at + channel] - second[at + channel]))); count++;
-        }
-      }
-      return total / count;
-    };
-    return { edge: mean(2, 10), inside: mean(30, 60), deep: mean(90, 120) };
-  }, { low: shots.low.toString('base64'), peak: shots.peak.toString('base64'), area, viewport });
-  assert.ok(glowReach.inside > 8 && glowReach.deep > 2, `the breathing glow spreads into the terminal: ${JSON.stringify(glowReach)}`);
+  await waitFor(async () => panel(0).evaluate(node => node.classList.contains('attention-active')), 'a new completion lights its card');
+  // A finished round lights its card steadily: its coloured edge and a quiet glow until it is viewed, never a breath.
+  assert.equal(await breathing(0), 0, 'a finished round does not breathe');
+  const lit = await panel(0).evaluate(node => ({ edge: Number(getComputedStyle(node.querySelector('.panel-signal')).opacity), glow: Number(getComputedStyle(node.querySelector('.panel-glow')).opacity),
+    dot: node.querySelector('.status-dot').getAnimations().length }));
+  assert.ok(lit.edge >= .5 && lit.glow === .3 && lit.dot === 0, `a steady edge, glow and dot: ${JSON.stringify(lit)}`);
   const text = await panel(0).locator('.xterm-rows').evaluate(node => ({ opacity: getComputedStyle(node).opacity, animation: getComputedStyle(node).animationName }));
   assert.deepEqual(text, { opacity: '1', animation: 'none' }, 'terminal text itself never pulses');
-  await pauseBreath(0, true);
   const completed = (await state()).projects[0].lastCompletedAt;
   await page.screenshot({ path: path.join(output, 'fresh-completion.png') });
-  await waitFor(async () => (await breathing(0)) === 0, 'three breaths finish', 20000);
-  assert.equal(await panel(0).locator('.panel-glow').evaluate(node => Number(getComputedStyle(node).opacity)), .3, 'an unviewed result keeps a quiet steady glow');
   // Rerender via theme changes and repeated lifecycle callbacks must not restart an old alert.
   await fs.appendFile(transcript, record('task_complete', 'visual-turn'));
   await page.evaluate(() => window.agentrix.settings({ theme: 'wild-red' }));
@@ -231,25 +201,18 @@ try {
   await waitFor(async () => panel(0).getAttribute('data-status').then(status => status === 'working'), 'a new submitted turn is working');
   assert.equal(await breathing(0), 0, 'working again stays steady');
   await fs.appendFile(transcript, record('task_complete', 'next-turn'));
-  await waitFor(async () => (await breathing(0)) === 3, 'the next finished turn breathes again');
+  await waitFor(async () => panel(0).evaluate(node => node.classList.contains('attention-active')), 'the next finished turn lights its card');
+  // Whatever the motion setting and the system's preference, a finished card is lit steadily and never breathes.
   const setMotion = async mode => { await page.evaluate(mode => window.agentrix.settings({ focusAnimation: mode }), mode); await page.waitForFunction(mode => document.documentElement.dataset.motion === mode, mode); };
-  // Windows reports reduced motion whenever its "Animation effects" switch is off. The default
-  // setting keeps the lights breathing; only "follow system" or "off" stops them.
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await setMotion('smooth');
-  assert.ok(await breathing(0) > 0, 'default animation setting keeps breathing when Windows animation effects are off');
-  await page.screenshot({ path: path.join(output, 'reduced-motion-default.png') });
-  await setMotion('system');
-  await waitFor(async () => await breathing(0) === 0, 'follow-system stops decorative breathing under reduced motion');
-  await page.screenshot({ path: path.join(output, 'reduced-motion.png') });
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await setMotion('off');
-  await waitFor(async () => await breathing(0) === 0, 'turning animation off stops breathing even without a system preference');
-  await setMotion('smooth');
-  await waitFor(async () => await breathing(0) > 0, 'turning animation back on resumes breathing');
+  for (const [preference, mode] of [['no-preference', 'smooth'], ['reduce', 'smooth'], ['reduce', 'system'], ['no-preference', 'off'], ['no-preference', 'smooth']]) {
+    await page.emulateMedia({ reducedMotion: preference });
+    await setMotion(mode);
+    assert.equal(await breathing(0), 0, `no breathing with ${mode} motion and ${preference}`);
+  }
+  await page.screenshot({ path: path.join(output, 'finished-steady.png') });
   assert.deepEqual(errors, []);
-  await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, timings, glowReach, liveSamples, compact, compactEdges, errors }, null, 2));
-  console.log(`PASS: steady blue working edge and wash, daylight body contrast, a slow diffuse breathing glow on completion, quiet unviewed glow, quiet idle, all themes, high DPI, compact controls, explorer and preserved small-card input. Screenshots: ${output}`);
+  await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, liveSamples, compact, compactEdges, errors }, null, 2));
+  console.log(`PASS: steady blue working edge and wash, daylight body contrast, a steady glow on completion, quiet unviewed glow, quiet idle, all themes, high DPI, compact controls, explorer and preserved small-card input. Screenshots: ${output}`);
 } catch (error) {
   if (error instanceof DaylightDone) { assert.deepEqual(errors, []); console.log(`PASS (Daylight only): frosted pane material, legible ink and steady working edge. Screenshots: ${output}`); }
   else {

@@ -8,6 +8,7 @@ import { sendToAgent, untilAtPrompt } from './send-to-agent';
 import { dataUrl, thumbnail } from '../reading/image-thumbnail';
 import { VoiceButton } from '../voice/VoiceButton';
 import { dictateInto } from '../voice/voice-input';
+import { showPopup } from '../files/file-popup';
 import { t } from '../../shared/i18n';
 import './home.css';
 
@@ -131,7 +132,8 @@ function NewWork({ projects, onAction, onDone, onError }: {
       <VoiceButton terminalId={VOICE_TARGET} sessionId={null} name={t('新任务')} size={16} onError={onError} />
     </div>
     {images.length > 0 && <div className="new-work-images" role="list" aria-label={t('附图')}>{images.map((image, index) => <span key={index} role="listitem">
-      <img src={image.preview} alt={t('附加的图片 {n}', { n: index + 1 })} />
+      <button type="button" className="new-work-zoom" title={t('点击放大')} aria-label={t('放大 {name}', { name: t('附加的图片 {n}', { n: index + 1 }) })}
+        onClick={() => showPopup({ kind: 'picture', src: image.preview, path: t('附加的图片 {n}', { n: index + 1 }) })}><img src={image.preview} alt={t('附加的图片 {n}', { n: index + 1 })} /></button>
       <button type="button" aria-label={t('移除这张图片')} onClick={() => setImages(list => list.filter((_, at) => at !== index))}><X size={12} weight="bold" /></button>
     </span>)}</div>}
     {(text.trim() || images.length > 0) && <div className="new-work-options">

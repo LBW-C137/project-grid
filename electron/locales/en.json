@@ -1248,5 +1248,10 @@
   "SSH 项目也自动继承开发记忆：服务器上这个文件夹以前的 Codex、Claude 对话存进本机记忆，新开的 CLI 一启动就知道之前做过什么。": "SSH projects carry development memory too: earlier Codex and Claude conversations in the folder on the server are kept in this computer's memory, and a newly started CLI knows what was done before.",
   "助手写在项目外的 Markdown 文件（记忆、笔记）也能在卡片里看到排好版的内容，点开看全文。": "Markdown files an agent writes outside the project (its memory, notes) show laid out in their cards and open whole.",
   "适配 Claude Code 2.1.296：/effort 显示成可以点选的滑块；命令面板不再混进输入框的内容；登录完成后不会再停着“登录 Claude Code”卡片。": "Ready for Claude Code 2.1.296: /effort shows as a slider to click; command panels no longer pick up the input box; the sign-in card no longer stays after signing in.",
-  "决策页“接下来要做什么”可以语音输入；打开设置、展开决策卡更流畅（主题预览改用小图，去掉了逐帧重绘的动画）。": "The decisions page's \"what next\" box takes dictation; settings and decision cards open more smoothly (small theme previews, no animations repainted every frame)."
+  "决策页“接下来要做什么”可以语音输入；打开设置、展开决策卡更流畅（主题预览改用小图，去掉了逐帧重绘的动画）。": "The decisions page's \"what next\" box takes dictation; settings and decision cards open more smoothly (small theme previews, no animations repainted every frame).",
+  "点击放大": "Click to enlarge",
+  "放大 {name}": "Enlarge {name}",
+  "决策页点开的卡片（交付审查、审批、提问）不再透明，后面的卡片和输入框不会透出来。": "A decision card opened on the decisions page (a review, an approval, a question) is no longer see-through: the cards and the box behind it stay hidden.",
+  "你发出的图片都能点开放大：消息里的、输入框上方等着发送的、决策页输入框里的。": "Pictures you send open larger on a click: in a message, waiting above the message box, or in the decisions page box.",
+  "一轮做完的项目卡不再闪烁呼吸，改为稳定的彩色边框和柔光，直到你查看。": "A project card whose round is done no longer pulses: it keeps a steady coloured edge and a soft glow until you look at it."
 }

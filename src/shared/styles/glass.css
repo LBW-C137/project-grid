@@ -171,9 +171,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 /* The ring exists to show state. An idle pane draws none: a permanent silver ring read as two wiry
    lines at every gap, and the glass already separates panes on its own. */
 .project-panel:not(.is-working, .attention-active, .round-complete, .has-unread, .has-error) .panel-signal { opacity: 0; }
-/* Working is shown by a steady ring; only a finished turn breathes. For its first nine seconds the ring, the dot and
-   a glow spreading in from the edge slowly breathe together, three times (dark, bright, dark over three seconds). */
-.attention-active:not(.is-focused) :is(.status-dot, .panel-signal, .panel-glow) { animation: signal-breathe 3s ease-in-out 3; }
+/* Working is shown by a steady ring, and so is a finished turn: its coloured edge and a quiet glow, never a breath. */
 /* The glow lies under the terminal content (z-index -1 inside the card), so it lights the translucent
    terminal surface from the edges inward while the text itself is never tinted or animated. */
 .panel-glow { position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0; --light-low: 0; --light-peak: 1;
@@ -183,7 +181,6 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .project-panel:is(.focus-motion-panel, .drag-source) :is(.panel-signal, .status-dot, .panel-glow) { animation: none; }
 .project-panel:is(.focus-motion-panel, .drag-source) .panel-signal { filter: none; }
 .project-panel .session-dot { background: rgb(var(--signal-rgb)); box-shadow: 0 0 5px rgba(var(--signal-rgb), .3); }
-@keyframes signal-breathe { 0%, 100% { opacity: var(--light-low); } 50% { opacity: var(--light-peak); } }
 .dropdown { background: var(--glass-sheen), var(--glass-strong); border-color: #e8f5ff80; border-radius: 10px; box-shadow: inset 0 1px 0 #ffffff96, inset 0 -1px 0 #0b1a2855, 0 16px 40px #07131e30; backdrop-filter: blur(6px) saturate(135%); animation: glass-appear .16s cubic-bezier(.2,.8,.2,1); transform-origin: top center; }
 .dropdown button { color: #e5f0fa; border-radius: 6px; }
 .panel-menu { width: 224px; }
@@ -536,7 +533,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 /* The live feed takes the height; the prompts being worked on below take what they need, up to two fifths. */
 
 /* Working has one vivid blue edge above the masked rim and a wash below the text.
-   Both stay steady through hover and focus; only a finished round breathes. */
+   Both stay steady through hover and focus, as a finished round's light does. */
 .project-panel.is-working { --edge-gradient: linear-gradient(120deg, #a2d4ff, #4ea1ff 36%, #3987f5 68%, #81c4ff); }
 .project-panel.is-working .panel-signal { opacity: .95; filter: drop-shadow(0 0 8px #4ea1ff99); box-shadow: 0 0 24px #4ea1ff70; animation: none; }
 .project-panel.is-working .panel-glow { opacity: 1; background: linear-gradient(180deg, rgba(35, 102, 195, .32), rgba(43, 117, 214, .14) 28%, transparent 60%); box-shadow: none; animation: none; }

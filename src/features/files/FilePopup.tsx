@@ -20,7 +20,8 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
   useEffect(() => {
     let live = true, previewId: string | null = null;
     setShown(null);
-    const read: Promise<Shown> = target.kind === 'image'
+    const read: Promise<Shown> = target.kind === 'picture' ? Promise.resolve({ kind: 'picture' as const, url: target.src })
+      : target.kind === 'image'
       ? window.agentrix.agentImage(target.path).then(result => result.ok ? { kind: 'picture' as const, url: result.value.url } : { kind: 'error' as const, message: result.error })
       : target.kind === 'folder'
       ? window.agentrix.listDirectory(target.projectId, target.path).then(result => result.ok ? { kind: 'folder' as const, listing: result.value } : { kind: 'error' as const, message: result.error })
@@ -45,7 +46,7 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
     return () => { window.removeEventListener('keydown', keys, true); if (before?.isConnected) before.focus({ preventScroll: true }); };
   }, []);
   const openLink = (link: string) => {
-    if (target.kind === 'image') return;
+    if (target.kind === 'image' || target.kind === 'picture') return;
     const projectId = target.projectId;
     void window.agentrix.openLink(projectId, link).then(result => {
       if (!result.ok) onError(result.error);
@@ -54,7 +55,7 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
   };
   const parent = target.kind === 'folder' && target.path ? target.path.split('/').slice(0, -1).join('/') : null;
   const preview = shown?.kind === 'preview' ? shown.preview : null;
-  const Icon = target.kind === 'folder' ? Folder : target.kind === 'image' || preview?.kind === 'image' ? ImageIcon : preview?.kind === 'video' ? FilmStrip : preview?.kind === 'html' ? Globe : FileText;
+  const Icon = target.kind === 'folder' ? Folder : target.kind === 'image' || target.kind === 'picture' || preview?.kind === 'image' ? ImageIcon : preview?.kind === 'video' ? FilmStrip : preview?.kind === 'html' ? Globe : FileText;
   let body: ReactNode;
   if (!shown) body = <div className="file-popup-message"><SpinnerGap size={22} className="loading-spinner" />{t('正在读取文件…')}</div>;
   else if (shown.kind === 'error') body = <div className="file-popup-message" role="status"><Icon size={28} /><p>{t(shown.message)}</p></div>;

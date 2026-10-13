@@ -4,7 +4,8 @@ import { useSyncExternalStore } from 'react';
 // one never moves to the project's page; only its header or a shortcut goes there.
 // file and folder: a path inside the project, read as its preview and file list do. image: a picture anywhere on this
 // computer. document: a Markdown file outside the project (an agent's memory or notes), read where the project is.
-export type PopupTarget = { kind: 'file' | 'folder' | 'document'; projectId: string; path: string } | { kind: 'image'; path: string };
+// picture: one already in the window (a picture sent in a message), shown larger.
+export type PopupTarget = { kind: 'file' | 'folder' | 'document'; projectId: string; path: string } | { kind: 'image'; path: string } | { kind: 'picture'; src: string; path: string };
 
 let current: PopupTarget | null = null;
 const listeners = new Set<() => void>();
