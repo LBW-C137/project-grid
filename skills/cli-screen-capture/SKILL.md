@@ -14,7 +14,7 @@ screen, never from a screenshot or memory.
 
 1. Write a probe under `.test-output/` that launches Agentrix with an isolated profile (`AGENTRIX_DATA_DIR` in a new
    folder, `terminalRenderer: 'dom'`) and reads the rows from `[data-terminal-id="<id>"] .xterm-rows > div`
-   (replace ` ` with a space, trim the ends).
+   (turn non-breaking spaces into plain ones, trim the ends).
 2. Keep the user's CLI state untouched:
    - Codex: point `CODEX_HOME` at a folder of the run with fake rollouts (`sessions/YYYY/MM/DD/rollout-…-<id>.jsonl`,
      `session_meta` with the project `cwd`), `auth.json` holding a placeholder API key
