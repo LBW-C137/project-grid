@@ -106,7 +106,9 @@ function mainHarness(t, f) {
   const sessions = new Map([[s.terminalId, s]]);
   const store = { projects: [project], findTerminal: () => ({ record: { restore } }),
     setRestore: (_id, value) => Object.assign(restore, value), expectCompletion() {} };
-  const context = vm.createContext({ path, sessions, store, TranscriptTail, monitorActivity, claudeConversation, claudeRecord,
+  // Reads here happen when the test asks: a write told by the file watch (codex-activity.test.cjs) would start one
+  // while a large file is still being written.
+  const context = vm.createContext({ path, sessions, store, TranscriptTail, monitorActivity: (read, changed, options) => monitorActivity(read, changed, { ...options, watch: null }), claudeConversation, claudeRecord,
     claudeConfigDir: () => f.home, findClaudeSession: (cwd, id) => findClaudeSession(cwd, id, f.home),
     describeActions() {}, broadcast() {}, acceptShellEvent: () => true, noteSettings() {}, readEvery: () => 1000,
     quitting: false, Date, claudeResumeCommand, restorePlans: new Map(),
