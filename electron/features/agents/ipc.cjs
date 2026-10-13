@@ -7,8 +7,8 @@ function registerAgentsIpc({ handle, agents, openExternal, getSession, findProje
   handle('terminal:agentSessions', id => {
     const project = findProject(id), s = getSession(id);
     if (!s) return [];
-    // Over SSH the conversations are on that computer: its worker lists them (integration/remote-worker.py).
-    if (project.kind === 'ssh') return s.agent === 'codex' && s.terminal?.request ? s.terminal.request('codex-sessions', { currentId: s.rootThreadId || s.reportedThreadId || null }) : [];
+    // Over SSH the CLI's own list is used, shown by the reading view (reading-sessions.ts).
+    if (project.kind === 'ssh') return [];
     const cwd = getRestoreCwd(id) || project.path;
     // Codex's own list leaves out the conversation it is in; so does this one.
     if (s.agent === 'codex') return listCodexSessions(cwd, s.rootThreadId || s.reportedThreadId, s.codexHome);

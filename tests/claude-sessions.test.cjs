@@ -108,7 +108,7 @@ function mainHarness(t, f) {
     setRestore: (_id, value) => Object.assign(restore, value), expectCompletion() {} };
   const context = vm.createContext({ path, sessions, store, TranscriptTail, monitorActivity, claudeConversation, claudeRecord,
     claudeConfigDir: () => f.home, findClaudeSession: (cwd, id) => findClaudeSession(cwd, id, f.home),
-    describeActions() {}, broadcast() {}, acceptShellEvent: () => true,
+    describeActions() {}, broadcast() {}, acceptShellEvent: () => true, noteSettings() {}, readEvery: () => 1000,
     quitting: false, Date, claudeResumeCommand, restorePlans: new Map(),
     // The handoff of earlier work is written on start (handoff.cjs, tested on its own).
     writeHandoff: async () => false, handoffFile: id => path.join(f.home, 'handoff', `${id}.md`), memoryDir: () => path.join(f.home, 'memory'), scrubProjectSkills: async () => [],

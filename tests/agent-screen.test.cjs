@@ -19,6 +19,10 @@ const codexStatus = context => ({ ...emptyStatus, model: 'GPT-6.1-Sol', effort: 
 const option = (number, label, selected = false, detail = '', hotkey = null) =>
   ({ number, label, detail, hotkey, selected });
 const readFixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/screens', name + '.txt'), 'utf8').split('\n');
+const resumeScreen = (sessions, escape, context = []) => ({ ...emptyScreen, choice: {
+  title: 'Resume a previous session', kind: 'menu', options: sessions.map(([label, age], index) => option(index + 1, label, index === 0, age)), context,
+  hint: `enter resume · esc ${escape === 'new' ? 'start new' : 'exit'}`, escape,
+} });
 const claudeScreen = fields => ({ ...emptyScreen, banner: claudeBanner, ...fields });
 const codexScreen = fields => ({ ...emptyScreen, banner: codexBanner, ...fields });
 const codexFooterScreen = (context, fields) => codexScreen({
@@ -87,6 +91,16 @@ const expected = {
   'codex-slash-typed': codexFooterScreen('872K wi…', { overlay: 'slash' }),
   'codex-mention': codexFooterScreen('828K wi…', { overlay: 'mention' }),
   'codex-shortcuts': codexFooterScreen('828K wi…', { overlay: 'shortcuts' }),
+  // Claude Code 2.1.296 at its prompt: the effort over the input box ("◉ xhigh · /effort"), the model and mode under it.
+  'claude-idle-2-1-296': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.296', effort: 'xhigh', directory: '~\\work\\demo-app' },
+    status: { ...emptyStatus, model: 'Opus 5.5', effort: 'xhigh', mode: 'auto mode on' } },
+  // Codex 0.162's resume list, drawn by "codex resume", by /resume inside a conversation, with nothing to resume, and
+  // as Codex draws it on Linux.
+  'codex-resume-start': resumeScreen([['整理发布说明', '2s ago'], ['修复阅读视图的滚动', '2s ago'], ['合并远端主分支', '2s ago']], 'new'),
+  'codex-resume-inside': resumeScreen([['整理发布说明', '13s ago'], ['修复阅读视图的滚动', '13s ago'], ['合并远端主分支', '13s ago']], 'back'),
+  'codex-resume-empty': resumeScreen([], 'new', ['No sessions yet']),
+  'codex-resume-linux': resumeScreen([['合并远端主分支', '3h ago'], ['修复阅读视图', '10h ago'], ['整理发布说明', '11h ago'], ['继承 Claude 日志', '2d ago'], ['查找 resume 记忆', '20d ago'],
+    ['合并主分支', '26d ago'], ['删除显示和系统监控功能', '28d ago'], ['删除所有 mcp、plugin 和 skill', '35d ago']], 'new'),
 };
 
 test('every checked-in screen fixture has an explicit expectation', () => {
@@ -269,4 +283,35 @@ test('prompts reproduced from the CLIs\' own text open as choices', () => {
   const mcp = [' New MCP server found in this project: github', '', ' MCP servers may execute code or access system resources. All tool calls require approval.', '',
     ' ❯ Use this MCP server', '   Use this and all future MCP servers in this project', '   Continue without using this MCP server', '', ' Enter to confirm · Esc to cancel'];
   assert.deepEqual(parseAgentScreen('claude', mcp).choice.options.map(option => option.label), ['Use this MCP server', 'Use this and all future MCP servers in this project', 'Continue without using this MCP server']);
+});
+
+test("Codex's own resume list opens as a choice of its conversations, wherever it was started", () => {
+  // "codex resume" from the shell (as the SSH greeting suggests): Esc starts a new conversation.
+  const start = parseAgentScreen('codex', readFixture('codex-resume-start'));
+  assert.equal(start.choice.title, 'Resume a previous session');
+  assert.deepEqual(start.choice.options.map(option => [option.label, option.selected]), [['整理发布说明', true], ['修复阅读视图的滚动', false], ['合并远端主分支', false]]);
+  assert.match(start.choice.options[0].detail, /^\d+s ago$/);
+  assert.equal(start.choice.escape, 'new');
+  assert.equal(start.choice.hint, 'enter resume · esc start new');
+  assert.equal(start.overlay, 'none');
+  // /resume inside a conversation: Esc goes back to it.
+  const inside = parseAgentScreen('codex', readFixture('codex-resume-inside')).choice;
+  assert.equal(inside.options.length, 3); assert.equal(inside.escape, 'back');
+  // Nothing to resume yet: the list says so and Esc still starts a new one.
+  const empty = parseAgentScreen('codex', readFixture('codex-resume-empty')).choice;
+  assert.deepEqual([empty.options, empty.context, empty.escape], [[], ['No sessions yet'], 'new']);
+  // As Codex draws it on Linux (over SSH): keys as ^a, and the cursor's place on the rule.
+  const linux = parseAgentScreen('codex', readFixture('codex-resume-linux')).choice;
+  assert.equal(linux.options.length, 8);
+  assert.deepEqual(linux.options.slice(0, 2).map(option => [option.number, option.label, option.detail, option.selected]), [[1, '合并远端主分支', '3h ago', true], [2, '修复阅读视图', '10h ago', false]]);
+  assert.equal(linux.options[7].label, '删除所有 mcp、plugin 和 skill');
+  assert.deepEqual(linux.context, [], 'every conversation is on screen');
+  // More than the screen holds: where the cursor is in the whole list is told.
+  const longer = readFixture('codex-resume-linux').map(row => row.replace('1 / 8 · 100%', '1 / 30 · 26%'));
+  assert.deepEqual(parseAgentScreen('codex', longer).choice.context, ['1 / 30']);
+  // An older layout with the branch between the age and the name.
+  const older = parseAgentScreen('codex', [' Resume a previous session', ' Type to search', '   Updated        Branch   Conversation', ' > 3 hours ago    main     合并远端主分支', '   2 days ago     dev      修复滚动', ' enter resume   esc start new']).choice;
+  assert.deepEqual(older.options.map(option => [option.label, option.detail, option.selected]), [['合并远端主分支', '3 hours ago · main', true], ['修复滚动', '2 days ago · dev', false]]);
+  // Claude's screen never reads as it.
+  assert.equal(parseAgentScreen('claude', readFixture('codex-resume-start')).choice?.title === 'Resume a previous session', false);
 });

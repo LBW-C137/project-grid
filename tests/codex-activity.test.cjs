@@ -172,3 +172,19 @@ test('binding another Codex thread starts its own window without carrying an ear
   assert.equal(reader.buffer.length, 0); assert.deepEqual(seen.map(record => record.payload.type), ['task_complete']);
   assert.deepEqual(history, [false, true, false, true]);
 });
+
+test('a write to the watched file is read at once, long before the next poll', async () => {
+  const fsSync = require('node:fs'), osModule = require('node:os'), pathModule = require('node:path');
+  const file = pathModule.join(fsSync.mkdtempSync(pathModule.join(osModule.tmpdir(), 'watch-')), 'rollout.jsonl');
+  fsSync.writeFileSync(file, 'first\n');
+  const seen = [];
+  const monitor = monitorActivity(() => ({ text: fsSync.readFileSync(file, 'utf8') }), snapshot => seen.push(snapshot.text), { interval: 10000, watch: () => file });
+  try {
+    for (let i = 0; i < 50 && !seen.length; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    const written = Date.now();
+    fsSync.appendFileSync(file, 'second\n');
+    for (let i = 0; i < 200 && seen.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.deepEqual(seen, ['first\n', 'first\nsecond\n']);
+    assert.ok(Date.now() - written < 500, `read ${Date.now() - written} ms after the write`);
+  } finally { monitor.stop(); }
+});

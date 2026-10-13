@@ -32,7 +32,7 @@ export function VoiceButton({ terminalId, sessionId, name, size = 14, onError }:
   const voice = useVoice();
   const recording = voice.recording === terminalId, busy = voice.busy === terminalId;
   const model = voice.model;
-  const status = recording ? t('正在录音 · Enter 识别并发送，再次点击只插入不发送（Esc 取消）')
+  const status = recording ? voice.sends ? t('正在录音 · Enter 识别并发送，再次点击只插入不发送（Esc 取消）') : t('正在录音 · Enter 或再次点击插入文字（Esc 取消）')
     : busy ? t('正在识别…')
     : voice.microphone === false ? t('未检测到麦克风')
     : model?.phase === 'downloading' ? t('麦克风已连接 · 语音模型下载中 {percent}%', { percent: model.percent })
@@ -105,6 +105,6 @@ export function VoiceOverlay() {
       <div className={`voice-orb ${recording ? 'is-recording' : 'is-busy'}`}>{recording ? <MicrophoneGlyph /> : <SpinnerGap className="loading-spinner" />}</div>
     </div>
     <b className="voice-title">{recording ? t('正在聆听…') : voice.sending ? t('正在识别并发送…') : t('正在识别…')}</b>
-    {recording && <span className="voice-overlay-keys"><kbd>Enter</kbd><span>{t('发送')}</span><i className="voice-keys-gap" /><kbd>Esc</kbd><span>{t('取消')}</span></span>}
+    {recording && <span className="voice-overlay-keys"><kbd>Enter</kbd><span>{voice.sends ? t('发送') : t('插入')}</span><i className="voice-keys-gap" /><kbd>Esc</kbd><span>{t('取消')}</span></span>}
   </div></div>;
 }

@@ -1,6 +1,6 @@
 // User-only batches should acknowledge a send quickly; streaming updates stay batched.
 function conversationBatchDelay(changes) {
-  return changes.length && changes.every(change => !change.reset && change.entry?.role === 'user') ? 30 : 120;
+  return changes.length && changes.every(change => !change.reset && change.entry?.role === 'user') ? 30 : 50;
 }
 
 // The same monitor follows both Codex rollouts and Claude transcripts. Resolve it at poll

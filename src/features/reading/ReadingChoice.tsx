@@ -50,7 +50,7 @@ export function ReadingChoice({ choice, terminalId, onError }: { choice: ScreenC
   };
   return <div ref={card} className={`reading-choice is-${choice.kind}`} role="group" aria-label={choice.title} aria-busy={pending !== null} tabIndex={-1} onKeyDown={keys}
     onFocus={() => window.agentrix.terminalFocus(terminalId, false)}>
-    <div className="reading-choice-head"><strong>{choice.title}</strong><button type="button" className="text-button" disabled={pending !== null} onClick={cancel}>{pending === 'cancel' && <CircleNotch size={12} className="loading-spinner" />}{t('取消')}</button></div>
+    <div className="reading-choice-head"><strong>{choice.title}</strong><button type="button" className="text-button" disabled={pending !== null} onClick={cancel}>{pending === 'cancel' && <CircleNotch size={12} className="loading-spinner" />}{choice.escape === 'new' ? t('开始新会话') : choice.escape === 'back' ? t('返回对话') : t('取消')}</button></div>
     {choice.context.length > 0 && <pre className="reading-choice-context">{choice.context.join('\n')}</pre>}
     <div className="reading-choice-options">{choice.options.map((option, index) => <button type="button" key={option.number}
       className={`reading-choice-option ${option.selected ? 'is-cli-selected' : ''}`} data-highlighted={index === highlight} disabled={pending !== null} onClick={() => void choose(index)}>

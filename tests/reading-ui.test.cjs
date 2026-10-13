@@ -42,9 +42,11 @@ function loadUI(name, overrides = {}) {
     if (key === './reading-sessions') return require('../src/features/reading/reading-sessions.ts');
     if (key === './reply-files') return require('../src/features/reading/reply-files.ts');
     if (key === './ReadingSignIn') return { ReadingSignIn: () => null };
+    if (key === './AgentSettingsTag') return { AgentSettingsTag: () => null };
     if (key === './composer-prefill') return require('../src/features/reading/composer-prefill.ts');
     if (key === './image-thumbnail') return require('../src/features/reading/image-thumbnail.ts');
     if (key === './markdown-escape') return require('../src/features/reading/markdown-escape.ts');
+    if (key === './pasted-pictures') return require('../src/features/reading/pasted-pictures.ts');
     if (key === './sign-in-screen') return require('../src/features/agents/sign-in-screen.ts');
     if (key === './file-popup') return { showPopup: () => {}, closePopup: () => {}, usePopup: () => null };
     return originalRequire(name);

@@ -6,8 +6,10 @@ const { welcomeStarting, hasStatusFooter } = require('../src/features/reading/re
 test('only exact /resume for an active agent opens the reading view picker', () => {
   assert.equal(usesSessionPicker({ agent: 'claude', codexActive: true }, '/resume'), true);
   for (const text of ['/resume abc', '/resume-all', '/RESUME', 'hello', '/resume\n']) assert.equal(usesSessionPicker({ agent: 'claude', codexActive: true }, text), false);
-  assert.equal(usesSessionPicker({ agent: 'codex', codexActive: true }, '/resume'), true, "Codex's own picker fills the screen, which the reading view cannot show");
+  assert.equal(usesSessionPicker({ agent: 'codex', codexActive: true }, '/resume'), true, "Codex's conversations on this computer are listed from its records here");
   assert.equal(usesSessionPicker({ agent: 'claude', codexActive: false }, '/resume'), false);
+  // Over SSH the CLI's own list is used: Codex's shows in the reading view as a choice (agent-screen.ts).
+  for (const agent of ['codex', 'claude']) assert.equal(usesSessionPicker({ agent, codexActive: true }, '/resume', true), false);
 });
 
 test('targeted resume is typed before Enter, aborts when unmounted, and propagates follow errors', async t => {

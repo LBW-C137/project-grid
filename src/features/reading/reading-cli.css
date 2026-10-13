@@ -44,3 +44,26 @@
 .reading-sign-in-field { display: flex; gap: 8px; }
 .reading-sign-in-field input { flex: 1; min-width: 0; padding: 8px 12px; border: 0; border-radius: 8px; outline: none; font: 400 13px var(--font-mono); color: var(--ink, #f1f7ff); background: rgba(0, 0, 0, .28); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
 .reading-sign-in-field input:focus { box-shadow: inset 0 0 0 1px var(--accent-blue, #3b9eff); }
+/* A slider (Claude Code's /effort): what its ends mean over a row of levels on a track, the current one lit and the
+   track lit up to it. A level clicked while the command listens moves the CLI's own slider there. */
+.cli-slider { display: flex; flex-direction: column; gap: 4px; max-width: 560px; margin: 2px 0 4px; }
+.cli-slider-ends { display: flex; justify-content: space-between; padding: 0 calc(50% / var(--levels)); font-size: 12px; color: var(--ink-secondary, #a9bfd6); }
+/* Each end's name over the end of the track it names. */
+.cli-slider-ends span:first-child { transform: translateX(-50%); }
+.cli-slider-ends span:last-child { transform: translateX(50%); }
+.cli-slider-levels { position: relative; display: grid; grid-template-columns: repeat(var(--levels), minmax(0, 1fr)); }
+.cli-slider-levels::before, .cli-slider-fill { content: ''; position: absolute; top: 9px; left: calc(50% / var(--levels)); height: 2px; border-radius: 1px; pointer-events: none; }
+.cli-slider-levels::before { right: calc(50% / var(--levels)); background: var(--card-line, rgba(255, 255, 255, .18)); }
+.cli-slider-fill { width: calc(100% * var(--current) / var(--levels)); background: linear-gradient(90deg, #3c8dff, #46d0ff); }
+.cli-slider-levels button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; padding: 0 2px 2px; border: 0; border-radius: 6px; background: none; color: var(--ink-secondary, #c3d3e2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.cli-slider-levels button:disabled { cursor: default; }
+.cli-slider-levels button:focus-visible { outline: 2px solid #8fcbff; outline-offset: 1px; }
+.cli-slider-dot { width: 12px; height: 12px; margin: 4px 0 1px; border-radius: 50%; background: var(--glass-solid, #1b2738); box-shadow: inset 0 0 0 2px var(--card-line, rgba(255, 255, 255, .3)); transition: transform .12s ease; }
+.cli-slider-levels button:not(:disabled):hover .cli-slider-dot { transform: scale(1.2); box-shadow: inset 0 0 0 2px #8fcbff; }
+.cli-slider-levels button.is-current { color: var(--ink, #ffffff); font-weight: 600; }
+.cli-slider-levels button.is-current .cli-slider-dot { width: 18px; height: 18px; margin: 1px 0 -2px; background: #3b9eff; box-shadow: 0 0 0 4px rgba(59, 158, 255, .25); transform: none; }
+/* A setting beside the slider (Claude Code's Ultracode switch): a click presses its key. */
+.cli-slider-aside { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; padding: 4px 10px; border: 0; border-radius: 999px; font: inherit; font-size: 12px; color: var(--ink-secondary, #c3d3e2); background: rgba(255, 255, 255, .07); box-shadow: inset 0 0 0 1px var(--card-line, rgba(255, 255, 255, .14)); }
+button.cli-slider-aside:not(:disabled) { cursor: pointer; }
+button.cli-slider-aside:not(:disabled):hover { color: var(--ink, #ffffff); background: rgba(255, 255, 255, .12); }
+.cli-slider-aside kbd { font-size: 11px; }

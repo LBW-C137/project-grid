@@ -7,7 +7,9 @@ export type PendingPrompt = { id: string; role: 'user'; text: string; at: number
 export type PendingPrompts = { sessionId: string | null; prompts: readonly PendingPrompt[]; seen: readonly string[] };
 
 export const normalizePrompt = (text: string) => text.trim().replace(/\s+/g, ' ');
-export const isTypedCommand = (text: string) => /^[\/!]/.test(text) && !/[\r\n]/.test(text);
+// A slash command (/model, /prompts:fix) or shell mode (!ls); a message that starts with a path (/tmp/shot.png, what an
+// SSH project's pasted picture becomes) is a message, not a command whose screen is shown in a popup.
+export const isTypedCommand = (text: string) => (/^\/[^\s/]+(?:\s|$)/.test(text) || text.startsWith('!')) && !/[\r\n]/.test(text);
 
 // Whether what the CLI's input holds is this message: its input wraps lines, puts "[Image #1]" before pasted pictures,
 // may cut a long line short with "…", and shows a long paste only as "[Pasted text #1 +12 lines]" (Claude) or

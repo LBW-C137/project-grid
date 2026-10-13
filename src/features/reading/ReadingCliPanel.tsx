@@ -1,16 +1,32 @@
-import { useLayoutEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { CircleNotch } from '@phosphor-icons/react';
 import { cliPanelKey } from './cli-panel';
 import { renderCliRows } from './cli-render';
 import { t } from '../../shared/i18n';
 import './reading-cli.css';
 
-// A slash command's screen laid out for reading: tabs, headings, label/value tables, meters, hints, text. Key hints
-// only mean something while the command still listens; a finished result leaves them out.
-function CliBlocks({ rows, live = false }: { rows: readonly string[]; live?: boolean }) {
+// A slash command's screen laid out for reading: tabs, headings, label/value tables, meters, sliders, hints, text. Key
+// hints only mean something while the command still listens; a finished result leaves them out. While it listens, a
+// level of a slider picked here moves the CLI's own slider there (onKeys: its arrow keys), for Enter to confirm.
+function CliBlocks({ rows, live = false, onKeys }: { rows: readonly string[]; live?: boolean; onKeys?: (keys: string[]) => void }) {
   const blocks = useMemo(() => renderCliRows(rows).filter(block => live || block.kind !== 'hint'), [rows, live]);
   return <div className="cli-blocks">{blocks.map((block, index) => {
     if (block.kind === 'tabs') return <div key={index} className="cli-tabs">{block.items.map(item => <span key={item}>{item}</span>)}</div>;
+    if (block.kind === 'slider') return <div key={index} className="cli-slider" style={{ '--levels': block.levels.length, '--current': block.current } as CSSProperties}>
+      {block.ends && <div className="cli-slider-ends" aria-hidden="true"><span>{block.ends[0]}</span><span>{block.ends[1]}</span></div>}
+      <div className="cli-slider-levels" role="radiogroup" aria-label={block.ends?.join(' – ')}>
+        <i className="cli-slider-fill" aria-hidden="true" />
+        {block.levels.map((level, at) => <button type="button" key={level} role="radio" aria-checked={at === block.current} className={at === block.current ? 'is-current' : ''}
+          disabled={!live || !onKeys} onClick={() => { const distance = at - block.current; if (distance) onKeys?.(Array(Math.abs(distance)).fill(distance > 0 ? '\x1b[C' : '\x1b[D')); }}>
+          <span className="cli-slider-dot" aria-hidden="true" />{level}</button>)}
+      </div>
+      {block.aside.length > 0 && (() => {
+        // A setting beside the slider and the key that turns it ("Ultracode off" · "Tab to toggle"): a click presses it.
+        const key = block.aside.find(item => /^tab to toggle$/i.test(item)), setting = block.aside.filter(item => item !== key).join(' · ');
+        return key && setting ? <button type="button" className="cli-slider-aside" disabled={!live || !onKeys} onClick={() => onKeys?.(['\t'])}>{setting}<kbd>Tab</kbd></button>
+          : <small className="cli-slider-aside">{block.aside.join(' · ')}</small>;
+      })()}
+    </div>;
     if (block.kind === 'heading') return <h5 key={index}>{block.text}</h5>;
     if (block.kind === 'pairs') return <dl key={index} className="cli-pairs">{block.pairs.map(([label, value, percent], at) => <div key={at}><dt>{label}</dt>
       <dd>{percent === undefined ? value : <span className="cli-meter" role="meter" aria-label={label} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}><span><i style={{ width: `${percent}%` }} /></span><small>{value}</small></span>}</dd></div>)}</dl>;
@@ -32,6 +48,10 @@ export function ReadingCliPanel({ command, rows, done, terminalId, onClose }: { 
     if (!done && (!active || active === document.body || (view && view.contains(active)))) card.current?.focus({ preventScroll: true });
   }, []);
   const write = (key: string) => window.agentrix.writeTerminal(terminalId, key);
+  // Keys one after another, as typed: a burst of arrows can arrive as one paste.
+  const writeKeys = async (keys: string[]) => {
+    for (const [at, key] of keys.entries()) { if (at) await new Promise(resolve => setTimeout(resolve, 30)); write(key); }
+  };
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation();
     if (event.nativeEvent.isComposing) return;
@@ -53,7 +73,7 @@ export function ReadingCliPanel({ command, rows, done, terminalId, onClose }: { 
       onFocus={() => window.agentrix.terminalFocus(terminalId, false)}>
       <div className="reading-cli-head"><strong>{command}</strong><small>{t('Esc 关闭')}</small></div>
       <div className="reading-cli-body">{!rows.length ? <p className="cli-waiting"><CircleNotch size={13} className="loading-spinner" />{t('正在等待 {command} 的结果…', { command })}</p>
-        : <CliBlocks rows={rows} live={!done} />}</div>
+        : <CliBlocks rows={rows} live={!done} onKeys={done ? undefined : keys => void writeKeys(keys)} />}</div>
     </div>
   </div>;
 }

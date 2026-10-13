@@ -3,8 +3,8 @@ import { useSyncExternalStore } from 'react';
 // A file shown over whatever is on screen: a page, a document, a picture or a video an agent wrote or named. Opening
 // one never moves to the project's page; only its header or a shortcut goes there.
 // file and folder: a path inside the project, read as its preview and file list do. image: a picture anywhere on this
-// computer.
-export type PopupTarget = { kind: 'file' | 'folder'; projectId: string; path: string } | { kind: 'image'; path: string };
+// computer. document: a Markdown file outside the project (an agent's memory or notes), read where the project is.
+export type PopupTarget = { kind: 'file' | 'folder' | 'document'; projectId: string; path: string } | { kind: 'image'; path: string };
 
 let current: PopupTarget | null = null;
 const listeners = new Set<() => void>();

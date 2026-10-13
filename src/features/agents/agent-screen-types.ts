@@ -23,6 +23,7 @@ export type ScreenStatus = {
   context: string | null;     // "ctx 4%", "828K wi…" as printed
   mode: string | null;        // "manual mode on", "bypass permissions on", "accept edits on", "plan mode on" (Claude)
   notes: string[];            // other footer text worth showing as is, e.g. "⚠ 1 warning · f2 to view"
+  fast?: boolean;             // Codex prints "fast" after the effort while fast mode is on
 };
 
 // A list the CLI is asking the user to pick from: a permission prompt or a menu such as /model.
@@ -55,6 +56,9 @@ export type ScreenChoice = {
   options: ScreenOption[];
   hint: string | null;        // "Esc to cancel · Tab to amend", "Press enter to confirm or esc to cancel", "enter select · esc back"
   question?: ScreenQuestion;  // kind 'question': the title is the question itself
+  // What Esc does when it does not cancel: Codex's resume list started by "codex resume" starts a new conversation
+  // ('new'); the one /resume opens goes back to the conversation ('back').
+  escape?: 'new' | 'back' | null;
 };
 
 export type AgentScreen = {

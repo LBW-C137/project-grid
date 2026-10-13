@@ -212,7 +212,8 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .no-results { color: #a0b5ce; }.no-results h2 { color: #d2e2f5; }
 .settings-dialog { background: var(--glass-sheen), var(--glass-strong); border-color: #e9f7ff66; border-radius: 12px; box-shadow: inset 0 1px 0 #ffffff60, inset 0 -1px 0 #0a192544, 0 24px 80px #08112070; }
 .settings-dialog[open] { animation: glass-appear .2s cubic-bezier(.2,.8,.2,1); }
-@keyframes glass-appear { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+/* Only opacity and a short rise: a dialog full of text scaled as it appears is painted again at every step. */
+@keyframes glass-appear { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .settings-dialog { max-height: calc(100vh - 40px); overflow: auto; color: var(--theme-ink); }
 .settings-section { scroll-margin-top: var(--settings-nav-offset, 100px); }
 .settings-section h3 { margin: 20px 0 8px; font-size: 12px; font-weight: 700; color: var(--theme-ink); }

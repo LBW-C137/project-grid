@@ -7,9 +7,10 @@ import { isMac, isLinux } from '../../shared/platform';
 
 // One shared dictation controller: a single microphone, one recording at a time,
 // and every terminal's microphone button reflecting the same device and model state.
-// label names the terminal being dictated to; sending marks a recognition that will press Enter.
-type VoiceSnapshot = { microphone: boolean | null; model: VoiceState | null; recording: string | null; busy: string | null; level: number; label: string | null; sending: boolean };
-let snapshot: VoiceSnapshot = { microphone: null, model: null, recording: null, busy: null, level: 0, label: null, sending: false };
+// label names the terminal being dictated to; sending marks a recognition that will press Enter; sends: Enter sends
+// what was said (a box that only takes the words, such as the decision page's, has Enter insert them instead).
+type VoiceSnapshot = { microphone: boolean | null; model: VoiceState | null; recording: string | null; busy: string | null; level: number; label: string | null; sending: boolean; sends: boolean };
+let snapshot: VoiceSnapshot = { microphone: null, model: null, recording: null, busy: null, level: 0, label: null, sending: false, sends: true };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<VoiceSnapshot>) => { snapshot = { ...snapshot, ...patch }; listeners.forEach(listener => listener()); };
 
@@ -21,11 +22,15 @@ let opening: Promise<unknown> = Promise.resolve();
 // The terminal the user last clicked or typed in, for Ctrl+T when keyboard focus is elsewhere.
 let lastTerminal: string | null = null;
 // A reading view showing a terminal's conversation takes the words dictated to that terminal into its message
-// box instead (submit: send them as the next message).
-const composers = new Map<string, (text: string, submit: boolean) => void>();
-export function dictateInto(id: string, insert: (text: string, submit: boolean) => void) {
-  composers.set(id, insert);
-  return () => { if (composers.get(id) === insert) composers.delete(id); };
+// box instead (submit: send them as the next message). A text box of its own, such as the decision page's
+// (data-voice-target="<id>" on it, for the shortcut), takes dictation under its id with no terminal at all;
+// sends: false when Enter only puts the words in.
+type Composer = { insert: (text: string, submit: boolean) => void; sends: boolean };
+const composers = new Map<string, Composer>();
+export function dictateInto(id: string, insert: (text: string, submit: boolean) => void, sends = true) {
+  const composer = { insert, sends };
+  composers.set(id, composer);
+  return () => { if (composers.get(id) === composer) composers.delete(id); };
 }
 // Codex and Claude Code treat an Enter that arrives right after pasted text as part of the paste
 // (a newline), so the submitting Enter waits until the paste has landed.
@@ -83,14 +88,14 @@ async function cancelDictation() {
 // submit: press Enter after inserting, so the text is sent as the next prompt.
 async function finish(submit = false) {
   const current = target; if (!current) return;
-  target = null; set({ recording: null, busy: current.id, sending: submit, level: 0 });
+  target = null; set({ recording: null, busy: current.id, sending: submit && snapshot.sends, level: 0 });
   try {
     const wav = await capture.stopRecording(); await capture.close();
     const text = await window.agentrix.transcribe(wav);
     if (!text.ok) throw new Error(text.error);
     if (!text.value.trim()) throw new Error(t('没有识别出文字，请再说一遍。'));
     const composer = composers.get(current.id);
-    if (composer) { composer(text.value.trim(), submit); return; }
+    if (composer) { composer.insert(text.value.trim(), submit && composer.sends); return; }
     const pasted = await window.agentrix.pasteTerminal(current.id, text.value, current.sessionId);
     if (!pasted.ok) throw new Error(pasted.error);
     if (submit) { await new Promise(resolve => setTimeout(resolve, SUBMIT_DELAY)); window.agentrix.writeTerminal(current.id, '\r'); }
@@ -104,15 +109,15 @@ async function finish(submit = false) {
 export async function toggleDictation(id: string, sessionId: string | null, onError: (message: string) => void, label = '') {
   if (snapshot.busy) return onError(t('正在识别上一段语音，请稍候。'));
   if (snapshot.recording) return snapshot.recording === id ? finish() : onError(t('另一个终端正在录音，请先结束那一段。'));
-  if (!sessionId) return onError(t('请先启动终端，再使用语音输入。'));
+  if (!sessionId && !composers.has(id)) return onError(t('请先启动终端，再使用语音输入。'));
   if (snapshot.microphone === false) { void refreshMicrophone(); return onError(t('未检测到麦克风，请连接后重试。')); }
   if (!snapshot.model?.ready) {
     if (snapshot.model?.phase !== 'downloading') void window.agentrix.prepareVoice();
     return onError(modelMessage(snapshot.model));
   }
   // Recording counts from the keypress or click, so an Escape while the microphone is still opening cancels it.
-  const pending = { id, sessionId, onError };
-  target = pending; set({ recording: id, label: label || null });
+  const pending = { id, sessionId: sessionId ?? '', onError };
+  target = pending; set({ recording: id, label: label || null, sends: composers.get(id)?.sends ?? true });
   // The recognizer is released after a few idle minutes; load it again while the user is speaking.
   void window.agentrix.warmVoice();
   const opened = opening.then(() => target === pending ? capture.open('', level => set({ level: Math.min(1, level * 5) })) : undefined);
@@ -133,12 +138,13 @@ export async function toggleDictation(id: string, sessionId: string | null, onEr
 
 const shown = (element: HTMLElement | null | undefined) => element?.getClientRects().length ? element : null;
 
-// Ctrl+T talks to the terminal with keyboard focus, else the expanded project's current terminal,
-// else the terminal last used, else the only terminal on screen.
+// Ctrl+T talks to the terminal with keyboard focus, else a text box of its own on screen (the decision page covers the
+// terminals), else the expanded project's current terminal, else the terminal last used, else the only terminal on screen.
 function terminalTarget() {
   const byId = (id: string | null) => id ? shown(document.querySelector<HTMLElement>(`[data-terminal-id="${CSS.escape(id)}"]`)) : null;
   const visible = [...document.querySelectorAll<HTMLElement>('[data-terminal-id]')].filter(element => shown(element));
   return shown(document.activeElement?.closest<HTMLElement>('[data-terminal-id]'))
+    || [...document.querySelectorAll<HTMLElement>('[data-voice-target]')].find(element => shown(element) && composers.has(element.dataset.voiceTarget!))
     || shown(document.querySelector<HTMLElement>('.project-panel.is-focused .is-active-terminal'))
     || byId(lastTerminal)
     || (visible.length === 1 ? visible[0] : null);
@@ -148,7 +154,7 @@ function terminalTarget() {
 export async function quickDictation(onError: (message: string) => void) {
   if (snapshot.recording) return finish(true);
   if (snapshot.busy) return onError(t('正在识别上一段语音，请稍候。'));
-  const terminal = terminalTarget();
-  if (!terminal?.dataset.terminalId) return onError(t('先点一下要输入的终端，再按 {key} 说话。', { key: shortcut('voice') }));
-  return toggleDictation(terminal.dataset.terminalId, terminal.dataset.sessionId || null, onError, terminal.getAttribute('aria-label') || '');
+  const terminal = terminalTarget(), id = terminal?.dataset.terminalId || terminal?.dataset.voiceTarget;
+  if (!terminal || !id) return onError(t('先点一下要输入的终端，再按 {key} 说话。', { key: shortcut('voice') }));
+  return toggleDictation(id, terminal.dataset.sessionId || null, onError, terminal.getAttribute('aria-label') || '');
 }

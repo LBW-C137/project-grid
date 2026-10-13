@@ -12,8 +12,9 @@ const { registerUpdatesIpc } = require('./features/updates/ipc.cjs');
 const { registerAgentsIpc } = require('./features/agents/ipc.cjs');
 const { folderHistory, launchCommand } = require('./features/agents/launch.cjs');
 const { READING_NOTE } = require('./features/agents/reading-note.cjs');
-const { writeHandoff, startupNote } = require('./features/agents/handoff.cjs');
+const { writeHandoff, handoffText, startupNote } = require('./features/agents/handoff.cjs');
 const { remember, roundsOf } = require('./features/agents/project-memory.cjs');
+const { agentSettings } = require('./features/agents/agent-settings.cjs');
 const { scrubSkills } = require('./features/agents/skill-privacy.cjs');
 const { setThumbnailer, isGeneratedImage } = require('./conversation.cjs');
 const { registerVoiceIpc } = require('./features/voice/ipc.cjs');
@@ -46,7 +47,7 @@ const { PromptQueue } = require('./prompt-queue.cjs');
 const { createTerminalEnvironment } = require('./terminal-env.cjs');
 const { adoptSystemProxy } = require('./system-proxy.cjs');
 const { PreviewResources, resourceResponse } = require('./preview-resources.cjs');
-const { createFileCards, isImageFile } = require('./features/files/file-cards.cjs');
+const { createFileCards, isImageFile, documentText } = require('./features/files/file-cards.cjs');
 const { UpdateManager, isInstalledBuild } = require('./updates.cjs');
 const { getSSHInfo } = require('./ssh-config.cjs');
 const { SSHAuthServer } = require('./ssh-auth.cjs');
@@ -133,6 +134,8 @@ function publicState() {
         const s = sessions.get(id);
         return { id, title: t('终端 {n}', { n: index + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : localShell().kind), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
           agentStartedAt: s?.codexActive ? s.activitySince : null,
+          // The model, effort and fast mode its records show, above the reading view's message box.
+          agentSettings: s?.codexActive ? s.agentSettings || null : null,
           codexActivity: s?.codexActivity || 'unknown', needsInput: s?.needsInput?.message || null, shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
           lastCompletedAt: s?.lastCompletedAt || null, error: s?.error || startupErrors.get(id) || null,
           // The step a working agent is on, for the card's one-line status; the full list is sent separately.
@@ -297,6 +300,14 @@ function publishConversation(s, change) {
     send('terminal:conversation', latest.size > 40 || changes.some(item => item.reset) ? { id: s.terminalId, list: s.conversation.snapshot() } : { id: s.terminalId, changes: [...latest.values()] });
   }, delay);
 }
+// How often an agent's records are read when nothing told of a write: often while it works, so the reading view keeps
+// up with it (and over SSH, where no write is told), seldom while it waits.
+const readEvery = s => s.codexActivity === 'working' ? 250 : 1000;
+// The model, effort and fast mode an agent's record shows (agent-settings.cjs): a change is published with the state.
+function noteSettings(s, agent, record) {
+  const next = agentSettings(s.agentSettings || null, agent, record);
+  if (next !== (s.agentSettings || null)) { s.agentSettings = next; scheduleState(); }
+}
 // A skill step names the skill; what the skill is for comes from its SKILL.md, a moment later.
 function describeActions(s, cwd, actions) {
   for (const action of actions || []) {
@@ -321,7 +332,8 @@ function followClaude(project, s, event) {
     s.activityMonitor = monitorActivity(async () => { await tail.read(record => {
       if (sessions.get(s.terminalId) !== s || s.claudeTranscript !== tail) return;
       claudeConversation(s.conversation, record, project.path); describeActions(s, project.path, claudeRecord(s.actions, record, project.path));
-    }); return null; }, () => {});
+      noteSettings(s, 'claude', record);
+    }); return null; }, () => {}, { interval: () => readEvery(s), watch: () => tail.filename });
   } else void s.activityMonitor?.poll();
 }
 
@@ -426,11 +438,13 @@ function onEvent(event) {
     if (project.kind !== 'ssh') {
       void writeHandoff(handoffFile(s.terminalId), event.cwd || project.path, { memoryDir: memoryDir(), codexHome: event.codexHome || s.codexHome || undefined }).catch(() => {});
       void scrubProjectSkills(project).catch(() => {});
-    }
+    } else void sshHandoff(project, s).catch(() => {});
     const claudeResumeId = event.agent === 'claude' ? s.claudeResumeId : null;
     const keepClaudeHistory = claudeResumeId && s.claudeSessionId === claudeResumeId && s.claudeTranscript;
     s.ready = false;
     s.codexActive = true;
+    // A resumed Claude conversation whose transcript is still followed keeps what its records showed.
+    if (!keepClaudeHistory) s.agentSettings = null;
     s.status = 'codex';
     s.error = null;
     s.submissions.reset();
@@ -460,6 +474,7 @@ function onEvent(event) {
     };
     const onRecord = record => {
       codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
+      noteSettings(s, 'codex', record);
       if (record?.type === 'event_msg' && ['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(record.payload?.type)) s.promptQueue.finish(Date.parse(record.timestamp) || Date.now());
     };
     const remoteStatus = value => {
@@ -477,6 +492,8 @@ function onEvent(event) {
         if (!reader) snapshot = { ...snapshot, updatedAt: snapshot.updatedAt + s.activitySince - remoteSince };
         applyActivity(project, s, snapshot);
       },
+      // A rollout here is read as it is written; over SSH the server is asked more often while the agent works.
+      { interval: () => readEvery(s), watch: () => reader?.filename || null },
     );
     store.setRestore(s.terminalId, { terminal: true, codex: true, cwd: event.cwd });
     // Unread completion is independent of session activity. It survives new turns.
@@ -585,6 +602,24 @@ async function scrubProjectSkills(project) {
   if (changed.length) console.log(`Agentrix scrubbed personal data from ${changed.length} skill file(s) in ${project.name}.`);
   return changed;
 }
+// Over SSH the conversations lie on that computer: its worker sends the folder's latest ones (compacted), which join
+// the memory kept here, and the handoff made from the memory is written back there for the CLI that starts, at the
+// path its startup note names (integration/remote-worker.py).
+async function sshHandoff(project, s) {
+  if (!s.terminal?.request) return;
+  const folder = memoryFolder(project, s), cwd = store.findTerminal(s.terminalId)?.record.restore?.cwd || project.path;
+  const history = await s.terminal.request('history', {}), rounds = [];
+  for (const [agent, read] of [['codex', codexConversation], ['claude', claudeConversation]]) {
+    for (const session of Array.isArray(history?.[agent]) ? history[agent] : []) {
+      const log = new ConversationLog(() => {}, 2000);
+      for (const record of Array.isArray(session.records) ? session.records : []) { try { read(log, record, cwd); } catch { } }
+      rounds.push(...roundsOf(log.list, agent, String(session.id || '')));
+    }
+  }
+  await remember(memoryDir(), folder, rounds);
+  if (sessions.get(s.terminalId) !== s) return;
+  await s.terminal.request('write-handoff', { text: await handoffText(memoryDir(), folder, cwd, false) || '' });
+}
 // The folder a session works in, as the memory names it: its path here, or the SSH host and path.
 const memoryFolder = (project, s) => project.kind === 'ssh' ? `ssh://${project.ssh?.host}${store.findTerminal(s.terminalId)?.record.restore?.cwd || project.path}`
   : store.findTerminal(s.terminalId)?.record.restore?.cwd || project.path;
@@ -622,7 +657,7 @@ function startTerminal(id) {
     locale: process.platform === 'darwin' ? terminalLocale(app.getPreferredSystemLanguages()) : 'C.UTF-8' };
   if (local) env = shellKind === 'zsh' ? zshEnvironment(env, integration) : shellEnvironment(env, integration);
   const sshAskpassPath = project.kind === 'ssh' ? prepareAskpass() : undefined;
-  const terminal = project.kind === 'ssh' ? new RemoteConnection({ ...project, id }, { integrationDir, auth: sshAuth, sessionKey, onEvent, codingPath: startPath, askpassPath: sshAskpassPath, readingNote: startupNote(READING_NOTE, null, `${project.path.replace(/\/+$/, '')}/skills`),
+  const terminal = project.kind === 'ssh' ? new RemoteConnection({ ...project, id }, { integrationDir, auth: sshAuth, sessionKey, onEvent, codingPath: startPath, askpassPath: sshAskpassPath, readingNote: startupNote(READING_NOTE, '{AGENTRIX_HANDOFF}', `${project.path.replace(/\/+$/, '')}/skills`),
     onReady: info => { remoteBranch(project.id, info.branch); },
   }) : shellKind === 'zsh' ? pty.spawn(shell.file, ['-l', '-i'], {
     name: 'xterm-256color', cols: 90, rows: 22, cwd: startPath, env,
@@ -811,6 +846,9 @@ function registerIpc() {
     const { width, height } = image.getSize();
     return { url: width > 2400 ? `data:image/jpeg;base64,${image.resize({ width: 2400, quality: 'best' }).toJPEG(90).toString('base64')}` : image.toDataURL(), width, height };
   });
+  // A Markdown file an agent wrote outside the project (its memory, a note in a temporary folder), whole, for its popup:
+  // only Markdown, read where the project is (this computer, or the SSH computer through its worker).
+  handle('agent:document', (id, file) => documentText(previewResources, findProject(id), file));
   // A decision waits on the reader (a permission, a question, a sign-in): with the window in the background, a short
   // notice names the project and what kind of thing it is, never the command or the answers; a click opens the
   // decisions. The window itself shows it on the home page and the count beside its tab.

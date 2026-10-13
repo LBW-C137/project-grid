@@ -398,3 +398,18 @@ test('a Claude dialog under its edge shows only itself, not an earlier run of th
   const result = extractCliPanelRows('claude', rows, inspect('claude', rows), '/usage');
   assert.deepEqual(result, ['  Settings   Status   Usage', '', '  Current session  12% used', '', '  Esc to cancel']);
 });
+
+test("Claude Code 2.1.296's effort over its input box and the input box are never a command's output", () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const { parseAgentScreen: parse } = require('../src/features/agents/agent-screen.ts');
+  const idle = fs.readFileSync(path.join(__dirname, 'fixtures/screens/claude-idle-2-1-296.txt'), 'utf8').split('\n');
+  const effort = idle.findIndex(row => /◉ xhigh · \/effort/.test(row));
+  const rows = [...idle.slice(0, effort), '❯ /cost', '  ⎿  Total cost:            $0.0000', '     Total duration (API):  0s', '', ...idle.slice(effort)];
+  const screen = parse('claude', rows);
+  const output = extractCliOutputRows('claude', rows, screen, '/cost'), panel = extractCliPanelRows('claude', rows, screen, '/cost');
+  // Once Claude is idle the popup shows the output, up to the input box; while a dialog is open, what is drawn down to
+  // the footer (a dialog's own search field included), never the effort.
+  assert.ok(output.some(row => /Total cost/.test(row)) && !output.some(row => /\/effort|^\s*❯/.test(row)), JSON.stringify(output));
+  assert.ok(panel.some(row => /Total cost/.test(row)) && !panel.some(row => /\/effort/.test(row)), JSON.stringify(panel));
+  assert.ok(!cliHistory('claude', rows, screen).some(row => /\/effort/.test(row)));
+});

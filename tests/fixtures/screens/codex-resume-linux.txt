@@ -1,0 +1,27 @@
+ Resume a previous session
+
+ Filter:  Cwd  All    Status:  Active  Archived    Sort:  Updated  Created
+
+ Type to search
+
+  › 3h ago      合并远端主分支
+    10h ago     修复阅读视图
+    11h ago     整理发布说明
+    2d ago      继承 Claude 日志
+    20d ago     查找 resume 记忆
+    26d ago     合并主分支
+    28d ago     删除显示和系统监控功能
+    35d ago     删除所有 mcp、plugin 和 skill
+
+
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────────────────────────────────── 1 / 8 · 100% ─
+ enter resume   ^a archive   esc start new   ^c quit   tab focus sort/filter   ←/→ change option
+ ^o comfortable view   ^t transcript   ^e expand   ↑/↓ browse

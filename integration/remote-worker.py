@@ -116,68 +116,74 @@ def json_records(filename, history_window=False):
             try: yield json.loads(line)
             except (ValueError, UnicodeError): continue
 
-def rollout_summary(filename):
-    """The first thing asked in a rollout and about how many messages it holds, from its first 256 KiB."""
-    title, messages, completed = "", 0, None
-    with open(filename, "rb") as source:
-        size = os.fstat(source.fileno()).st_size
-        data = source.read(256 * 1024)
-    if len(data) < size: data = data[:data.rfind(b"\n") + 1]
-    text = data.decode("utf-8", "replace")
-    completed = '"item_completed"' in text
-    for line in text.split("\n"):
-        try: record = json.loads(line)
-        except ValueError: continue
-        if not isinstance(record, dict) or record.get("type") != "event_msg": continue
-        payload = record.get("payload") or {}
-        item = payload.get("item") if isinstance(payload.get("item"), dict) else {}
-        user = payload.get("type") == "user_message" or (payload.get("type") == "item_completed" and item.get("type") == "UserMessage")
-        agent = payload.get("type") == "agent_message" or (payload.get("type") == "item_completed" and item.get("type") == "AgentMessage")
-        if (user or agent) and (payload.get("type") == "item_completed" or not completed): messages += 1
-        if user and not title:
-            said = payload.get("message") if isinstance(payload.get("message"), str) else " ".join(part.get("text", "") for part in item.get("content") or [] if isinstance(part, dict) and isinstance(part.get("text"), str))
-            said = " ".join(said.split())
-            # Notices and answers to its own questions are wrapped in tags; they do not name the conversation.
-            if said and not said.startswith("<"): title = said[:60]
-    if size > len(data) and data: messages = int(round(messages * size / len(data)))
-    return title, messages
+def compact_claude_record(record):
+    """What the development memory on the other computer takes from one Claude Code transcript record: the messages'
+    text, each tool call's name and short arguments, and whether a result failed; pictures and outputs stay here."""
+    if not isinstance(record, dict) or record.get("isSidechain") or record.get("type") not in ("user", "assistant"): return None
+    message = record.get("message") if isinstance(record.get("message"), dict) else {}
+    content = message.get("content")
+    if isinstance(content, str): parts = clip(content)
+    elif isinstance(content, list):
+        parts = []
+        for block in content:
+            if not isinstance(block, dict): continue
+            kind = block.get("type")
+            if kind == "text": parts.append({"type": "text", "text": clip(block.get("text"))})
+            elif kind == "tool_use":
+                arguments = block.get("input") if isinstance(block.get("input"), dict) else {}
+                parts.append({"type": "tool_use", "id": block.get("id"), "name": block.get("name"),
+                              "input": {key: clip(value, 600) for key, value in arguments.items() if isinstance(value, (str, int, float, bool))}})
+            elif kind == "tool_result": parts.append({"type": "tool_result", "tool_use_id": block.get("tool_use_id"), "is_error": bool(block.get("is_error")), "content": ""})
+    else: return None
+    kept = {key: record.get(key) for key in ("type", "uuid", "timestamp", "cwd", "sessionId", "isMeta", "isCompactSummary", "isVisibleInTranscriptOnly") if key in record}
+    kept["message"] = {"role": message.get("role"), "content": parts}
+    return kept
 
-def codex_sessions(root, codex_home, current=None):
-    """This folder's other Codex conversations for the reading view's resume list (electron/codex-sessions.cjs does the
-    same for a local folder): newest first, named as Codex's own picker names them (session_index.jsonl), else by the
-    first thing asked. current: the one the terminal is in, or how its id begins."""
-    names = {}
-    try:
-        with open(os.path.join(codex_home, "session_index.jsonl"), encoding="utf-8") as source:
-            for line in source:
-                try: record = json.loads(line)
-                except ValueError: continue
-                if isinstance(record, dict) and record.get("id") and isinstance(record.get("thread_name"), str): names[record["id"]] = record["thread_name"].strip()
-    except OSError: pass
-    files = []
+def history_records(root, codex_home, claude_home, per_agent=4, budget=1200 * 1024):
+    """The folder's latest conversations with Codex and Claude Code, compacted, for the development memory kept on the
+    other computer (electron/features/agents/project-memory.cjs): the newest first, each from the end of its file."""
+    found, size = {"codex": [], "claude": []}, 0
+    rollouts = []
     for folder, dirs, entries in os.walk(os.path.join(codex_home, "sessions")):
         dirs[:] = [name for name in dirs if not os.path.islink(os.path.join(folder, name))]
         for name in entries:
-            if not (name.startswith("rollout-") and name.endswith(".jsonl")): continue
-            filename = os.path.join(folder, name)
-            try: files.append((os.stat(filename).st_mtime, filename))
-            except OSError: pass
-    result = []
-    for modified, filename in sorted(files, reverse=True)[:3000]:
-        if len(result) >= 30: break
+            if name.startswith("rollout-") and name.endswith(".jsonl"):
+                try: rollouts.append((os.stat(os.path.join(folder, name)).st_mtime, os.path.join(folder, name)))
+                except OSError: pass
+    claude_folder = os.path.join(claude_home, "projects", re.sub(r"[^A-Za-z0-9]", "-", root))
+    transcripts = []
+    try:
+        for name in os.listdir(claude_folder):
+            if name.endswith(".jsonl"):
+                try: transcripts.append((os.stat(os.path.join(claude_folder, name)).st_mtime, os.path.join(claude_folder, name)))
+                except OSError: pass
+    except OSError: pass
+    def take(agent, filename, identity, compact):
+        nonlocal size
+        records = []
+        try:
+            for record in json_records(filename, history_window=True):
+                kept = compact(record)
+                if kept is not None: records.append(kept)
+        except (OSError, ValueError): return
+        while records and size + len(json.dumps(records, ensure_ascii=True)) > budget: records = records[len(records) // 4 + 1:]
+        if records:
+            size += len(json.dumps(records, ensure_ascii=True))
+            found[agent].append({"id": identity, "records": records})
+    for _, filename in sorted(rollouts, reverse=True)[:3000]:
+        if len(found["codex"]) >= per_agent or size >= budget: break
         try:
             rows = json_records(filename)
-            try: record = next(rows, {})
+            try: first = next(rows, {})
             finally: rows.close()
-            meta = record.get("payload", {}) if record.get("type") == "session_meta" else {}
-            identity = meta.get("id") or ""
-            if meta.get("source", "cli") not in ("cli", "vscode") or not re.fullmatch(r"[a-fA-F0-9-]{36}", identity): continue
-            if os.path.realpath(meta.get("cwd", "")) != os.path.realpath(root): continue
-            if current and identity.lower().startswith(current.lower()): continue
-            title, messages = rollout_summary(filename)
-            result.append({"id": identity, "updatedAt": int(modified * 1000), "title": names.get(identity) or title, "messages": messages})
-        except (OSError, ValueError, TypeError): continue
-    return result
+        except (OSError, ValueError): continue
+        meta = first.get("payload", {}) if first.get("type") == "session_meta" else {}
+        if meta.get("source", "cli") not in ("cli", "vscode") or os.path.realpath(meta.get("cwd", "")) != os.path.realpath(root): continue
+        take("codex", filename, meta.get("id", ""), compact_record)
+    for _, filename in sorted(transcripts, reverse=True)[:per_agent]:
+        if size >= budget: break
+        take("claude", filename, os.path.basename(filename)[:-6], compact_claude_record)
+    return found
 
 def recent_session(root, codex_home, thread_id=None):
     directory = os.path.join(codex_home, "sessions")
@@ -242,7 +248,14 @@ def compact_record(record):
     conversation's messages, the tools called and which call finished. Outputs, reasoning and instructions stay here."""
     kind, payload, at = record.get("type"), record.get("payload") or {}, record.get("timestamp")
     if kind == "session_meta": return {"type": kind, "timestamp": at, "payload": {"id": payload.get("id"), "cwd": payload.get("cwd"), "source": payload.get("source")}}
-    if kind == "turn_context": return {"type": kind, "timestamp": at, "payload": {"cwd": payload.get("cwd")}}
+    # A turn's model and effort, and the settings applied (fast mode is the "priority" tier), for the reading view.
+    if kind == "turn_context":
+        kept = {"cwd": payload.get("cwd")}
+        kept.update((key, payload.get(key)) for key in ("model", "effort") if isinstance(payload.get(key), str))
+        return {"type": kind, "timestamp": at, "payload": kept}
+    if kind == "event_msg" and payload.get("type") == "thread_settings_applied":
+        settings = payload.get("thread_settings") if isinstance(payload.get("thread_settings"), dict) else {}
+        return {"type": kind, "timestamp": at, "payload": {"type": "thread_settings_applied", "thread_settings": dict((key, settings.get(key)) for key in ("model", "reasoning_effort", "service_tier") if key in settings)}}
     if kind == "event_msg" and payload.get("type") in CONVERSATION_EVENTS:
         item = payload.get("item")
         if payload.get("type") == "item_completed":
@@ -596,6 +609,17 @@ class Worker:
             source.seek(offset)
             return base64.b64encode(source.read(length)).decode("ascii")
 
+    def document(self, filename, length):
+        """A Markdown file an agent wrote anywhere on this computer (its memory, a note in a temporary folder), for the
+        reading view's card and popup on the other computer: only Markdown, only a regular file, at most 2 MB of it."""
+        if not isinstance(filename, str) or not filename.startswith("/") or "\0" in filename or not filename.lower().endswith((".md", ".markdown", ".mdx")): raise ValueError("只能预览 Markdown 文件。")
+        if type(length) is not int or length < 0: raise ValueError("无效的文件读取范围。")
+        with open(filename, "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode): raise ValueError("只能预览 Markdown 文件。")
+            data = source.read(min(length, 2 * 1024 * 1024))
+        return {"size": info.st_size, "modifiedAt": int(info.st_mtime * 1000), "data": base64.b64encode(data).decode("ascii")}
+
     def preview(self, relative, page_index):
         if type(page_index) is not int or page_index < 0: raise ValueError("无效的文件页码。")
         meta = self.metadata(relative)
@@ -677,6 +701,26 @@ class Worker:
                 if temporary and os.path.exists(temporary): os.unlink(temporary)
         return self.preview(relative, page_index)
 
+    def handoff_path(self):
+        """Where this terminal's handoff of the folder's earlier work lies on this computer: a private temporary folder."""
+        name = re.sub(r"[^A-Za-z0-9-]", "", str(self.project_id or "terminal"))[:80] or "terminal"
+        return os.path.join(tempfile.gettempdir(), "agentrix-handoff-" + str(os.getuid()), name + ".md")
+
+    def write_handoff(self, text):
+        """The handoff written for the CLI that starts here (the other computer keeps the memory); none when empty."""
+        path = self.handoff_path()
+        if not isinstance(text, str) or not text.strip():
+            try: os.unlink(path)
+            except OSError: pass
+            return None
+        folder = os.path.dirname(path)
+        os.makedirs(folder, mode=0o700, exist_ok=True)
+        if os.path.islink(folder) or os.stat(folder).st_uid != os.getuid(): raise ValueError("交接目录不安全。")
+        descriptor, temporary = tempfile.mkstemp(prefix=".handoff-", dir=folder)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output: output.write(text[:256 * 1024])
+        os.replace(temporary, path)
+        return path
+
     def start_terminal(self, cols, rows, reading_note=""):
         if os.name != "posix": raise ValueError("SSH 远端目前需要 Linux、Python 3 和 Bash。")
         import pty
@@ -696,7 +740,9 @@ class Worker:
         self.listener.settimeout(0.5)
         env = dict(os.environ, TERM="xterm-256color", COLORTERM="truecolor", AGENTRIX_ROOT=self.coding_root, AGENTRIX_PYTHON=sys.executable, AGENTRIX_NOTIFY_FILE=notify_file, AGENTRIX_SOCKET=self.socket_path, AGENTRIX_TOKEN=self.token, AGENTRIX_NOTIFY_COMMAND=json.dumps([sys.executable, notify_file, "notify"]))
         # Plain words for the Codex wrapper in BASH_SOURCE; anything that could break its TOML string is left out.
-        if isinstance(reading_note, str) and reading_note and not set('"\\\n') & set(reading_note): env["AGENTRIX_READING_NOTE"] = reading_note[:2000]
+        # The note names where this terminal's handoff of earlier work is written on this computer (write_handoff).
+        if isinstance(reading_note, str): reading_note = reading_note.replace("{AGENTRIX_HANDOFF}", self.handoff_path())
+        if isinstance(reading_note, str) and reading_note and not set('"\\\n') & set(reading_note): env["AGENTRIX_READING_NOTE"] = reading_note[:4000]
         for key in ("NO_COLOR", "NODE_DISABLE_COLORS"): env.pop(key, None)
         if env.get("FORCE_COLOR") == "0": env.pop("FORCE_COLOR", None)
         child, master = pty.fork()
@@ -794,14 +840,13 @@ def main():
             elif op == "git": value = worker.git(message.get("action"), message.get("value"))
             elif op == "stat": value = worker.metadata(message["path"])
             elif op == "read": value = worker.read(message["path"], message["offset"], message["length"])
+            elif op == "document": value = worker.document(message.get("path"), message.get("length", 8192))
             elif op == "preview": value = worker.preview(message["path"], message.get("page", 0))
             elif op == "save-file": value = worker.save_file(message["path"], message.get("page", 0), message.get("revision"), message["data"])
             elif op == "resume-info": value = recent_session(worker.coding_root, worker.codex_home, message.get("threadId"))
             elif op == "codex-status": value = worker.codex_status(message.get("since"), message.get("threadId"))
-            elif op == "codex-sessions":
-                current = message.get("currentId")
-                if current is not None and not (isinstance(current, str) and re.fullmatch(r"[a-fA-F0-9]{8}-[a-fA-F0-9-]{8,27}", current)): raise ValueError("无效的会话标识。")
-                value = codex_sessions(worker.coding_root, worker.codex_home, current)
+            elif op == "history": value = history_records(worker.coding_root, worker.codex_home, os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"))
+            elif op == "write-handoff": value = worker.write_handoff(message.get("text"))
             elif op == "create": value = worker.create(message.get("path", ""), message["name"], message["kind"], message.get("unique", False))
             elif op == "rename": value = worker.rename(message["path"], message["name"])
             elif op == "remove": value = worker.remove(message["path"])

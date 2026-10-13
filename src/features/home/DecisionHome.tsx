@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ClipboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react';
 import { ArrowRight, CheckCircle, CircleNotch, PaperPlaneRight, Sparkle, X } from '@phosphor-icons/react';
 import type { Project, Result } from '../../shared/types';
 import type { Decision } from './decisions';
@@ -6,6 +6,8 @@ import { DecisionDeck } from './DecisionDeck';
 import { acceptedToday } from './ReviewCard';
 import { sendToAgent, untilAtPrompt } from './send-to-agent';
 import { dataUrl, thumbnail } from '../reading/image-thumbnail';
+import { VoiceButton } from '../voice/VoiceButton';
+import { dictateInto } from '../voice/voice-input';
 import { t } from '../../shared/i18n';
 import './home.css';
 
@@ -55,6 +57,8 @@ export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOp
 
 const BREAKDOWN: Partial<Record<Decision['kind'], string>> = { approval: '{count} 次审批', question: '{count} 个问题', choice: '{count} 个选择', signin: '{count} 个登录', attention: '{count} 件要你处理', review: '{count} 项交付审查' };
 
+const VOICE_TARGET = 'decision-home';
+
 // "What next": a goal sent to a project's agent from here, without leaving the page. One that runs gets it at once (it
 // queues it while it works); otherwise the chosen agent is started first and gets it when its input is ready. Its
 // progress then shows under "工作进展" and its work comes back as a card.
@@ -65,6 +69,17 @@ function NewWork({ projects, onAction, onDone, onError }: {
   const local = useMemo(() => projects.filter(project => project.kind !== 'ssh' || project.terminals[0]?.codexActive), [projects]);
   const [text, setText] = useState(''), [projectId, setProjectId] = useState(''), [agent, setAgent] = useState<'claude' | 'codex'>('claude'), [busy, setBusy] = useState(false);
   const project = local.find(item => item.id === projectId) ?? local[0], terminal = project?.terminals[0];
+  // Dictation (its microphone or the voice shortcut) puts the words where the cursor is; Enter only puts them in, since
+  // the project to send to is chosen below once there is something to send.
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => dictateInto(VOICE_TARGET, words => {
+    const node = box.current;
+    if (!node) return;
+    const here = document.activeElement === node, at = here ? node.selectionStart : node.value.length, end = here ? node.selectionEnd : node.value.length;
+    setText(node.value.slice(0, at) + words + node.value.slice(end));
+    node.focus();
+    requestAnimationFrame(() => node.setSelectionRange(at + words.length, at + words.length));
+  }, false), []);
   // Pictures pasted here go as files: the agent may not run yet to take them from the clipboard, so each is saved and
   // its path sent with the goal for the agent to look at.
   const [images, setImages] = useState<{ blob: Blob; preview: string }[]>([]);
@@ -110,8 +125,11 @@ function NewWork({ projects, onAction, onDone, onError }: {
   if (!local.length) return null;
   return <section className="home-section new-work" aria-label={t('新任务')}>
     <h3><Sparkle size={15} weight="fill" />{t('告诉 Agentrix 接下来要做什么')}</h3>
-    <textarea value={text} rows={text || images.length ? 3 : 1} placeholder={t('描述要做的事，比如“给登录页加上验证码”；可以直接粘贴截图')} onChange={event => setText(event.target.value)} onPaste={paste}
-      onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void start(); } }} />
+    <div className="new-work-input" data-voice-target={VOICE_TARGET} aria-label={t('新任务')}>
+      <textarea ref={box} value={text} rows={text || images.length ? 3 : 1} placeholder={t('描述要做的事，比如“给登录页加上验证码”；可以直接粘贴截图')} onChange={event => setText(event.target.value)} onPaste={paste}
+        onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void start(); } }} />
+      <VoiceButton terminalId={VOICE_TARGET} sessionId={null} name={t('新任务')} size={16} onError={onError} />
+    </div>
     {images.length > 0 && <div className="new-work-images" role="list" aria-label={t('附图')}>{images.map((image, index) => <span key={index} role="listitem">
       <img src={image.preview} alt={t('附加的图片 {n}', { n: index + 1 })} />
       <button type="button" aria-label={t('移除这张图片')} onClick={() => setImages(list => list.filter((_, at) => at !== index))}><X size={12} weight="bold" /></button>

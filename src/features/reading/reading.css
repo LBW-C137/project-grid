@@ -76,6 +76,9 @@
 .reading-composer:focus-within { box-shadow: inset 0 0 0 1px rgba(184, 215, 239, .5), 0 0 0 3px rgba(143, 203, 255, .12); }
 .reading-composer textarea { flex: 1; min-width: 0; max-height: 140px; field-sizing: content; resize: none; border: 0; outline: 0; padding: 5px 0; background: transparent; color: #f1f7ff; font: 400 13px/1.55 var(--font-ui); }
 .reading-composer textarea::placeholder { color: #8ea6c1; }
+/* The model, effort and speed the agent runs with, on the message box's top edge at its right end. */
+.reading-agent-settings { position: absolute; top: -9px; right: 14px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; max-width: calc(100% - 28px); height: 18px; padding: 0 8px; border-radius: 9px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 11px/18px var(--font-ui); color: #c3d4e6; background: rgba(10, 16, 26, .94); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
+.reading-agent-settings.is-fast svg { flex: none; color: #ffc861; }
 .reading-attachments { display: flex; align-items: center; gap: 6px; margin: 0 14px 6px; font-size: 12px; color: #bfe3ff; }
 .reading-composer .icon-button { flex: none; width: 30px; height: 30px; border-radius: 4.5px; }
 .reading-send:not(:disabled) { color: #ffffff; background: rgba(143, 203, 255, .28); }

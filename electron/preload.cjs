@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld('agentrix', {
   terminalCommands: id => ipcRenderer.invoke('terminal:commands', id),
   agentHistory: id => ipcRenderer.invoke('agent:history', id),
   agentImage: file => ipcRenderer.invoke('agent:image', file),
+  agentDocument: (id, file) => ipcRenderer.invoke('agent:document', id, file),
   saveImage: (id, bytes, type) => ipcRenderer.invoke('agent:saveImage', id, bytes, type),
   clipboardImage: id => ipcRenderer.invoke('agent:clipboardImage', id),
   fileCard: (id, file) => ipcRenderer.invoke('project:card', id, file),

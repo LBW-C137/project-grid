@@ -29,23 +29,23 @@ test('the main process delivers a user-only conversation batch after 30 ms', t =
   assert.equal(session.conversationTimer, null);
 });
 
-test('adding streaming data to a user batch switches it to the 120 ms window', t => {
+test('adding streaming data to a user batch switches it to the 50 ms window', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { packets, publish } = publisher();
   publish(change('user')); t.mock.timers.tick(10); publish(change('assistant'));
   t.mock.timers.tick(20); assert.equal(packets.length, 0, 'the old 30 ms timer was cancelled');
-  t.mock.timers.tick(90); publish(change('tool'));
+  t.mock.timers.tick(20); publish(change('tool'));
   t.mock.timers.tick(9); assert.equal(packets.length, 0);
   t.mock.timers.tick(1); assert.equal(packets.length, 1, 'streaming updates do not extend the existing batch');
   assert.equal(packets[0].packet.changes.length, 3);
 });
 
-test('conversation resets still publish a full list at 120 ms', t => {
+test('conversation resets still publish a full list at 50 ms', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { session, packets, publish } = publisher();
   session.conversation.list = [{ id: 'restored', role: 'user', text: 'history' }];
   publish({ reset: true }); publish(change('user'));
-  t.mock.timers.tick(119); assert.equal(packets.length, 0);
+  t.mock.timers.tick(49); assert.equal(packets.length, 0);
   t.mock.timers.tick(1); assert.equal(packets[0].packet.list, session.conversation.list);
 });
 
@@ -54,9 +54,9 @@ test('only user-message batches flush at 30 ms', () => {
   assert.equal(conversationBatchDelay([change('user'), change('user')]), 30);
 });
 
-test('streaming, mixed, reset and empty batches retain the 120 ms delay', () => {
+test('streaming, mixed, reset and empty batches wait 50 ms, enough to gather an answer streamed word by word', () => {
   for (const changes of [[], [change('assistant')], [change('tool')], [change('user'), change('assistant')], [change('tool'), change('user')], [{ reset: true }, change('user')]]) {
-    assert.equal(conversationBatchDelay(changes), 120);
+    assert.equal(conversationBatchDelay(changes), 50);
   }
 });
 

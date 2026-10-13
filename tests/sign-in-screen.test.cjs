@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { signInScreen } = require('../src/features/agents/sign-in-screen.ts');
+const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
 
 // Screens captured from Claude Code 2.1.296 and Codex 0.162 with empty config folders.
 const claudeArt = ['PS C:\\work\\demo> claude', 'Welcome to Claude Code v2.1.296', '..........................................................', '       █████████                                        *', '.......█ █   █ █..........................................'];
@@ -43,4 +44,22 @@ test('Codex API key field under its mark', () => {
 test('an ordinary screen is no sign-in', () => {
   assert.equal(signInScreen('claude', ['❯ explain https://example.com/a', '  ⎿  Done']), null);
   assert.equal(signInScreen('codex', ['› hello', '• Hi there']), null);
+});
+
+test("a sign-in line under the CLI's working footer is what it printed, not a sign-in page", () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const idle = fs.readFileSync(path.join(__dirname, 'fixtures/screens/claude-idle-2-1-296.txt'), 'utf8').split('\n');
+  const top = idle.findIndex(row => /^─{10,}$/.test(row.trim()));
+  // /login done: its result stays above the input; the input itself may be missed for a moment while Claude redraws.
+  const afterLogin = [...idle.slice(0, top - 1), '❯ /login', '  ⎿  Login successful', '', ...idle.slice(top - 1)];
+  assert.equal(signInScreen('claude', afterLogin), null);
+  assert.equal(signInScreen('claude', afterLogin.filter(row => !/^❯ Try/.test(row))), null);
+  // The footer as the user's screen showed it, with the model line headed by ●.
+  assert.equal(signInScreen('claude', ['  ⎿  Login successful', '─'.repeat(60), '─'.repeat(60), '● Opus 5.5 · demo · ctx 58%', '⏵⏵ auto mode on (shift+tab to cycle) · ← for agents']), null);
+  // Its own sign-in page has no footer and still opens the popup.
+  assert.notEqual(signInScreen('claude', [' Login successful. Press Enter to continue…']), null);
+  // Codex: its footer under the input, and its model line as it prints fast mode.
+  assert.equal(signInScreen('codex', ['• Signed in with your ChatGPT account', '', '› ', '', '  GPT-6.1-Sol high fast · /srv/app · 828K window', '  ? for shortcuts']), null);
+  const status = parseAgentScreen('codex', ['› ', '', '  GPT-6.1-Sol high fast · /srv/app · 828K window']).status;
+  assert.deepEqual([status.model, status.effort, status.fast], ['GPT-6.1-Sol', 'high', true]);
 });

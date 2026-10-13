@@ -1,4 +1,5 @@
 const fs = require('node:fs/promises');
+const { watch: watchFile } = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { interactiveSession } = require('./session-restore.cjs');
@@ -99,11 +100,25 @@ class CodexActivityReader {
 
 // One asynchronous read at a time, with cancellation even when a remote read
 // finishes after the terminal has exited or been replaced.
-function monitorActivity(read, onChange, { interval = 1000 } = {}) {
-  let stopped = false, timer = null, pending = null, last = '';
+// interval: ms to the next read, or a function giving it (shorter while the agent works). watch: the file the records
+// go to, once known: each write to it is read at once instead of at the next poll (the system tells a write within
+// milliseconds), so the reading view keeps up with the agent; the polls go on underneath in case a change is missed.
+function monitorActivity(read, onChange, { interval = 1000, watch = null } = {}) {
+  let stopped = false, timer = null, pending = null, again = false, last = '', watcher = null, watched = null, soon = null;
+  const follow = () => {
+    const file = stopped ? null : watch?.() || null;
+    if (file === watched) return;
+    watcher?.close(); watcher = null; watched = file;
+    if (!file) return;
+    try {
+      watcher = watchFile(file, { persistent: false }, () => { if (!soon && !stopped) soon = setTimeout(() => { soon = null; void poll(); }, 25); });
+      watcher.on('error', () => { watcher?.close(); watcher = null; });
+    } catch { watcher = null; }
+  };
   const poll = () => {
     if (stopped) return Promise.resolve(null);
-    if (pending) return pending;
+    // A write while a read runs is read right after it.
+    if (pending) { again = true; return pending; }
     clearTimeout(timer);
     pending = Promise.resolve().then(read).then(snapshot => {
       if (stopped || !snapshot) return null;
@@ -112,12 +127,16 @@ function monitorActivity(read, onChange, { interval = 1000 } = {}) {
       return snapshot;
     }).catch(() => null).finally(() => {
       pending = null;
-      if (!stopped) { timer = setTimeout(poll, interval); timer.unref?.(); }
+      if (stopped) return;
+      follow();
+      const next = again ? 0 : typeof interval === 'function' ? interval() : interval;
+      again = false;
+      timer = setTimeout(poll, next); timer.unref?.();
     });
     return pending;
   };
   void poll();
-  return { poll, stop() { stopped = true; clearTimeout(timer); } };
+  return { poll, stop() { stopped = true; clearTimeout(timer); clearTimeout(soon); watcher?.close(); watcher = null; } };
 }
 
 module.exports = { CodexActivityReader, monitorActivity };

@@ -22,7 +22,7 @@ function pendingMarkup(prompts) {
   mod.filename = filename; mod.paths = Module._nodeModulePaths(path.dirname(filename));
   const originalRequire = mod.require.bind(mod);
   const icon = props => React.createElement('svg', { className: props.className });
-  mod.require = name => name.endsWith('/i18n') ? { t: text => en[text] ?? text } : name.endsWith('.css') ? {} : name === '@phosphor-icons/react' ? new Proxy({}, { get: () => icon }) : originalRequire(name);
+  mod.require = name => name.endsWith('/i18n') ? { t: text => en[text] ?? text } : name.endsWith('.css') ? {} : name === '@phosphor-icons/react' ? new Proxy({}, { get: () => icon }) : name === './pasted-pictures' ? require('../src/features/reading/pasted-pictures.ts') : originalRequire(name);
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText, filename);
@@ -62,6 +62,9 @@ test('typed slash and shell commands and empty prompts have no echo', () => {
   for (const text of ['/model', '/resume abc', '!echo hello', '', ' \n\t']) assert.equal(add(state, 'p', text), state);
   assert.equal(isTypedCommand('/model'), true);
   assert.equal(isTypedCommand('!echo hello'), true);
+  assert.equal(isTypedCommand('/prompts:fix the bug'), true);
+  assert.equal(isTypedCommand('/tmp/agentrix-images-0/20261012-210420-21a95830.png 这个是什么'), false, 'a pasted picture path is a message');
+  assert.equal(isTypedCommand('/home/lisa/piv_lab/report.md 看一下'), false);
 });
 
 test('multiline pasted text beginning with slash or bang remains a normal prompt', () => {
@@ -164,4 +167,12 @@ test('a leftover that only begins like the message is not the message', () => {
   assert.equal(sameMessage('合并远端的主分支的内容，然后解决冲突并提交', '[Image #1] 合并远端的主分支的内容'), false);
   assert.equal(sameMessage('fix it', '[Pasted text #1 +40 lines]'), false, 'a short message is never shown as a paste');
   assert.equal(sameMessage('fix', 'f…'), false, 'too little left to tell');
+});
+
+test("an SSH project's pasted picture path is shown as the picture pasted, not as a path", () => {
+  const { rememberPicture, withPictures } = require('../src/features/reading/pasted-pictures.ts');
+  const path = '/tmp/agentrix-images-0/20261012-210420-21a95830.png';
+  rememberPicture(path, 'data:image/png;base64,AAAA');
+  assert.deepEqual(withPictures(`${path} 这个是什么`), { text: '这个是什么', images: ['data:image/png;base64,AAAA'] });
+  assert.deepEqual(withPictures('/tmp/other.png 看看'), { text: '/tmp/other.png 看看', images: [] }, 'a path not pasted here stays text');
 });

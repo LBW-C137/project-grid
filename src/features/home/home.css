@@ -74,7 +74,9 @@
 .progress-rows .text-button { display: inline-flex; align-items: center; gap: 4px; }
 
 /* What next. */
-.new-work textarea { width: 100%; min-height: 46px; padding: 12px 14px; border: 0; border-radius: 12px; resize: vertical; font: 14.5px/1.55 var(--font-ui); color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); outline: none; }
+.new-work-input { position: relative; }
+.new-work-input .voice-button { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 9px; }
+.new-work textarea { display: block; width: 100%; min-height: 46px; padding: 12px 46px 12px 14px; border: 0; border-radius: 12px; resize: vertical; font: 14.5px/1.55 var(--font-ui); color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); outline: none; }
 .new-work textarea:focus { box-shadow: inset 0 0 0 2px var(--home-blue); }
 .new-work textarea::placeholder { color: var(--home-faint); }
 .new-work-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 10px; font-size: 13px; color: var(--home-muted); }

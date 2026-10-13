@@ -1,10 +1,10 @@
 import type { ProjectTerminal, Result } from '../../shared/types';
 
-// /resume opens the reading view's own list for both agents: Codex's picker fills its whole screen, which the reading
-// view cannot show.
-// Over SSH only Codex's conversations can be listed here (its worker reads them there); Claude Code keeps its own picker.
+// /resume opens the reading view's own list for both agents on this computer, read from their records here. Over SSH
+// the CLI's own list is used (Codex's shows in the reading view as a choice, agent-screen.ts): Codex lists there what
+// it keeps on that computer, names and archives included, which its records alone do not always tell.
 export const usesSessionPicker = (terminal: Pick<ProjectTerminal, 'agent' | 'codexActive'>, text: string, remote = false) =>
-  terminal.codexActive && text === '/resume' && !(remote && terminal.agent === 'claude');
+  terminal.codexActive && text === '/resume' && !remote;
 
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const terminalNow = async (terminalId: string) => {

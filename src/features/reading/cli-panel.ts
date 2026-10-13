@@ -36,7 +36,9 @@ function cliInputArea(agent: ScreenAgent, rows: string[], screen: AgentScreen) {
     if (text === null) continue;
     if (agent === 'claude') {
       if (!rule(rows[index - 1] ?? '') || !rule(rows[index + 1] ?? '')) continue;
-      return { row: index, start: index - 1, footer: index + 2, text, hasFooter };
+      // Claude Code 2.1.296 draws its effort right over the input box ("◉ xhigh · /effort"): part of it, never output.
+      const start = /^\s*[●◉]\s+\S+\s+·\s+\/effort\b/.test(rows[index - 2] ?? '') ? index - 2 : index - 1;
+      return { row: index, start, footer: index + 2, text, hasFooter };
     }
     if (hasFooter) return { row: index, start: index, footer: index + 1, text, hasFooter };
   }
@@ -211,7 +213,10 @@ export function extractCliPanelRows(agent: ScreenAgent, rows: string[], screen: 
     else if (agent === 'claude') return [];
     else end = input.start;
   }
-  return squeeze(trimRows(withoutBanner(agent, rows.slice(start, end))));
+  // Claude Code 2.1.296's effort over its input box is never the command's (a dialog's own search field, drawn like
+  // the input box, is: /config).
+  const own = rows.slice(start, end).filter(row => !(agent === 'claude' && /^\s*[●◉]\s+\S+\s+·\s+\/effort\b/.test(row)));
+  return squeeze(trimRows(withoutBanner(agent, own)));
 }
 
 export function extractCliOutputRows(agent: ScreenAgent, rows: string[], screen: AgentScreen, command: string, before?: readonly string[]): string[] {

@@ -9,19 +9,28 @@ const { gather, writeMemoryBook, renderRound } = require('./project-memory.cjs')
 
 const ROUND_LIMIT = 12, FILE_LIMIT = 48 * 1024;
 
-// Writes the handoff for a CLI starting in cwd, or removes it when nothing was ever done here.
-async function writeHandoff(file, cwd, { memoryDir, codexHome, claudeHome } = {}) {
-  await gather(memoryDir, cwd, { codexHome, claudeHome });
-  const { file: book, rounds } = await writeMemoryBook(memoryDir, cwd);
-  if (!rounds.length) { await fs.rm(file, { force: true }); return false; }
-  let text = `# Earlier work in this folder\n\nFolder: ${cwd}\nWritten by Agentrix when this session started: the latest ${Math.min(ROUND_LIMIT, rounds.length)} of ${rounds.length} rounds `
+// The handoff for a CLI starting in a folder, from its memory (folder as the memory names it; label as the CLI knows
+// it), or null when nothing was ever done there. withBook: name the whole memory's file, which only a CLI on this
+// computer can open.
+async function handoffText(memoryDir, folder, label = folder, withBook = true) {
+  const { file: book, rounds } = await writeMemoryBook(memoryDir, folder);
+  if (!rounds.length) return null;
+  let text = `# Earlier work in this folder\n\nFolder: ${label}\nWritten by Agentrix when this session started: the latest ${Math.min(ROUND_LIMIT, rounds.length)} of ${rounds.length} rounds `
     + `worked here with Claude Code or Codex, newest first. If one is from the conversation you are resuming, you already have it.\n`
-    + `The whole history is kept in ${book.replace(/\\/g, '/')}: read it when the work needs more than this.\n\n`;
+    + (withBook ? `The whole history is kept in ${book.replace(/\\/g, '/')}: read it when the work needs more than this.\n` : '') + '\n';
   for (const round of rounds.slice(-ROUND_LIMIT).reverse()) {
     const part = renderRound(round) + '\n';
     if (Buffer.byteLength(text + part) > FILE_LIMIT) { text += '…\n'; break; }
     text += part;
   }
+  return text;
+}
+
+// Writes the handoff for a CLI starting in cwd, or removes it when nothing was ever done here.
+async function writeHandoff(file, cwd, { memoryDir, codexHome, claudeHome } = {}) {
+  await gather(memoryDir, cwd, { codexHome, claudeHome });
+  const text = await handoffText(memoryDir, cwd);
+  if (!text) { await fs.rm(file, { force: true }); return false; }
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, text, 'utf8');
   return true;
@@ -44,4 +53,4 @@ function startupNote(readingNote, file, skills) {
   return note;
 }
 
-module.exports = { writeHandoff, startupNote };
+module.exports = { writeHandoff, handoffText, startupNote };

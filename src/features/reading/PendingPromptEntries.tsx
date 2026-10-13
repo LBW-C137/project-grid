@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { User } from '@phosphor-icons/react';
 import type { PendingPrompt } from './pending-prompts';
+import { withPictures } from './pasted-pictures';
 import { t } from '../../shared/i18n';
 import './pending-prompts.css';
 
@@ -28,6 +29,12 @@ export function UserText({ text }: { text: string }) {
 }
 
 // The pictures a message carried, small, under its text.
+// A message's words and pictures; the path of a picture pasted for an SSH project shows as that picture.
+export function UserMessage({ text, images }: { text: string; images?: readonly string[] }) {
+  const shown = withPictures(text, images);
+  return <>{shown.text && <UserText text={shown.text} />}{shown.images.length > 0 && <UserImages images={shown.images} />}</>;
+}
+
 export function UserImages({ images }: { images: readonly string[] }) {
   return <div className="reading-user-images">{images.map((src, index) => <img key={index} src={src} alt={t('附加的图片 {n}', { n: index + 1 })} loading="lazy" decoding="async" />)}</div>;
 }
@@ -40,7 +47,7 @@ export function PendingPromptEntries({ prompts, undelivered = () => false, onRes
   return prompts.map(prompt => {
     const lost = undelivered(prompt);
     return <div key={prompt.id} className={`reading-user reading-pending${prompt.sending ? ' is-sending' : ''}${lost ? ' is-undelivered' : ''}`}>
-      <UserAvatar /><UserText text={prompt.text} />{prompt.images && <UserImages images={prompt.images} />}{prompt.sending && <small role="status">{t('发送中')}</small>}
+      <UserAvatar /><UserMessage text={prompt.text} images={prompt.images} />{prompt.sending && <small role="status">{t('发送中')}</small>}
       {lost && <div className="reading-undelivered" role="alert"><small>{t('未送达：助手没有收到这条消息')}</small>
         <button type="button" className="text-button" onClick={() => onResend?.(prompt)}>{t('重新发送')}</button>
         <button type="button" className="text-button" onClick={() => onDiscard?.(prompt)}>{t('移除')}</button></div>}

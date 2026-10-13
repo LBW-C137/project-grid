@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createFileCards, cardKind } = require('../electron/features/files/file-cards.cjs');
+const { createFileCards, cardKind, documentText } = require('../electron/features/files/file-cards.cjs');
 const { brief, ConversationLog, claudeConversation, codexConversation } = require('../electron/conversation.cjs');
 const { ActionLog } = require('../electron/agent-actions.cjs');
 const { PreviewResources } = require('../electron/preview-resources.cjs');
@@ -47,7 +47,8 @@ test('an HTML page is pictured once per version of the file, one page at a time,
 test('files outside the project or of other kinds get no card', async () => {
   const { project, previews } = fixture();
   const card = createFileCards({ previews, capture: async () => null });
-  await assert.rejects(card(project, '../outside.md'), /文件在项目目录之外/);
+  await assert.rejects(card(project, '../outside.html'), /文件在项目目录之外/);
+  await assert.rejects(card(project, '../missing-outside.md'), /找不到这个文件/);
   await assert.rejects(card(project, 'notes.txt'), /没有预览卡片/);
   assert.equal(cardKind('README.MD'), 'markdown'); assert.equal(cardKind('a/b.htm'), 'html'); assert.equal(cardKind('x.webm'), 'video'); assert.equal(cardKind('x.PNG'), 'image'); assert.equal(cardKind('x.ts'), null);
 });
@@ -69,8 +70,39 @@ test('files in a remote project are read over its connection: pages pictured, do
   assert.deepEqual(await card(project, 'img/cat.png'), { kind: 'image', path: 'img/cat.png', remote: true, picture: 'data:image/png;base64,small' });
   assert.deepEqual(shrunk, [300 * 1024], 'the whole image arrives, in the pieces the worker reads at once');
   assert.deepEqual(reads.filter(([file]) => file === 'img/cat.png').map(([, offset, length]) => [offset, length]), [[0, 256 * 1024], [256 * 1024, 44 * 1024]]);
-  await assert.rejects(card(project, '/etc/passwd.md'), /文件在项目目录之外/);
+  await assert.rejects(card(project, '/etc/site.html'), /文件在项目目录之外/);
   await assert.rejects(card(project, 'img/missing.png'), /找不到这张图片/);
+});
+
+test("a Markdown file an agent wrote outside the project (its memory, a note) is still shown, and opens whole", async () => {
+  const { project, previews } = fixture();
+  const card = createFileCards({ previews, capture: async () => null });
+  const memory = fs.mkdtempSync(path.join(os.tmpdir(), 'memory-'));
+  const note = path.join(memory, 'CONTEXT.md');
+  fs.writeFileSync(note, '# 项目背景\n\n' + '说明'.repeat(6000));
+  const shown = await card(project, note);
+  assert.deepEqual([shown.kind, shown.path, shown.outside], ['markdown', note, true]);
+  assert.ok(shown.excerpt.startsWith('# 项目背景') && Buffer.byteLength(shown.excerpt) <= 8192 && !shown.excerpt.endsWith('�'), 'its start, without a cut character');
+  const whole = await documentText(previews, project, note);
+  assert.equal(whole.content, fs.readFileSync(note, 'utf8')); assert.equal(whole.truncated, false);
+  await assert.rejects(documentText(previews, project, path.join(memory, 'secret.txt')), /只能预览 Markdown 文件/);
+  await assert.rejects(documentText(previews, project, 'CONTEXT.md'), /只能预览 Markdown 文件/, 'only by its absolute path');
+  // Over SSH it is read on that computer by the worker, by its absolute path there.
+  const asked = [];
+  const remote = { ready: Promise.resolve(), info: { root: '/srv/app' }, request: async (op, message) => {
+    asked.push([op, message.path, message.length]);
+    if (op !== 'document') throw new Error('unexpected ' + op);
+    return { size: 12, modifiedAt: 1, data: Buffer.from('# 记忆\n\n内容').toString('base64') };
+  } };
+  const ssh = { id: 'r', kind: 'ssh', path: '/srv/app' };
+  const remoteCards = createFileCards({ previews: { remote: () => remote }, capture: async () => null });
+  assert.deepEqual(await remoteCards(ssh, '/root/.claude/projects/-srv-app/memory/CONTEXT.md'), { kind: 'markdown', path: '/root/.claude/projects/-srv-app/memory/CONTEXT.md', outside: true, excerpt: '# 记忆\n\n内容' });
+  assert.deepEqual(await documentText({ remote: () => remote }, ssh, '/root/notes/plan.md'), { content: '# 记忆\n\n内容', truncated: false });
+  assert.deepEqual(asked, [['document', '/root/.claude/projects/-srv-app/memory/CONTEXT.md', 8192], ['document', '/root/notes/plan.md', 2 * 1024 * 1024]]);
+  // A relative name starts where the agent works there, not at the project's top.
+  asked.length = 0;
+  await assert.rejects(remoteCards(ssh, '../notes/plan.md', '/srv/app/sub'), /没有预览卡片/);
+  assert.deepEqual(asked.map(([op, file]) => [op, file]), [['stat', 'notes/plan.md']], 'inside the project from where the agent works: read through the project');
 });
 
 test('absolute paths, mixed separators and Windows casing return preview-safe relative paths', async () => {

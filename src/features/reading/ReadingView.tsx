@@ -14,6 +14,7 @@ import { ReadingQuestion } from './ReadingQuestion';
 import { ReadingSessions } from './ReadingSessions';
 import { usesSessionPicker } from './reading-sessions';
 import { dataUrl, thumbnail } from './image-thumbnail';
+import { rememberPicture, withPictures } from './pasted-pictures';
 import { useWelcomeStarting } from './reading-welcome';
 import { ReadingCliPanel } from './ReadingCliPanel';
 import { ReadingSignIn } from './ReadingSignIn';
@@ -32,7 +33,8 @@ import { parseMarkdown, parsedMarkdown } from './markdown-parse';
 import { MentionPalette } from './MentionPalette';
 import { isTypedCommand, sameMessage, type PendingPrompt } from './pending-prompts';
 import { usePendingPrompts } from './usePendingPrompts';
-import { PendingPromptEntries, UserAvatar, UserImages, UserText } from './PendingPromptEntries';
+import { PendingPromptEntries, UserAvatar, UserImages, UserMessage } from './PendingPromptEntries';
+import { AgentSettingsTag } from './AgentSettingsTag';
 import { FileCards, previewable } from './FileCards';
 import { replyFiles } from './reply-files';
 import { onComposerPrefill } from './composer-prefill';
@@ -418,9 +420,10 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     if (text) await new Promise(resolve => setTimeout(resolve, typed ? 150 : 400));
     if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
     // A command whose result comes in the conversation (/init, /review, a skill or a saved prompt) gets no popup: the
-    // reading view shows its round as it goes. Codex's /side is a conversation of its own and keeps its popup.
+    // reading view shows its round as it goes. Codex's /side is a conversation of its own and keeps its popup. Codex's
+    // resume list shows as a choice of its own.
     const name = text.split(/\s/)[0], listed = commands.find(command => command.name === name);
-    const inConversation = typed && listed?.view === 'reading' && !(agentKind === 'codex' && name === '/side');
+    const inConversation = typed && (listed?.view === 'reading' && !(agentKind === 'codex' && name === '/side') || agentKind === 'codex' && name === '/resume');
     if (typed && !inConversation) cli.begin(text, shown);
     if (clears(terminal.agent, text)) { const ids = new Set(conversationEntries.map(entry => entry.id)); cleared.set(conversation, ids); setHidden(ids); }
     window.agentrix.writeTerminal(terminal.id, '\r');
@@ -502,6 +505,8 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       const target = event.currentTarget, at = target.selectionStart ?? draft.length, until = target.selectionEnd ?? at;
       void file.arrayBuffer().then(bytes => window.agentrix.saveImage(terminal.id, bytes, file.type)).then(saved => {
         if (!saved.ok) { onError(saved.error); return; }
+        // The picture shows as itself here (in the box above the composer and in the message), not as its long path.
+        void thumbnail(file).catch(() => dataUrl(file)).then(small => { rememberPicture(saved.value, small); setPictureTick(tick => tick + 1); }).catch(() => {});
         const current = input.current?.value ?? draft, before = current.slice(0, at), after = current.slice(until);
         edit(`${before}${before && !/\s$/.test(before) ? ' ' : ''}${saved.value} ${after}`);
       }).catch(error => onError(String(error)));
@@ -521,7 +526,13 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     }).catch(() => onError(t('无法读取这张图片。')));
   };
   // The attached pictures wait in the CLI's own input as "[Image #1]" placeholders, which Ctrl+U clears with them.
+  // An SSH project's pictures are paths in the draft: they show above it, and removing them takes the paths out.
+  const [, setPictureTick] = useState(0);
+  const draftPictures = remote ? withPictures(draft).images : [];
+  const shownImages = [...images, ...draftPictures];
   const removeImages = () => {
+    if (draftPictures.length) edit(withPictures(draft).text);
+    if (!images.length) { input.current?.focus(); return; }
     window.agentrix.writeTerminal(terminal.id, '');
     setImages([]); input.current?.focus();
   };
@@ -568,7 +579,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     ? <ToolGroup key={block.id} entries={block.entries} live={index === tail.visible.length - 1} projectId={projectId} onError={onError} />
     : block.entry.role === 'user'
       ? <div key={block.entry.id} className={`reading-user${block.entry.answer ? ' is-answer' : ''}`}><UserAvatar />
-        {block.entry.answer && <span className="reading-user-label">{t('你回答了它的问题')}</span>}<UserText text={block.entry.text || ''} />{block.entry.images && <UserImages images={block.entry.images} />}</div>
+        {block.entry.answer && <span className="reading-user-label">{t('你回答了它的问题')}</span>}<UserMessage text={block.entry.text || ''} images={block.entry.images} /></div>
       : <AssistantReply key={block.entry.id} entry={block.entry} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} projectId={projectId} onError={onError} />)}
   </>;
   return <div className="reading-view" onClick={event => {
@@ -587,7 +598,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
         <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={() => toBottom('smooth')}><ArrowDown size={18} /></button>
       </div>}
     </div>
-    {images.length > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: images.length })}<UserImages images={images} />
+    {shownImages.length > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: shownImages.length })}<UserImages images={shownImages} />
       <button type="button" className="reading-attachments-remove" onClick={removeImages} title={t('移除图片')} aria-label={t('移除图片')}><X size={12} weight="bold" /></button></div>}
     {screen.choice && !sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
@@ -604,6 +615,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
         <code>{command.name}</code><span>{command.source === 'builtin' ? t(command.description) : command.description}</span>{command.source !== 'builtin' && <small>{command.source === 'project' ? t('项目') : command.source === 'user' ? t('用户') : t('技能')}</small>}
     </div>)}</div>}
     <div className="reading-composer">
+      {terminal.codexActive && <AgentSettingsTag settings={terminal.agentSettings} status={screen.status} />}
       <MentionPalette mentions={mentions} />
       <textarea ref={input} rows={1} disabled={inputBlocked} onPaste={pasteImage} onSelect={mentions.trackCaret} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette || mentions.open} aria-controls={palette ? listId : mentions.open ? mentions.listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : mentions.open && mentions.files[mentions.selection] ? mentions.optionId(mentions.selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，@ 提及文件，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
         onFocus={() => window.agentrix.terminalFocus(terminal.id, false)} />

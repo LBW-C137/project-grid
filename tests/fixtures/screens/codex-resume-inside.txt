@@ -1,0 +1,54 @@
+ Resume a previous session
+
+ Filter:  Cwd  All    Status:  Active  Archived    Sort:  Updated  Created
+
+ Type to search
+
+  › 13s ago     整理发布说明
+    13s ago     修复阅读视图的滚动
+    13s ago     合并远端主分支
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 1 / 3 · 100% ─
+ enter resume   ctrl+a archive   esc exit   ctrl+c exit   tab focus sort/filter   ←/→ change option
+ ctrl+o comfortable view   ctrl+t transcript   ctrl+e expand   ↑/↓ browse

@@ -2,6 +2,7 @@ import base64
 import importlib.util
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 import tempfile
@@ -161,29 +162,65 @@ class RemoteFilesTest(unittest.TestCase):
         self.assertFalse(later["reset"])
         self.assertEqual([record["payload"].get("message") for record in later["records"]], ["完成"])
 
-    def test_codex_sessions_lists_the_folders_other_conversations_by_name(self):
-        home = Path(self.temp.name) / "sessions-home"
-        folder = home / "sessions" / "2026" / "10" / "12"
+    def test_compacted_records_keep_the_model_effort_and_fast_mode(self):
+        turn = remote.compact_record({"type": "turn_context", "timestamp": "t", "payload": {"cwd": "/srv", "model": "gpt-6.1-sol", "effort": "high", "collaboration_mode": {"settings": {"developer_instructions": "long"}}}})
+        self.assertEqual(turn["payload"], {"cwd": "/srv", "model": "gpt-6.1-sol", "effort": "high"})
+        applied = remote.compact_record({"type": "event_msg", "timestamp": "t", "payload": {"type": "thread_settings_applied", "thread_settings": {
+            "model": "gpt-6.1-sol", "service_tier": "priority", "reasoning_effort": "high", "cwd": "/srv", "collaboration_mode": {"settings": {"developer_instructions": "long"}}}}})
+        self.assertEqual(applied["payload"], {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6.1-sol", "reasoning_effort": "high", "service_tier": "priority"}})
+        self.assertEqual(remote.compact_record({"type": "turn_context", "payload": {"cwd": "/srv"}})["payload"], {"cwd": "/srv"})
+
+    @unittest.skipUnless(os.name == "posix", "the remote side runs on Linux and macOS")
+    def test_document_reads_a_markdown_file_anywhere_and_nothing_else(self):
+        note = Path(self.temp.name) / "memory" / "CONTEXT.md"
+        note.parent.mkdir()
+        note.write_text("# 背景\n" + "x" * 100, encoding="utf-8")
+        found = self.worker.document(str(note), 8192)
+        self.assertEqual(base64.b64decode(found["data"]).decode("utf-8"), note.read_text(encoding="utf-8"))
+        self.assertEqual(found["size"], note.stat().st_size)
+        self.assertEqual(len(base64.b64decode(self.worker.document(str(note), 4)["data"])), 4)
+        for wrong in (str(note.with_suffix(".txt")), "CONTEXT.md", str(note) + "\0.md"):
+            with self.assertRaises(ValueError): self.worker.document(wrong, 10)
+        with self.assertRaises(ValueError): self.worker.document(str(note), -1)
+        with self.assertRaises(OSError): self.worker.document(str(note.parent / "missing.md"), 10)
+        (note.parent / "folder.md").mkdir()
+        with self.assertRaises((ValueError, OSError)): self.worker.document(str(note.parent / "folder.md"), 10)
+
+    @unittest.skipUnless(hasattr(os, "getuid"), "the remote side runs on Linux and macOS")
+    def test_history_and_handoff_carry_the_folders_earlier_work(self):
+        codex_home, claude_home = Path(self.temp.name) / "codex-h", Path(self.temp.name) / "claude-h"
+        day = codex_home / "sessions" / "2026" / "10" / "12"
+        day.mkdir(parents=True)
+        identity = str(uuid.uuid4())
+        (day / ("rollout-" + identity + ".jsonl")).write_text("".join(json.dumps(row) + "\n" for row in [
+            {"type": "session_meta", "payload": {"id": identity, "cwd": str(self.root), "source": "cli"}},
+            {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "UserMessage", "id": "u", "content": [{"type": "text", "text": "预处理太慢"}]}}},
+            {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "c", "output": "x" * 50000}},
+        ]), encoding="utf-8")
+        folder = claude_home / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(self.root))
         folder.mkdir(parents=True)
-        def rollout(identity, cwd, user_text, age):
-            path = folder / ("rollout-" + identity + ".jsonl")
-            rows = [{"type": "session_meta", "payload": {"id": identity, "cwd": cwd, "source": "cli"}},
-                    {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "UserMessage", "id": "u", "content": [{"type": "text", "text": user_text}]}}},
-                    {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "AgentMessage", "id": "a", "content": [{"type": "text", "text": "好"}]}}}]
-            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
-            stamp = time.time() - age
-            os.utime(str(path), (stamp, stamp))
-        current, merge, plain, elsewhere = (str(uuid.uuid4()) for _ in range(4))
-        rollout(current, str(self.root), "现在这个", 10)
-        rollout(merge, str(self.root), "<send_user_message_question_reply>[]</send_user_message_question_reply>", 100)
-        rollout(plain, str(self.root), "删除显示和系统监控功能", 200)
-        rollout(elsewhere, str(self.temp.name), "别的文件夹", 50)
-        (home / "session_index.jsonl").write_text(json.dumps({"id": merge, "thread_name": "合并远端主分支"}) + "\n", encoding="utf-8")
-        listed = remote.codex_sessions(str(self.root), str(home), current[:29])
-        self.assertEqual([item["id"] for item in listed], [merge, plain])
-        self.assertEqual([item["title"] for item in listed], ["合并远端主分支", "删除显示和系统监控功能"])
-        self.assertEqual(listed[1]["messages"], 2)
-        self.assertEqual(remote.codex_sessions(str(self.root), str(Path(self.temp.name) / "missing")), [])
+        (folder / "s1.jsonl").write_text("".join(json.dumps(row) + "\n" for row in [
+            {"type": "user", "uuid": "u1", "timestamp": "2026-10-12T01:00:00Z", "message": {"role": "user", "content": [{"type": "text", "text": "加上限流"}, {"type": "image", "source": {"data": "y" * 40000}}]}},
+            {"type": "assistant", "uuid": "a1", "timestamp": "2026-10-12T01:00:01Z", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t", "name": "Edit", "input": {"file_path": "/srv/a.py", "new_string": "z" * 5000}}]}},
+            {"type": "user", "uuid": "r1", "timestamp": "2026-10-12T01:00:02Z", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t", "content": "w" * 30000}]}},
+        ]), encoding="utf-8")
+        found = remote.history_records(str(self.root), str(codex_home), str(claude_home))
+        self.assertEqual([session["id"] for session in found["codex"]], [identity])
+        self.assertEqual([session["id"] for session in found["claude"]], ["s1"])
+        claude = found["claude"][0]["records"]
+        self.assertEqual(claude[0]["message"]["content"], [{"type": "text", "text": "加上限流"}])
+        self.assertEqual(claude[1]["message"]["content"][0]["input"]["file_path"], "/srv/a.py")
+        self.assertLessEqual(len(claude[1]["message"]["content"][0]["input"]["new_string"]), 600)
+        self.assertLess(len(json.dumps(found)), 8000, "outputs and pictures stay on this computer")
+        # The handoff lies in a private folder, at the path the note names; empty removes it.
+        self.worker.project_id = "terminal-1"
+        path = self.worker.write_handoff("# Earlier work\n")
+        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+        self.assertEqual(path, self.worker.handoff_path())
+        self.assertEqual(Path(path).read_text(encoding="utf-8"), "# Earlier work\n")
+        self.assertEqual(os.stat(os.path.dirname(path)).st_mode & 0o777, 0o700)
+        self.assertIsNone(self.worker.write_handoff(""))
+        self.assertFalse(os.path.exists(path))
 
     def test_transcript_window_history_live_budget_and_rebinding(self):
         home = Path(self.temp.name) / "window-home"

@@ -129,6 +129,7 @@
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.reading-composer, .reading-composer textarea, .reading-choice-context) { background: var(--glass-strong); border-color: var(--theme-line); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer :where(*) { color: inherit; border-color: var(--theme-line); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer { color: var(--theme-ink); box-shadow: inset 0 0 0 1px var(--theme-line); }
+:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer .reading-agent-settings { color: var(--theme-muted); background: var(--glass-solid); box-shadow: inset 0 0 0 1px var(--theme-line); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer:focus-within { box-shadow: inset 0 0 0 1px #515760, 0 0 0 3px rgba(23, 25, 29, .06); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-composer .reading-send:not(:disabled) { color: #ffffff; background: #17191d; }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) :is(.reading-command code, .reading-command > span, .reading-command small, .reading-attachments) { color: var(--theme-ink); }

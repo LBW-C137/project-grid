@@ -1,0 +1,54 @@
+ Resume a previous session
+
+ Filter:  Cwd  All    Status:  Active  Archived    Sort:  Updated  Created
+
+ Type to search
+
+  No sessions yet
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 0 / 0 · 100% ─
+ enter resume   esc start new   ctrl+c quit   tab focus sort/filter   ←/→ change option
+ ctrl+o comfortable view   ctrl+t transcript   ctrl+e expand   ↑/↓ browse

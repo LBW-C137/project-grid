@@ -123,7 +123,8 @@ export function DecisionDeck({ decisions, now, onOpen, onDone, onError }: {
     if (!opened || !node || !from || motionReduced()) return;
     const to = node.getBoundingClientRect();
     node.animate([
-      { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`, opacity: .6, borderRadius: '20px' },
+      // Transform and opacity only: the compositor moves it. A corner radius changing would paint it again every frame.
+      { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`, opacity: .6 },
       { transform: 'none', opacity: 1 },
     ], { duration: 380, easing: 'cubic-bezier(.2, .8, .2, 1)' });
   }, [opened]);

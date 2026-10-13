@@ -22,9 +22,18 @@ const box = (row: string) => /^\s*[╭╰│]/.test(row);
 const hint = (row: string) => /^\s*Press (?:enter|esc)\b/i.test(row) || /^\s*(?:Esc|Enter) to (?:cancel|go back|continue|confirm)\b/i.test(row);
 const urlChars = /^[A-Za-z0-9%\-._~:/?#[\]@!$&'()*+,;=]+$/;
 
+// The footer the CLI draws under its input while it works (Claude's mode line, "? for shortcuts", Codex's model line):
+// with it on screen nothing is signing in, and a sign-in line above it ("Login successful" after /login) is only what
+// it printed. Neither CLI draws it on its sign-in pages.
+const FOOTER: Record<ScreenAgent, RegExp> = {
+  claude: /^\s*(?:(?:⏵⏵|⏸|⏵)\s.*(?:mode on|shift\+tab|for agents?|\d+ agents?)|\?\s+for shortcuts\b|.*·\s*←\s*(?:for agents|\d+ agents?))/,
+  codex: /^\s*(?:\?\s+for shortcuts\b|\S.*·\s*\d+%\s+(?:left|context left)\b|\S.*·\s*\d+[KM]?\s+window\b)/,
+};
+
 export function signInScreen(agent: ScreenAgent, rows: readonly string[]): SignInScreen | null {
   const text = rows.join('\n');
   if (!MARKERS[agent].test(text)) return null;
+  if (rows.filter(row => row.trim()).slice(-6).some(row => FOOTER[agent].test(row))) return null;
   // What is under the CLI's own art (and the shell line it was started from) belongs to the sign-in.
   let start = 0;
   for (let index = rows.length - 1; index >= 0; index--) if (art(rows[index])) { start = index + 1; break; }

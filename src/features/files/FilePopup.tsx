@@ -7,7 +7,7 @@ import { t } from '../../shared/i18n';
 import './file-popup.css';
 const MarkdownPreview = lazy(() => import('./MarkdownPreview').then(module => ({ default: module.MarkdownPreview })));
 
-type Shown = { kind: 'preview'; preview: Preview } | { kind: 'picture'; url: string } | { kind: 'folder'; listing: DirectoryListing } | { kind: 'error'; message: string };
+type Shown = { kind: 'preview'; preview: Preview } | { kind: 'picture'; url: string } | { kind: 'folder'; listing: DirectoryListing } | { kind: 'document'; content: string } | { kind: 'error'; message: string };
 
 // A page, document, picture, video or folder shown over the current view, read only: Escape, the close button or a
 // click beside it puts it away. A link inside a document, or an entry of a folder, opens the same way; a web address
@@ -24,6 +24,8 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
       ? window.agentrix.agentImage(target.path).then(result => result.ok ? { kind: 'picture' as const, url: result.value.url } : { kind: 'error' as const, message: result.error })
       : target.kind === 'folder'
       ? window.agentrix.listDirectory(target.projectId, target.path).then(result => result.ok ? { kind: 'folder' as const, listing: result.value } : { kind: 'error' as const, message: result.error })
+      : target.kind === 'document'
+      ? window.agentrix.agentDocument(target.projectId, target.path).then(result => result.ok ? { kind: 'document' as const, content: result.value.truncated ? `${result.value.content}\n\n…` : result.value.content } : { kind: 'error' as const, message: result.error })
       : window.agentrix.readFile(target.projectId, target.path).then(result => {
         if (!result.ok) return { kind: 'error' as const, message: result.error };
         if ('previewId' in result.value) previewId = result.value.previewId;
@@ -63,6 +65,8 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
       {entry.kind === 'directory' ? <Folder size={15} weight="fill" /> : <File size={15} />}{entry.name}</button>)}
     {!shown.listing.entries.length && <p className="file-popup-message">{t('这个文件夹是空的。')}</p>}
   </div>;
+  // Only its web links work: it has no folder of its own here for relative links and pictures to come from.
+  else if (shown.kind === 'document') body = <div className="file-popup-document"><Suspense fallback={<div className="file-popup-message">{t('正在渲染 Markdown…')}</div>}><MarkdownPreview content={shown.content} baseUrl="about:blank" onOpenLink={openLink} /></Suspense></div>;
   else if (shown.kind === 'picture') body = <div className="file-popup-picture"><img src={shown.url} alt={fileName} draggable={false} /></div>;
   else if (preview?.kind === 'image') body = <div className="file-popup-picture"><img src={preview.url} alt={fileName} draggable={false} /></div>;
   else if (preview?.kind === 'html') body = <iframe className="html-preview-frame" title={t('HTML 页面预览')} src={preview.url} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" />;
@@ -70,7 +74,7 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
   else if (preview?.kind === 'video') body = <div className="file-popup-video"><video src={preview.url} controls autoPlay preload="metadata" playsInline aria-label={t('视频预览')} /></div>;
   else if (preview?.kind === 'text') body = <TextContent content={preview.content} />;
   else body = <div className="file-popup-message"><FileText size={28} /><p>{preview?.kind === 'unsupported' ? t(preview.reason) : t('无法预览此文件。')}</p></div>;
-  const wide = preview?.kind === 'html' || preview?.kind === 'text' || preview?.kind === 'markdown';
+  const wide = preview?.kind === 'html' || preview?.kind === 'text' || preview?.kind === 'markdown' || shown?.kind === 'document';
   return <div className="file-popup-overlay" onMouseDown={event => { if (event.target === event.currentTarget) closePopup(); }}>
     <div ref={card} className={`file-popup${wide ? ' is-wide' : ''}`} role="dialog" aria-modal="true" aria-label={name} tabIndex={-1}>
       <div className="file-popup-head"><Icon size={15} /><strong title={target.path}>{name}</strong><small>{t('Esc 关闭')}</small>
