@@ -49,6 +49,12 @@
 .reading-code-bar button:hover { background: rgba(255, 255, 255, .16); }
 .reading-code pre { margin: 0; padding: 10px 12px 12px; overflow-x: auto; font: 400 12px/1.6 var(--font-mono); color: #d6e6f5; }
 .reading-code pre code { font: inherit; background: none; box-shadow: none; padding: 0; color: inherit; }
+/* A Markdown block laid out, its source behind the toggle beside the copy button. */
+.reading-code-bar [data-code-source] { margin: 0 6px 0 auto; }
+.reading-code-doc { padding: 10px 14px 12px; }
+.reading-code-doc > :first-child { margin-top: 0; }.reading-code-doc > :last-child { margin-bottom: 0; }
+.reading-code.is-document > pre, .reading-code.is-document.is-source > .reading-code-doc { display: none; }
+.reading-code.is-document.is-source > pre { display: block; }
 .reading-plain { margin: 0; white-space: pre-wrap; }
 
 /* Tool calls: one line that unfolds, so the answers stay in view. */

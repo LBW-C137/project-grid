@@ -48,9 +48,12 @@ const history = new Map<string, string[]>();
 // conversation at once, but its file only appears with the next message; until then these stay hidden.
 const cleared = new Map<string, ReadonlySet<string>>();
 const clears = (agent: ProjectTerminal['agent'], text: string) => (agent === 'claude' ? /^\/clear(?:\s|$)/ : /^\/(?:clear|new)(?:\s|$)/).test(text.trim());
+// A Markdown block the agent shows (a file's content, a draft) is laid out like the answer around it, its source a
+// click away; inside it, Markdown blocks stay source. A very long one stays source too: this runs on the window's thread.
+const DOCUMENT = /^(?:markdown|md|mdx)$/i, DOCUMENT_LIMIT = 20000;
 // What the agent wrote, laid out as Markdown. Only plain structure survives: no raw HTML, no images (an
 // answer has no business loading anything), and links open outside through the window's link handler.
-function finish(parsed: string) {
+function finish(parsed: string, nested = false): string {
   const html = purifier.sanitize(parsed, {
     ALLOWED_TAGS: ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'ul', 'ol', 'li', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a', 'hr', 'br', 'em', 'strong', 's', 'del', 'input', 'kbd'],
     ALLOWED_ATTR: ['href', 'class', 'type', 'checked', 'disabled', 'start', 'align'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
@@ -65,6 +68,14 @@ function finish(parsed: string) {
     bar.innerHTML = `<span></span><button type="button" data-copy-code>${t('复制')}</button>`;
     bar.querySelector('span')!.textContent = language || '';
     pre.replaceWith(frame); frame.append(bar, pre);
+    const source = pre.textContent || '';
+    if (nested || !language || !DOCUMENT.test(language) || !source.trim() || source.length > DOCUMENT_LIMIT) continue;
+    const doc = document.createElement('div'); doc.className = 'reading-code-doc';
+    doc.innerHTML = finish(readingMarked.parse(source) as string, true);
+    const toggle = document.createElement('button'); toggle.type = 'button'; toggle.dataset.codeSource = ''; toggle.textContent = t('源码');
+    bar.querySelector('span')!.textContent = 'Markdown';
+    bar.insertBefore(toggle, bar.querySelector('[data-copy-code]'));
+    frame.classList.add('is-document'); frame.insertBefore(doc, pre);
   }
   return root.innerHTML;
 }
@@ -587,7 +598,9 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   </>;
   return <div className="reading-view" onClick={event => {
     const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
-    if (button) { const code = button.closest('.reading-code')?.querySelector('pre')?.textContent || ''; void window.agentrix.copy(code).then(result => { if (result.ok) { button.textContent = t('已复制'); setTimeout(() => { button.textContent = t('复制'); }, 1400); } else onError(result.error); }); return; }
+    const toggle = (event.target as Element).closest<HTMLButtonElement>('[data-code-source]');
+    if (toggle) { const source = toggle.closest('.reading-code')!.classList.toggle('is-source'); toggle.textContent = t(source ? '预览' : '源码'); return; }
+    if (button) { const code = button.closest('.reading-code')?.querySelector(':scope > pre')?.textContent || ''; void window.agentrix.copy(code).then(result => { if (result.ok) { button.textContent = t('已复制'); setTimeout(() => { button.textContent = t('复制'); }, 1400); } else onError(result.error); }); return; }
     const link = (event.target as Element).closest<HTMLAnchorElement>('.reading-markdown a');
     if (link) { event.preventDefault(); const href = link.getAttribute('href') || ''; if (href) onOpenLink(href); }
   }}>

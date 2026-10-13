@@ -31,7 +31,7 @@ export type ScreenOption = {
   number: number;             // the option's printed number (1-based)
   label: string;              // "Yes", "Yes, proceed", "Opus 5.5 ✔"
   detail: string;             // the rest of the option text, continuation rows joined with a space
-  hotkey: string | null;      // Codex "(y)", "(p)", "(esc)" → "y", "p", "esc"; null when none is printed
+  hotkey: string | null;      // Codex "(y)", "(p)", "(a)", "(esc)" → "y", "p", "a", "esc"; null when none is printed
   selected: boolean;          // the row with the CLI's cursor (Claude "❯", Codex "›")
   // Questions only: what the option does ('answer'; 'input' types an own answer; 'chat' is Claude's "Chat about this"
   // under the rule) and, in a multi-select question, whether it is ticked ("[✔]").

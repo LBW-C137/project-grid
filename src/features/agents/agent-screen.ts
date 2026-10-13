@@ -7,7 +7,9 @@ const inputRow = (agent: ScreenAgent, row: string) =>
   (agent === 'claude' ? /^\s*❯(?:\s|$)/ : /^\s*›(?:\s|$)/).test(row) && !optionRow(row);
 const hintRow = (row: string) => /^(?:press\s+)?(?:enter|esc)\b.*(?:cancel|confirm|select|back|default|continue|skip|exit|close)/i.test(row.trim());
 const menuExtra = (row: string) => /^(?:…\s*\+\d+ models|●\s+\S+ effort\b.*to adjust)$/.test(row.trim());
-const permissionTitle = (row: string) => /^(?:Do you want\b|Would you like to run\b|Allow\b)/i.test(row);
+// Codex asks "Would you like to run the following command?", "…make the following edits?", "…grant these permissions?"
+// and "<server> needs your approval."; Claude "Do you want to create hello.txt?".
+const permissionTitle = (row: string) => /^(?:Do you want\b|Would you like to\b|Allow\b)|\bneeds your approval\.?$/i.test(row);
 const choiceTitle = (row: string) => permissionTitle(row) || /^Select\b/i.test(row);
 
 // Claude surrounds its composer with rules; Codex puts its footer below the last composer.
@@ -221,7 +223,7 @@ function parseChoice(agent: ScreenAgent, rows: string[]): ScreenChoice | null {
   if (agent === 'codex') {
     for (const option of options) {
       const field = option.detail ? 'detail' : 'label';
-      const hotkey = /\s+\((y|p|esc)\)$/.exec(option[field]);
+      const hotkey = /\s+\(([a-z]|esc)\)$/.exec(option[field]);
       if (hotkey) {
         option.hotkey = hotkey[1];
         option[field] = option[field].slice(0, hotkey.index).trimEnd();

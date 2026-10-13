@@ -77,6 +77,17 @@ const expected = {
       option(3, 'No, and tell Codex what to do differently', false, '', 'esc'),
     ], hint: 'Press enter to confirm or esc to cancel',
   } }),
+  // Codex 0.162 asking before it writes a file (apply_patch outside what the sandbox may write).
+  'codex-edit-permission': codexScreen({ banner: { ...codexBanner, version: '0.162.1' }, choice: {
+    kind: 'permission', title: 'Would you like to make the following edits?', context: [
+      'Description: Apply proposed file edits',
+      'Destination: C:\\work\\demo-app\\notes.md',
+    ], options: [
+      option(1, 'Yes, proceed', true, '', 'y'),
+      option(2, "Yes, and don't ask again for these files", false, '', 'a'),
+      option(3, 'No, and tell Codex what to do differently', false, '', 'esc'),
+    ], hint: 'Press enter to confirm or esc to cancel',
+  } }),
   'codex-model-menu': codexScreen({ choice: {
     kind: 'menu', title: 'Select Model and Effort', context: [], options: [
       option(1, 'GPT-6.1-Sol (current)', true, 'Latest workhorse model for coding and everyday work.'),

@@ -1270,5 +1270,8 @@
   "在终端里查看": "Show in the terminal",
   "在终端里运行 codex update、claude --version 这类不是对话的命令时，阅读视图显示“正在更新 Codex…”这样的状态和命令的输出，不再显示输入框。": "Running a command that is no conversation in the terminal, such as codex update or claude --version, shows its state in the reading view (\"Updating Codex…\") with its output, and no message box.",
   "Windows 上新开的 Codex 能读懂之前的开发记忆了：交接和记忆文件改为带 BOM 的 UTF-8，PowerShell 不再把中文读成乱码。": "A newly started Codex on Windows now understands the earlier development memory: the handoff and memory files are UTF-8 with a byte order mark, so PowerShell no longer garbles Chinese in them.",
-  "SSH 项目里的 Claude Code 也能进入阅读视图，后来新开的 SSH 终端同样可以；回复、模型和思考深度都会显示。": "Claude Code in an SSH project opens the reading view too, also in SSH terminals opened later; its replies, model and effort show."
+  "SSH 项目里的 Claude Code 也能进入阅读视图，后来新开的 SSH 终端同样可以；回复、模型和思考深度都会显示。": "Claude Code in an SSH project opens the reading view too, also in SSH terminals opened later; its replies, model and effort show.",
+  "回复里的 Markdown 代码块（比如“内容如下”展示的文件内容）直接排好版显示，点“源码”可以看原文。": "A Markdown block in a reply (a file's content shown \"as follows\") is laid out right there; \"Source\" shows the text it was written in.",
+  "Codex 请求修改文件或授予权限时，阅读视图也会弹出选框让你选择，不再只有执行命令的请求才弹出。": "When Codex asks to edit files or for more permissions, the reading view shows the choice too, not only when it asks to run a command.",
+  "Codex 0.162 修改的文件在步骤里显示文件名，下方出现文件卡片，不再显示一长串补丁原文。": "Files Codex 0.162 edits are named in its steps and shown as cards below them, instead of the raw patch."
 }

@@ -1,7 +1,7 @@
 // What the usage guide's last page lists for this release. Update it with every version: the guide opens on
 // first use and after each update, on this page for people who are updating.
 export const WHATS_NEW: string[] = [
-  '在终端里运行 codex update、claude --version 这类不是对话的命令时，阅读视图显示“正在更新 Codex…”这样的状态和命令的输出，不再显示输入框。',
-  'Windows 上新开的 Codex 能读懂之前的开发记忆了：交接和记忆文件改为带 BOM 的 UTF-8，PowerShell 不再把中文读成乱码。',
-  'SSH 项目里的 Claude Code 也能进入阅读视图，后来新开的 SSH 终端同样可以；回复、模型和思考深度都会显示。',
+  '回复里的 Markdown 代码块（比如“内容如下”展示的文件内容）直接排好版显示，点“源码”可以看原文。',
+  'Codex 请求修改文件或授予权限时，阅读视图也会弹出选框让你选择，不再只有执行命令的请求才弹出。',
+  'Codex 0.162 修改的文件在步骤里显示文件名，下方出现文件卡片，不再显示一长串补丁原文。',
 ];

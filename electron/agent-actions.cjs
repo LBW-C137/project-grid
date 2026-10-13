@@ -103,10 +103,17 @@ const PHRASES = [...COMMAND_PHRASES.map(([, phrase]) => phrase), '运行脚本',
 
 const EDITING_COMMAND = /\b(apply_patch|writeFileSync|appendFileSync|Set-Content|Add-Content|Out-File|sed\s+-i|tee\s)/;
 // Read literal arguments without executing the script. Interpolated templates cannot name a command reliably.
+const LITERAL = `("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\x60(?:[^\x60\\\\]|\\\\.)*\x60)`;
 function scriptString(input, key) {
-  const match = new RegExp(`\\b${key}:\\s*("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\x60(?:[^\x60\\\\]|\\\\.)*\x60)`).exec(input);
-  if (!match) return null;
-  const literal = match[1];
+  const match = new RegExp(`\\b${key}:\\s*${LITERAL}`).exec(input);
+  return match ? literalValue(match[1]) : null;
+}
+// A call's first argument when it is a string: tools.apply_patch("*** Begin Patch\n*** Add File: …").
+function scriptArgument(input) {
+  const match = new RegExp(`^\\s*${LITERAL}`).exec(input);
+  return match ? literalValue(match[1]) : null;
+}
+function literalValue(literal) {
   if (literal[0] === '`' && literal.includes('${')) return null;
   try {
     if (literal[0] === '"') return JSON.parse(literal);
@@ -140,7 +147,7 @@ function codexActions(payload, at, cwd) {
         const text = scriptString(rest, 'cmd') || '', workdir = scriptString(rest, 'workdir');
         const directory = workdir === null ? cwd : resolvePath(cwd, workdir);
         actions.push(codexCommand(`${id}:${actions.length}`, at, text, directory));
-      } else if (name === 'apply_patch') actions.push(codexCommand(`${id}:${actions.length}`, at, `apply_patch\n${rest}`, cwd));
+      } else if (name === 'apply_patch') actions.push(codexCommand(`${id}:${actions.length}`, at, `apply_patch\n${scriptArgument(rest) ?? rest}`, cwd));
       else if (name === 'write_stdin') continue;
       else {
         const mcp = mcpTool(name) || (name.includes('.') ? { server: name.split('.')[0], tool: name.split('.').slice(1).join('.') } : null);

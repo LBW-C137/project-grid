@@ -51,7 +51,11 @@ test('a Codex rollout becomes steps: commands, patches, skills read from disk an
   item({ type: 'custom_tool_call', call_id: 'c4', name: 'exec', input: 'text(await tools.mcp__figma__get_file({key:"k"}))' });
   item({ type: 'custom_tool_call', call_id: 'c5', name: 'exec', input: 'text(await tools.exec_command({cmd:"node -e \\"require(\'fs\').writeFileSync(\'x\', \'y\')\\""}))' });
   item({ type: 'function_call', call_id: 'c6', name: 'shell', arguments: JSON.stringify({ command: ['git', 'status'] }) });
+  // GPT-6 in Codex 0.162 hands apply_patch the patch as a string of the script.
+  item({ type: 'custom_tool_call', call_id: 'c7', name: 'exec', input: `text(await tools.apply_patch(${JSON.stringify(`*** Begin Patch\n*** Add File: ${path.join(cwd, 'notes.md').replace(/\\/g, '/')}\n+# 示例\n*** End Patch\n`)}));` });
   const byId = Object.fromEntries(log.list.map(action => [action.id, action]));
+  assert.deepEqual([byId['c7:0'].kind, byId['c7:0'].target, byId['c7:0'].detail], ['edit', 'notes.md', ''], 'the patched file is named, not the script');
+  assert.deepEqual(byId['c7:0'].files, [{ path: 'notes.md', change: 'add' }]);
   assert.deepEqual([byId['c1:0'].kind, byId['c1:0'].target], ['command', 'npm run "build"']);
   assert.equal(log.list.filter(action => action.id.startsWith('c1:')).length, 1, 'writing to a running command is not a step');
   assert.deepEqual([byId['c2:0'].kind, byId['c2:0'].target], ['edit', 'src/a.ts、src/b.ts']);
