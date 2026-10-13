@@ -18,7 +18,7 @@ screen, never from a screenshot or memory.
 2. Keep the user's CLI state untouched:
    - Codex: point `CODEX_HOME` at a folder of the run with fake rollouts (`sessions/YYYY/MM/DD/rollout-…-<id>.jsonl`,
      `session_meta` with the project `cwd`), `auth.json` holding a placeholder API key
-     (`{"OPENAI_API_KEY":"sk-placeholder-not-a-key"}`), and a `config.toml` with `sandbox_mode`,
+     (`{"OPENAI_API_KEY":"<secret>"}`), and a `config.toml` with `sandbox_mode`,
      `[windows] sandbox = "unelevated"` and `[projects.'<folder>'] trust_level = "trusted"` for the project and the
      repository root, so no sign-in, sandbox or trust prompt comes first. Nothing is sent to a model.
    - Claude Code: run it in `<repo>/.test-output/slash-live-project` (already trusted), only local commands, and leave

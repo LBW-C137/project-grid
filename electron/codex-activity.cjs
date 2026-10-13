@@ -104,7 +104,7 @@ class CodexActivityReader {
 // go to, once known: each write to it is read at once instead of at the next poll (the system tells a write within
 // milliseconds), so the reading view keeps up with the agent; the polls go on underneath in case a change is missed.
 function monitorActivity(read, onChange, { interval = 1000, watch = null } = {}) {
-  let stopped = false, timer = null, pending = null, again = false, last = '', watcher = null, watched = null, soon = null;
+  let stopped = false, timer = null, pending = null, queued = null, last = '', watcher = null, watched = null, soon = null;
   const follow = () => {
     const file = stopped ? null : watch?.() || null;
     if (file === watched) return;
@@ -117,8 +117,9 @@ function monitorActivity(read, onChange, { interval = 1000, watch = null } = {})
   };
   const poll = () => {
     if (stopped) return Promise.resolve(null);
-    // A write while a read runs is read right after it.
-    if (pending) { again = true; return pending; }
+    // Asked while a read runs (a write told meanwhile, a hook): another read follows it, and whoever asked waits for
+    // that one, which sees what was there when they asked.
+    if (pending) return queued ||= pending.then(() => { queued = null; return poll(); });
     clearTimeout(timer);
     pending = Promise.resolve().then(read).then(snapshot => {
       if (stopped || !snapshot) return null;
@@ -129,9 +130,7 @@ function monitorActivity(read, onChange, { interval = 1000, watch = null } = {})
       pending = null;
       if (stopped) return;
       follow();
-      const next = again ? 0 : typeof interval === 'function' ? interval() : interval;
-      again = false;
-      timer = setTimeout(poll, next); timer.unref?.();
+      timer = setTimeout(poll, typeof interval === 'function' ? interval() : interval); timer.unref?.();
     });
     return pending;
   };

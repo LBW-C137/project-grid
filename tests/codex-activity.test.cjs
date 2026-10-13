@@ -70,15 +70,17 @@ test('oversized output remains bounded and cannot hide later lifecycle events', 
   assert.ok(reader.buffer.length <= 1024 * 1024);
 });
 
-test('monitor coalesces slow reads, deduplicates snapshots, and cancels late responses', async () => {
+test('monitor coalesces polls asked during a read into one read after it, deduplicates snapshots, and cancels late responses', async () => {
   let resolve, reads = 0, changed = 0;
   const monitor = monitorActivity(() => { reads++; return new Promise(done => { resolve = done; }); }, () => changed++, { interval: 10000 });
+  // The first read starts at once; polls asked while it runs share the one read after it, which sees what was there
+  // when they asked (a write told, a hook that came in).
   const first = monitor.poll(), second = monitor.poll();
   assert.equal(first, second);
   await Promise.resolve(); assert.equal(reads, 1);
-  resolve({ state: 'working' }); await first; assert.equal(changed, 1);
-  const third = monitor.poll(); await Promise.resolve();
-  resolve({ state: 'working' }); await third; assert.equal(changed, 1);
+  resolve({ state: 'working' });
+  await new Promise(done => setImmediate(done)); assert.equal(changed, 1); assert.equal(reads, 2, 'the read asked for follows');
+  resolve({ state: 'working' }); await first; assert.equal(changed, 1, 'the same snapshot is not reported twice');
   const late = monitor.poll(); await Promise.resolve(); monitor.stop();
   resolve({ state: 'complete' }); await late;
   assert.equal(changed, 1);
