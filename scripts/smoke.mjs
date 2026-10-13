@@ -208,14 +208,15 @@ try {
   assert.equal((await page.evaluate(() => window.agentrix.getState())).value.projects[0].unread, 1, 'different background IDs do not mean a fresh user submission');
   assert.equal((await page.evaluate(() => window.agentrix.getState())).value.projects[0].lastCompletedAt, firstCompletedAt);
   const animation = await page.locator(`[data-project-id="${projects[0].id}"]`).evaluate(el => ({
-    panel: getComputedStyle(el).animationName,
+    panel: getComputedStyle(el).animationName, lit: el.classList.contains('attention-active'),
     lights: ['.panel-signal', '.status-dot', '.panel-glow'].map(selector => {
       const style = getComputedStyle(el.querySelector(selector));
       return [style.animationName, style.animationDuration, style.animationIterationCount];
     }),
   }));
   assert.equal(animation.panel, 'none', 'the reading surface never flashes');
-  assert.deepEqual(animation.lights, Array(3).fill(['signal-breathe', '3s', '3']), 'ring, dot and inner glow slowly breathe together after a finished turn');
+  assert.ok(animation.lit, 'a finished turn lights its card');
+  assert.deepEqual(animation.lights.map(([name]) => name), ['none', 'none', 'none'], 'ring, dot and inner glow stay steady after a finished turn: no breathing');
   console.log('PASS: parent lifecycle lights the red panel; unrelated notify callbacks are ignored');
 
   const projectOrder = () => page.locator('.agentrix > .project-slot > .project-panel').evaluateAll(panels => panels.map(panel => panel.dataset.projectId));

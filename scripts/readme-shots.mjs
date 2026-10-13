@@ -143,7 +143,7 @@ try {
   await page.evaluate(id => window.agentrix.acknowledge(id), projects[2].id);
   await waitFor(async () => (await state(2)).unread === 0, 'dashboard viewed');
   await page.evaluate(() => document.activeElement?.blur()); await page.mouse.move(800, 2);
-  // Let the completion breathing settle into its quiet glow.
+  // Let the completion settle into its quiet glow.
   await page.waitForTimeout(10000);
   await shot('overview.jpg');
 
@@ -194,7 +194,7 @@ try {
     await page.evaluate(() => document.activeElement?.blur()); await page.mouse.move(800, 2);
     await client.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: 1600, maxHeight: 900, everyNthFrame: 1 });
     await page.waitForTimeout(1500);
-    // The dashboard starts a round (blue), then finishes it: the card breathes pink.
+    // The dashboard starts a round (blue), then finishes it: the card lights pink.
     await append(2, [event('task_started', { turn_id: 't4' })]);
     await waitFor(async () => (await state(2)).codexActivity === 'working', 'dashboard working');
     await page.waitForTimeout(2200);
