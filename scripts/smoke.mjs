@@ -394,6 +394,9 @@ try {
   await waitFor(async () => panel.locator('.xterm-rows > div').evaluateAll(rows => rows.some(row => row.textContent.includes('CONPTY_ALT_SCREEN_OK') && !row.textContent.includes('node '))), 'interactive alternate-screen terminal');
   await page.getByRole('button', { name: '收起目录栏', exact: true }).click();
   await page.locator('.explorer-rail').getByRole('button', { name: '资源管理器', exact: true }).click();
+  // The resizes reach ConPTY while the app still runs: on a slow runner the last refit could otherwise land after it
+  // exits, in the middle of the next output, where ConPTY and xterm reflow the half-drawn lines differently.
+  await terminalsSettled(page);
   await page.evaluate(id => window.agentrix.writeTerminal(id, 'q'), projects[0].id);
   await waitFor(async () => (await page.evaluate(() => window.agentrix.getState())).value.projects[0].shellReady, 'alternate-screen app exits after resizing without a cursor-report loop');
   console.log('PASS: interactive alternate-screen app remains responsive through terminal resizing');

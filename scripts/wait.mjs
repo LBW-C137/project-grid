@@ -15,5 +15,8 @@ export async function waitFor(check, label, timeout = 25000) {
 // Terminals refit 80 ms after their size settles (src/features/terminal/TerminalPane.tsx). Pointer tests that aim at
 // terminal cells wait for that, or a late reflow can move the text under the pointer.
 export async function terminalsSettled(page) {
+  // A layout change reaches the terminals' ResizeObserver on the next frame, and only then is the fit marked pending;
+  // a window that draws no frames (hidden) goes on after a moment.
+  await page.evaluate(() => new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 250); }));
   await waitFor(async () => !(await page.locator('[data-fit-pending]').count()), 'terminal size settles');
 }
