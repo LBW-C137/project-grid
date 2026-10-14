@@ -48,6 +48,28 @@ test('later working, complete, agent exit and shell prompt events clear the wait
   }
 });
 
+test('the key that answers Claude\'s permission prompt ends the waiting notice; moving through its options does not', () => {
+  const listeners = {}, keys = [];
+  let scheduled = 0;
+  const waiting = () => ({ message: 'Claude needs your permission', since: 1 });
+  const session = { status: 'running', codexActive: true, agent: 'claude', codexActivity: 'working', needsInput: waiting(),
+    submissions: { write: () => false, sent: [] }, gate: { input: key => keys.push(key) } };
+  require('../electron/features/terminal/ipc.cjs').registerTerminalIpc({ handle() {}, listen: (name, callback) => { listeners[name] = callback; },
+    getSession: () => session, getProjectById: () => ({ id: 'p' }), scheduleState: () => { scheduled++; }, applyActivity: () => assert.fail('an answer is no interruption') });
+  const write = key => listeners['terminal:write']('t', key);
+  for (const key of ['\x1b[B', '\x1b[A', 'x']) write(key);
+  assert.deepEqual(session.needsInput, waiting(), 'arrows and other keys leave the prompt open');
+  for (const answer of ['\r', '2', '\x1b']) {
+    session.needsInput = waiting(); write(answer);
+    assert.equal(session.needsInput, null, `${JSON.stringify(answer)} answers it`);
+  }
+  assert.equal(scheduled, 3);
+  assert.equal(session.codexActivity, 'working', 'Escape that answers the prompt does not end the round');
+  assert.deepEqual(keys, ['\x1b[B', '\x1b[A', 'x', '\r', '2', '\x1b'], 'every key still reaches Claude');
+  session.agent = 'codex'; session.needsInput = waiting(); write('\r');
+  assert.deepEqual(session.needsInput, waiting(), 'only Claude\'s notice ends this way');
+});
+
 test('terminal commands IPC selects the session agent, defaults to Claude and excludes SSH paths', async () => {
   const registrations = new Map(), scans = [];
   const sessions = new Map([['codex', { agent: 'codex' }]]);
@@ -65,10 +87,20 @@ test('terminal commands IPC selects the session agent, defaults to Claude and ex
   assert.deepEqual(scans.map(item => [item.agent, item.projectPath]), [['codex', '/project'], ['claude', '/project'], ['claude', undefined]]);
 });
 
+test('terminals show in the order they were dragged into; a new one comes last and a stale order is refused', () => {
+  const project = { id: 'p', terminals: [{ id: 'a' }, { id: 'b' }], terminalOrder: ['b', 'gone', 'p'] }, saved = [];
+  const context = vm.createContext({ sessions: new Map([['p', {}]]), findProject: () => project, store: { setTerminalOrder: (id, ids) => saved.push([id, ids]) } });
+  vm.runInContext(main.slice(main.indexOf('function terminalIds('), main.indexOf('function disposeProjectTerminals(')), context);
+  assert.deepEqual([...context.shownTerminalIds(project)], ['b', 'p', 'a'], 'dragged ones first, in that order; the rest as opened');
+  context.reorderTerminals('p', ['a', 'p', 'b']);
+  assert.deepEqual(saved, [['p', ['a', 'p', 'b']]]);
+  for (const ids of [['a', 'b'], ['a', 'b', 'x'], ['a', 'a', 'b'], null]) assert.throws(() => context.reorderTerminals('p', ids), /终端已变化/);
+});
+
 test('public state exposes waiting messages and null for terminals without a notice', () => {
   const context = vm.createContext({
     store: { projects: [{ id: 'p' }], settings: { language: 'zh' } }, sessions: new Map([['waiting', { needsInput: { message: 'Approve tool' } }]]),
-    terminalIds: () => ['waiting', 'stopped'], getBranch: () => undefined, startupErrors: new Map(), t: text => text, localShell: () => ({ kind: 'powershell' }),
+    terminalIds: () => ['waiting', 'stopped'], shownTerminalIds: () => ['waiting', 'stopped'], getBranch: () => undefined, startupErrors: new Map(), t: text => text, localShell: () => ({ kind: 'powershell' }),
     process: { platform: 'win32', env: { AGENTRIX_DATA_DIR: 'isolated' } }, app: { getVersion: () => '1' },
     desktopGlassBackend: null, desktopGlassWindow: false, desktopGlassActive: false,
   });

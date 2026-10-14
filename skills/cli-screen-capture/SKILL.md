@@ -54,6 +54,10 @@ An approval only shows after the model asks for a tool. Never use the real sign-
 - Codex 0.162.1's footer has no context part before the first message (`GPT-6-Sol default · <folder>`); a parser that
   needs `· 90% left` never sees Codex idle, and every slash command's popup then waits forever. Capture a fresh
   conversation as well as one in progress. `/fast` there prints `• Service tier set to priority`.
+- Codex 0.162.1 may put a tip under its last answer (`  └ Tip: Moving from Claude Code? Use /import …`) and removes it
+  when the next command starts. Never anchor on it: rows taken as "the history when the command was sent" must skip
+  it, or the anchor vanishes and the whole conversation looks like the command's output. Capture after several
+  rounds (a stand-in model with long answers), not only on a fresh screen.
 - Codex asks "Would you like to run the following command?", "…make the following edits?" (hotkey `(a)` for "don't ask
   again for these files"), "…grant these permissions?" and "<server> needs your approval."; match the family, not one
   title.

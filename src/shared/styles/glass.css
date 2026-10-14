@@ -27,12 +27,16 @@
 }
 .app-shell {
   isolation: isolate;
-  background:
+  --wallpaper:
     linear-gradient(rgba(10, 22, 27, .19), rgba(10, 22, 27, .19)),
     url('../../assets/macos-high-sierra.webp') center / cover no-repeat;
 }
 /* A layer over the wallpaper that themes tint; the wallpaper itself stays sharp. */
 .app-shell::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+/* The wallpaper (a theme's picture, gradient or plain ground: --wallpaper) on a layer of its own, rasterised once:
+   whatever changes above it (a pane opening, a terminal resizing, a page switching) is redrawn without redrawing the
+   window-sized picture under it, which at 4K cost most of those frames. */
+.app-shell::after { content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none; background: var(--wallpaper); will-change: transform; }
 .titlebar, .focus-sidebar, .project-panel, .settings-dialog, .file-preview {
   backdrop-filter: var(--liquid-backdrop, blur(6px) saturate(165%));
 }
@@ -99,6 +103,17 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .terminal-grid.has-splits { gap: 1px; padding: 0; overflow: auto; grid-template-rows: repeat(var(--terminal-rows), minmax(170px, 1fr)); background: #dceeff1c; }
 .terminal-split { min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; background: #071b2633; }
 .terminal-grid:not(.has-splits) .terminal-split { background: transparent; }
+/* Each split sits in a slot that keeps its place while the split is dragged by its title bar, as cards are on the grid. */
+.terminal-slot { position: relative; display: flex; min-width: 0; min-height: 0; }
+.terminal-slot > .terminal-split { flex: 1; }
+.has-splits .terminal-split-header { cursor: grab; touch-action: none; user-select: none; }
+.terminal-grid.is-reordering { cursor: grabbing; }
+.terminal-grid.is-reordering .terminal-split.drag-source { position: fixed; left: var(--drag-left); top: var(--drag-top); width: var(--drag-width); height: var(--drag-height); transform: translate3d(var(--drag-x), var(--drag-y), 0) scale(1.015); z-index: 100; cursor: grabbing; border-radius: 10px; box-shadow: inset 0 1px 0 #ffffff55, 0 24px 65px #020c218c, 0 0 0 1px #d0e8ff70; will-change: transform; }
+.terminal-split.drag-source, .terminal-split.drag-source * { pointer-events: none !important; }
+/* Lifted, it is no see-through pane over the others: the themes' transparent splits (and the desktop glass's) give way. */
+:root .terminal-grid.is-reordering .terminal-split.drag-source { background: var(--glass-solid, #102331) !important; }
+.terminal-slot.drag-placeholder::before { content: ''; position: absolute; inset: 0; border: 1px dashed #d3ecff85; background: #b6ddff12; pointer-events: none; }
+.terminal-grid.is-reordering .terminal-split.drop-target { outline: 2px solid #b6ddffb0; outline-offset: -2px; }
 .terminal-split-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .terminal-split-header, .terminal-split-footer { display: flex; align-items: center; gap: 7px; flex-shrink: 0; padding: 0 10px; min-height: 29px; color: #c7dae9; font-size: 11px; background: #dcefff08; }
 .terminal-split-header .icon-button, .terminal-split-footer .icon-button { width: 23px; height: 25px; }
@@ -358,6 +373,8 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .file-preview-toolbar .icon-button { width: 26px; height: 26px; }
 .file-text-editor { display: block; flex: 1; min-width: 0; min-height: 0; width: 100%; resize: none; padding: 18px 22px; border: 0; outline: 0; color: #ffffff; background: #07131b40; font: 400 14px/1.7 var(--font-mono); tab-size: 2; caret-color: #ffffff; text-shadow: var(--text-shadow); }
 .file-text-editor:focus { box-shadow: inset 0 0 0 1px #bde8ff45; }
+/* Code shows the characters it has: Cascadia Code's ligatures would draw "<!--" as "<!—" and "</" as one glyph. */
+:is(.file-text-editor, .file-code, .git-diff-body) { font-variant-ligatures: none; }
 .file-editor { display: flex; flex: 1; min-width: 0; min-height: 0; background: #07131b40; }
 .file-editor .file-text-editor { padding-left: 14px; background: transparent; }
 .editor-gutter { flex: none; overflow: hidden; padding: 0 12px 0 18px; box-sizing: border-box; border-right: 1px solid #b5d7ff17; color: #8ea7bf; font: 400 14px/1.7 var(--font-mono); text-align: right; user-select: none; }
@@ -453,7 +470,7 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 :root[data-surface="solid"] :is(.project-panel, .focus-mode .project-panel, .focus-sidebar, .file-preview, .titlebar, .settings-dialog, .dropdown, .reorder-hint, .search-input, .button.secondary, .tour-bubble) { background: var(--glass-solid); backdrop-filter: none; text-shadow: none; }
 :root[data-surface="solid"] .project-panel.has-unread { background: #3b2b39; }:root[data-surface="solid"] .project-panel.round-complete { background: #263d35; }
 :root[data-surface="solid"] .settings-dialog::backdrop { background: #07111fc9; backdrop-filter: none; }
-:root[data-surface="solid"] .app-shell { background: #0e1a22 !important; }:root[data-surface="solid"] .app-shell::before { backdrop-filter: none; }
+:root[data-surface="solid"] .app-shell { --wallpaper: #0e1a22 !important; }:root[data-surface="solid"] .app-shell::before { backdrop-filter: none; }
 :root[data-surface="solid"] :is(.terminal-host .xterm-rows, .panel-header, .tree-row) { text-shadow: none; }
 :root[data-surface="solid"] :is(.project-panel, .focus-sidebar, .file-preview)::after { display: none; }
 :root[data-surface="solid"] .project-panel { border-color: rgba(255, 255, 255, .1); }

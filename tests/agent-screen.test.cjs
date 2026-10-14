@@ -153,6 +153,29 @@ for (const agent of ['claude', 'codex']) {
   });
 }
 
+// Claude Code 2.1.299's Bash prompt, as captured (through a stand-in model).
+const claudeBash = ['❯ RUNBASH 请照做', '', '  Creating hello.txt', '  ⎿  $ Set-Content -LiteralPath hello.txt -Value hi', '', '─'.repeat(60), ' Bash command',
+  ' Tip: auto mode handles these prompts for you — choose "switch to auto mode" below', ' Create hello.txt', '╌'.repeat(60), ' Set-Content -LiteralPath hello.txt -Value hi', '╌'.repeat(60),
+  ' This command requires approval', '', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. Yes, and don’t ask again for: Set-Content *',
+  '   3. Yes, and switch to auto mode · auto mode handles these prompts for you', '   4. No', '', ' Esc to cancel · Tab to amend'];
+test('Claude 2.1.299\'s Bash prompt is a choice of four', () => {
+  const choice = parseAgentScreen('claude', claudeBash).choice;
+  assert.equal(choice.kind, 'permission');
+  assert.equal(choice.title, 'Do you want to proceed?');
+  assert.deepEqual(choice.options.map(option => [option.number, option.selected]), [[1, true], [2, false], [3, false], [4, false]]);
+});
+test('a numbered Claude menu in a form not known yet is still laid out, never left with nothing to answer', () => {
+  const extra = [...claudeBash.slice(0, -2), '   ctrl+e to explain this command', '', ' Esc to cancel · Tab to amend'];
+  const choice = parseAgentScreen('claude', extra).choice;
+  assert.equal(choice.kind, 'permission', 'an unexpected row under the options');
+  assert.deepEqual(choice.options.map(option => option.label), ['Yes', 'Yes, and don’t ask again for: Set-Content *', 'Yes, and switch to auto mode · auto mode handles these prompts for you', 'No']);
+  const fresh = ['● Bash(rm -rf build)', '', '─'.repeat(60), ' Auto mode paused on a risky command', ' rm -rf build', '', ' Run it anyway', ' ❯ 1. Allow once', '     just this time', '   2. Deny', '', ' Enter to confirm · Esc to cancel', '', '  ⏸ manual mode on · ? for shortcuts'];
+  assert.deepEqual(parseAgentScreen('claude', fresh).choice, { title: 'Run it anyway', kind: 'menu', hint: 'Enter to confirm · Esc to cancel', context: ['Auto mode paused on a risky command', 'rm -rf build'],
+    options: [{ number: 1, label: 'Allow once', detail: 'just this time', selected: true, hotkey: null }, { number: 2, label: 'Deny', detail: '', selected: false, hotkey: null }] });
+  assert.equal(parseAgentScreen('claude', [...fresh.slice(0, -2), '● Permission denied']).choice, null, 'answered: conversation came after it');
+  assert.equal(parseAgentScreen('claude', [...fresh, '─'.repeat(60), '❯ ', '─'.repeat(60)]).choice, null, 'Claude\'s input is back');
+  assert.equal(parseAgentScreen('claude', ['Pick one:', '  1. First', '  2. Second', 'Esc to cancel']).choice?.kind ?? null, null, 'no cursor on an option');
+});
 test('padding and trailing carriage returns preserve every fixture without mutating input', () => {
   for (const [name, result] of Object.entries(expected)) {
     const rows = Object.freeze(readFixture(name).map(row => row.replace(/\r$/, '') + '   \r'));

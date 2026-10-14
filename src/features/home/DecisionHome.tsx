@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react';
-import { ArrowRight, CheckCircle, CircleNotch, PaperPlaneRight, Sparkle, X } from '@phosphor-icons/react';
+import { CheckCircle, CircleNotch, PaperPlaneRight, Sparkle, X } from '@phosphor-icons/react';
 import type { Project, Result } from '../../shared/types';
 import type { Decision } from './decisions';
 import { DecisionDeck } from './DecisionDeck';
+import { SessionOverview } from './SessionOverview';
 import { acceptedToday } from './ReviewCard';
 import { sendToAgent, untilAtPrompt } from './send-to-agent';
 import { dataUrl, thumbnail } from '../reading/image-thumbnail';
 import { VoiceButton } from '../voice/VoiceButton';
-import { dictateInto } from '../voice/voice-input';
+import { useDictatedBox } from '../voice/voice-input';
 import { showPopup } from '../files/file-popup';
 import { t } from '../../shared/i18n';
 import './home.css';
 
 // The home page, for grading the work like a teacher: what needs you, as a stack of cards to flip through and draw
-// from (permissions, questions, work handed in); what is being worked on; and where to say what comes next. Nothing
+// from (permissions, questions, work handed in); where to say what comes next; and beside them every session and what
+// it is working on. Nothing
 // here is solved by looking at it.
 export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOpenDecision, onAction, onError }: {
   projects: readonly Project[]; decisions: readonly Decision[]; snoozed: number;
@@ -42,17 +44,15 @@ export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOp
         {!decisions.length && !working.length && <span>{t('描述一个目标，选择项目后开始。')}</span>}
       </p>
     </header>
-    {notice && <p className="home-notice" role="status"><CheckCircle size={15} weight="fill" />{notice}</p>}
-    {decisions.length > 0 && <DecisionDeck decisions={decisions} now={now} onOpen={onOpenDecision} onDone={setNotice} onError={onError} />}
-    {working.length > 0 && <section className="home-section" aria-label={t('工作进展')}>
-      <h3>{t('工作进展')}</h3>
-      <ul className="progress-rows">
-        {working.map(({ project, terminal }) => <li key={terminal.id} className="is-working"><CircleNotch size={13} className="loading-spinner" /><b>{project.name}</b>
-          <span>{terminal.prompts.find(prompt => prompt.state === 'working')?.text || terminal.task || t('正在工作')}</span>
-          <button type="button" className="text-button" onClick={() => onOpenProject(project.id)}>{t('打开')}<ArrowRight size={13} /></button></li>)}
-      </ul>
-    </section>}
-    <NewWork projects={projects} onAction={onAction} onDone={setNotice} onError={onError} />
+    {/* What needs you and what comes next on the left, every session beside them: one page, no scrolling to see it. */}
+    <div className="home-columns">
+      <div className="home-main">
+        {notice && <p className="home-notice" role="status"><CheckCircle size={15} weight="fill" />{notice}</p>}
+        {decisions.length > 0 && <DecisionDeck decisions={decisions} now={now} onOpen={onOpenDecision} onDone={setNotice} onError={onError} />}
+        <NewWork projects={projects} onAction={onAction} onDone={setNotice} onError={onError} />
+      </div>
+      <SessionOverview projects={projects} decisions={decisions} onOpenProject={onOpenProject} />
+    </div>
   </div>;
 }
 
@@ -62,7 +62,7 @@ const VOICE_TARGET = 'decision-home';
 
 // "What next": a goal sent to a project's agent from here, without leaving the page. One that runs gets it at once (it
 // queues it while it works); otherwise the chosen agent is started first and gets it when its input is ready. Its
-// progress then shows under "工作进展" and its work comes back as a card.
+// progress then shows in the session list beside it and its work comes back as a card.
 function NewWork({ projects, onAction, onDone, onError }: {
   projects: readonly Project[];
   onAction: <T,>(promise: Promise<Result<T>>) => Promise<T | undefined>; onDone: (message: string) => void; onError: (message: string) => void;
@@ -73,14 +73,7 @@ function NewWork({ projects, onAction, onDone, onError }: {
   // Dictation (its microphone or the voice shortcut) puts the words where the cursor is; Enter only puts them in, since
   // the project to send to is chosen below once there is something to send.
   const box = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => dictateInto(VOICE_TARGET, words => {
-    const node = box.current;
-    if (!node) return;
-    const here = document.activeElement === node, at = here ? node.selectionStart : node.value.length, end = here ? node.selectionEnd : node.value.length;
-    setText(node.value.slice(0, at) + words + node.value.slice(end));
-    node.focus();
-    requestAnimationFrame(() => node.setSelectionRange(at + words.length, at + words.length));
-  }, false), []);
+  useDictatedBox(VOICE_TARGET, box, setText);
   // Pictures pasted here go as files: the agent may not run yet to take them from the clipboard, so each is saved and
   // its path sent with the goal for the agent to look at.
   const [images, setImages] = useState<{ blob: Blob; preview: string }[]>([]);

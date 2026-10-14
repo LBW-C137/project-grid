@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore, type RefObject } from 'react';
 import { MicrophoneCapture } from './voice-audio';
 import type { VoiceState } from '../../shared/types';
 import { t } from '../../shared/i18n';
@@ -31,6 +31,18 @@ export function dictateInto(id: string, insert: (text: string, submit: boolean) 
   const composer = { insert, sends };
   composers.set(id, composer);
   return () => { if (composers.get(id) === composer) composers.delete(id); };
+}
+// Such a text box (the decision page's new work, a review's comments): the words go in at its caret, or at the end
+// when it has no focus, and Enter only puts them in; sending stays the box's own button.
+export function useDictatedBox(id: string, box: RefObject<HTMLTextAreaElement | null>, setText: (text: string) => void) {
+  useEffect(() => dictateInto(id, words => {
+    const node = box.current;
+    if (!node) return;
+    const here = document.activeElement === node, at = here ? node.selectionStart : node.value.length, end = here ? node.selectionEnd : node.value.length;
+    setText(node.value.slice(0, at) + words + node.value.slice(end));
+    node.focus();
+    requestAnimationFrame(() => node.setSelectionRange(at + words.length, at + words.length));
+  }, false), [id]);
 }
 // Codex and Claude Code treat an Enter that arrives right after pasted text as part of the paste
 // (a newline), so the submitting Enter waits until the paste has landed.
@@ -138,13 +150,16 @@ export async function toggleDictation(id: string, sessionId: string | null, onEr
 
 const shown = (element: HTMLElement | null | undefined) => element?.getClientRects().length ? element : null;
 
-// Ctrl+T talks to the terminal with keyboard focus, else a text box of its own on screen (the decision page covers the
-// terminals), else the expanded project's current terminal, else the terminal last used, else the only terminal on screen.
+// Ctrl+T talks to the terminal or text box of its own with keyboard focus, else a text box of its own on screen (the
+// decision page covers the terminals), else the expanded project's current terminal, else the terminal last used, else
+// the only terminal on screen.
 function terminalTarget() {
   const byId = (id: string | null) => id ? shown(document.querySelector<HTMLElement>(`[data-terminal-id="${CSS.escape(id)}"]`)) : null;
   const visible = [...document.querySelectorAll<HTMLElement>('[data-terminal-id]')].filter(element => shown(element));
+  const box = (element: HTMLElement | null | undefined) => element && composers.has(element.dataset.voiceTarget!) ? shown(element) : null;
   return shown(document.activeElement?.closest<HTMLElement>('[data-terminal-id]'))
-    || [...document.querySelectorAll<HTMLElement>('[data-voice-target]')].find(element => shown(element) && composers.has(element.dataset.voiceTarget!))
+    || box(document.activeElement?.closest<HTMLElement>('[data-voice-target]'))
+    || [...document.querySelectorAll<HTMLElement>('[data-voice-target]')].find(element => box(element))
     || shown(document.querySelector<HTMLElement>('.project-panel.is-focused .is-active-terminal'))
     || byId(lastTerminal)
     || (visible.length === 1 ? visible[0] : null);

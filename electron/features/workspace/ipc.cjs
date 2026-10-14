@@ -1,4 +1,4 @@
-function registerWorkspaceIpc({ handle, publicState, dialog, getWindow, t, addProject, getRecentProjects, existsSync, getRecentEntry, forgetRecent, clearHistory, getEditorFile, allowEditorClose, confirmTerminalClose, disposeProjectTerminals, findProject, closeProjectPreviews, removeProject, forgetBranch, broadcast, acknowledgeProject, reorderProjects, getSettings, updateStoreSettings, rebuildMenus, clearRestorePlans, chooseVoiceModel }) {
+function registerWorkspaceIpc({ handle, publicState, dialog, getWindow, t, addProject, getRecentProjects, existsSync, getRecentEntry, forgetRecent, clearHistory, getRecentSSH, forgetRecentSSH, clearSSHHistory, reorderTerminals, getEditorFile, allowEditorClose, confirmTerminalClose, disposeProjectTerminals, findProject, closeProjectPreviews, removeProject, forgetBranch, broadcast, acknowledgeProject, reorderProjects, getSettings, updateStoreSettings, rebuildMenus, clearRestorePlans, chooseVoiceModel }) {
   // Adds a local folder as a project; an already open folder just returns its id. Its card then offers Claude Code
   // and Codex (new or continuing), so no terminal is opened before one is chosen.
   function addLocalProject(folder, name) {
@@ -24,6 +24,10 @@ function registerWorkspaceIpc({ handle, publicState, dialog, getWindow, t, addPr
   });
   handle('workspace:forget-recent', folder => { forgetRecent(folder); return recentProjects(); });
   handle('workspace:clear-recent', () => { clearHistory(); return recentProjects(); });
+  // SSH connections once opened: added again through the SSH form's own path, which connects and signs in.
+  handle('workspace:recent-ssh', () => getRecentSSH());
+  handle('workspace:forget-recent-ssh', (host, folder) => { forgetRecentSSH(String(host), String(folder)); return getRecentSSH(); });
+  handle('workspace:clear-recent-ssh', () => { clearSSHHistory(); return getRecentSSH(); });
   // ask: a removal by shortcut is confirmed even when no terminal runs (a key is easily pressed by mistake).
   handle('workspace:remove', async (id, ask) => {
     if (getEditorFile()?.id === id && !await allowEditorClose()) return false;
@@ -32,6 +36,7 @@ function registerWorkspaceIpc({ handle, publicState, dialog, getWindow, t, addPr
   });
   handle('workspace:acknowledge', id => { findProject(id); acknowledgeProject(id); broadcast(); });
   handle('workspace:reorder', ids => { reorderProjects(ids); broadcast(); });
+  handle('workspace:reorder-terminals', (projectId, ids) => { reorderTerminals(projectId, ids); broadcast(); });
   function updateSettings(patch) {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('无效的设置。');
     const language = getSettings().language;

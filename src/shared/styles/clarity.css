@@ -197,7 +197,7 @@
 :root[data-theme="daylight"] .brand-mark i:last-child { background: #ff5c5c; }
 :root[data-theme="daylight"] .project-panel.is-working .panel-glow { background: linear-gradient(180deg, #3b9eff1f, #3b9eff0a 28%, transparent 60%); }
 :root[data-theme="daylight"] ::selection { background: #2a5d8f; color: #ffffff; }
-:root[data-theme="daylight"][data-surface="solid"] .app-shell { background: #10161f !important; }
+:root[data-theme="daylight"][data-surface="solid"] .app-shell { --wallpaper: #10161f !important; }
 @media (prefers-reduced-transparency: reduce) {
-  :root[data-theme="daylight"] .app-shell { background: #10161f !important; }
+  :root[data-theme="daylight"] .app-shell { --wallpaper: #10161f !important; }
 }

@@ -202,6 +202,28 @@ test('Codex /fast before the first message (a footer with no context part) ends 
   assert.equal(finished.busy, false, 'not a spinner that never stops');
   assert.deepEqual(finished.panel, { command: '/fast', rows: ['• Service tier set to priority'], done: true });
 });
+test('Codex\'s tip under its last answer going away is no reason to take the whole conversation for /fast\'s output', t => {
+  // Codex 0.162.1 after a few rounds (shortened): the tip under the last answer is gone once /fast runs.
+  const answer = round => ['• 已创建：Markdown 示例文件。', '', '  ## 任务清单', '', '  ☑ 创建 Markdown 文件', '', `  第 ${round} 次回答。`];
+  const earlier = ['› 创建一个md文件在对话框给我看 2', '', ...answer(3), '', '  Worked for <1s • 19:34', '', '', '› 创建一个md文件在对话框给我看 3', '', ...answer(5)];
+  const before = [...earlier, '  └ Tip: Moving from Claude Code? Use /import to bring over your setup, project, and recent chats.', '', '  Worked for <1s • 19:34', '', '', ...input('codex')];
+  const after = [...earlier.slice(1), '', '  Worked for <1s • 19:34', '', '• Service tier set to default', '', '', ...input('codex')];
+  const harness = rendererHarness(t, 'codex');
+  harness.emit('a', before);
+  harness.render().begin('/fast');
+  harness.emit('a', after);
+  harness.tick(400);
+  assert.deepEqual(harness.render().panel, { command: '/fast', rows: ['• Service tier set to default'], done: true });
+});
+test('Codex output is found under the history\'s last row when the row above it changed, and the screen is the output only once the history left it', () => {
+  const before = ['• Earlier answer', '  note that will change', '  Worked for 2s', ''];
+  const live = ['• Earlier answer', '  note, changed', '  Worked for 2s', '', '• Printed', '', ...input('codex')];
+  assert.deepEqual(extractCliPanelRows('codex', live, inspect('codex', live), '/x', before), ['• Printed']);
+  const gone = ['• A tall result', '  that filled the screen', '', ...input('codex')];
+  assert.deepEqual(extractCliPanelRows('codex', gone, inspect('codex', gone), '/x', before), ['• A tall result', '  that filled the screen']);
+  const still = ['• Earlier answer', '  Worked for 2s, but redrawn', '', ...input('codex')];
+  assert.deepEqual(extractCliPanelRows('codex', still, inspect('codex', still), '/x', before), [], 'history still on screen is never the output');
+});
 test('a Codex command that prints nothing ends once its footer shows the change, and its popup says it is done', t => {
   const { parseAgentScreen: parse } = require('../src/features/agents/agent-screen.ts');
   const { cliFooter } = require('../src/features/reading/cli-panel.ts');

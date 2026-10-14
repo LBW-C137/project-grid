@@ -146,7 +146,28 @@ try {
   await waitFor(async () => (await fs.readFile(path.join(project.path, 'page.html'), 'utf8')).includes('Edited HTML'), 'HTML source save');
   await page.getByRole('button', { name: '页面', exact: true }).click();
   await page.frameLocator('iframe.html-preview-frame').getByText('Edited HTML').waitFor();
-  await page.getByRole('button', { name: '源码', exact: true }).click(); await editor.fill('<h1>Draft</h1>');
+  await page.getByRole('button', { name: '源码', exact: true }).click();
+  // VS Code's editing keys, in the file's language: Ctrl+/ comments the selected lines (one HTML comment around them)
+  // and a single Ctrl+Z undoes that; Alt+Up moves a line; Enter keeps the indentation.
+  const list = '<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>';
+  await editor.fill(list);
+  await editor.evaluate(node => node.setSelectionRange(7, 30));
+  await editor.press('Control+/');
+  assert.equal(await editor.inputValue(), '<ul>\n  <!-- <li>one</li>\n  <li>two</li> -->\n</ul>', 'Ctrl+/ comments the selected lines');
+  await page.screenshot({ path: path.join(output, 'file-editor-comment.png') });
+  await editor.press('Control+/');
+  assert.equal(await editor.inputValue(), list, 'Ctrl+/ again uncomments them');
+  await editor.press('Control+z');
+  assert.equal(await editor.inputValue(), '<ul>\n  <!-- <li>one</li>\n  <li>two</li> -->\n</ul>', 'one Ctrl+Z undoes one command');
+  await editor.press('Control+z');
+  assert.equal(await editor.inputValue(), list);
+  await editor.evaluate(node => node.setSelectionRange(25, 25));
+  await editor.press('Alt+ArrowUp');
+  assert.equal(await editor.inputValue(), '<ul>\n  <li>two</li>\n  <li>one</li>\n</ul>', 'Alt+Up moves the line up');
+  await editor.evaluate(node => node.setSelectionRange(19, 19));
+  await editor.press('Enter'); await editor.pressSequentially('<li>new</li>');
+  assert.equal(await editor.inputValue(), '<ul>\n  <li>two</li>\n  <li>new</li>\n  <li>one</li>\n</ul>', 'Enter keeps the indentation');
+  await editor.fill('<h1>Draft</h1>');
   await page.screenshot({ path: path.join(output, 'file-editor.png') });
   await answer(2); const canceled = await page.evaluate(() => window.agentrix.quit()); assert.equal(canceled.value, false);
   await answer(1); await page.getByRole('button', { name: '返回终端', exact: true }).click();

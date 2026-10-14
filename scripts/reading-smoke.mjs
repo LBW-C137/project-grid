@@ -136,11 +136,21 @@ try {
   checks.push('permission automatically opens terminal and stop returns to reading');
   await write(hook('notify', permission)); await raw(); await showReading();
   assert.ok((await terminal.locator('.reading-status').innerText()).includes(`等待你确认：${permission.message}`));
-  await showRaw();
+  // No choice the reading view can lay out (none is on this screen): the waiting line offers the terminal itself.
+  await page.screenshot({ path: path.join(output, 'permission-waiting.png') });
+  await terminal.locator('.reading-status').getByRole('button', { name: '切换到终端', exact: true }).click(); await raw();
   await write(hook('stop', { session_id: 's1' }));
   await waitFor(async () => (await state()).needsInput === null, 'manual choice survives permission clear');
   assert.equal(await composer.count(), 0);
   await showReading();
+  // Claude runs no hook when its permission prompt is answered: the answering key itself (Enter here, as a choice in
+  // the reading view sends it) ends the notice, not the end of the round.
+  await write(hook('notify', permission));
+  await waitFor(async () => (await state()).needsInput === permission.message, 'another permission');
+  await write('\r');
+  await waitFor(async () => (await state()).needsInput === null, 'answering the permission ends the waiting notice');
+  await waitFor(async () => (await terminal.locator('.reading-status', { hasText: '等待你确认' }).count()) === 0, 'no waiting line after the answer');
+  checks.push('answering a permission ends its waiting notice before the round ends');
   await write(hook('start', { session_id: 's1', prompt: 'test interrupt' }));
   await waitFor(async () => (await state()).codexActivity === 'working', 'working fixture');
   // Claude's spinner line while it works (an idle input on screen would mean it has finished).

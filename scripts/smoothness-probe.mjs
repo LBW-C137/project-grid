@@ -156,7 +156,6 @@ try {
   await measure('idle', () => sleep(1400), 0);
   await measure('settings', async () => { await page.getByRole('button', { name: '工作台设置', exact: true }).click(); await sleep(700); await page.keyboard.press('Escape'); }, 700);
   await measure('restore', () => page.locator('.focus-sidebar').getByRole('button', { name: /总览/ }).first().click({ timeout: 3000 }), 1000);
-  await measure('to-tasks', () => nav('任务').click(), 900);
   await measure('to-decisions', () => nav('决策').click(), 900);
   const janky = results.filter(result => result.dropped);
   console.log(`theme ${theme}, display ${refresh.toFixed(1)} ms a frame: ${results.length} interactions, ${janky.length} dropped frames: ${janky.map(result => `${result.name} ${result.dropped}×, worst ${result.worst} ms`).join('; ') || 'none'}; ${results.reduce((sum, result) => sum + result.dropped, 0)} in all`);

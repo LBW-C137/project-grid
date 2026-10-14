@@ -21,6 +21,7 @@ export type AgentSettings = { model: string | null; effort: string | null; fast:
 export type ProjectTerminal = { agentStartedAt?: number | null; agentSettings?: AgentSettings | null; agentCommand?: string | null; action: AgentActionBrief | null; task: string; prompts: PendingPrompt[]; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; needsInput: string | null; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
 export type Settings = { startView: 'decisions' | 'workspace'; surface: 'glass' | 'solid'; glassBackground: 'theme' | 'desktop'; glassTransparency: number | null; terminalRenderer: 'gpu' | 'dom'; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; terminalFontWeight: 400 | 500 | 600; terminalFontFamily: string; terminalCjkFontFamily: string; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: ThemeId; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'decisions' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'projectAbove' | 'projectBelow' | 'maximize' | 'fullscreen' | 'newTerminal' | 'removeProject', string>>; guideVersion: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; voiceModel: string };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
+export type RecentSSH = { host: string; path: string; name: string; lastOpenedAt: number };
 export type SSHInfo = { hosts: string[]; configFile: string; configExists: boolean; sshPath: string; source: string };
 export type SSHAuthPrompt = { id: string; host: string; message: string; kind: 'secret' | 'confirm' };
 export type Workspace = { desktopGlass?: { supported: boolean; compatibility: boolean; active: boolean; restart: boolean; failed: boolean }; projects: Project[]; settings: Settings; warning: string | null; platform: string; version: string; guide: boolean; autoHideTitlebar: boolean;
@@ -77,6 +78,9 @@ type Bridge = {
   addRecentProject(folder: string): Promise<Result<string>>;
   forgetRecentProject(folder: string): Promise<Result<RecentProject[]>>;
   clearRecentProjects(): Promise<Result<RecentProject[]>>;
+  getRecentSSH(): Promise<Result<RecentSSH[]>>;
+  forgetRecentSSH(host: string, folder: string): Promise<Result<RecentSSH[]>>;
+  clearRecentSSH(): Promise<Result<RecentSSH[]>>;
   addSSHProject(input: { host: string; path: string; name?: string }): Promise<Result<string>>;
   getSSHInfo(): Promise<Result<SSHInfo>>;
   getSSHAuth(): Promise<Result<SSHAuthPrompt[]>>;
@@ -85,6 +89,7 @@ type Bridge = {
   // ask: confirm even with no terminal running (a removal by shortcut).
   removeProject(id: string, ask?: boolean): Promise<Result<boolean>>;
   reorderProjects(ids: string[]): Promise<Result<void>>;
+  reorderTerminals(projectId: string, ids: string[]): Promise<Result<void>>;
   acknowledge(id: string): Promise<Result<void>>;
   settings(patch: Partial<Settings>): Promise<Result<void>>;
   listDirectory(id: string, relativePath?: string, offset?: number): Promise<Result<DirectoryListing>>;

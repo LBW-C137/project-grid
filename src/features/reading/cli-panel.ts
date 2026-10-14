@@ -127,23 +127,31 @@ export function cliHistory(agent: ScreenAgent, rows: string[], screen: AgentScre
 const codexBanner = (row: string) => /^\s*>_ OpenAI Codex\b/.test(row);
 // The history only moves up as output comes in, so its last row is never found below where it was when the command
 // was sent: the same command run twice prints the same rows again, and an anchor found in them would leave nothing.
-// The command's own echo row, when newer Codex prints one under the history, starts its output.
+// The command's own echo row, when newer Codex prints one under the history, starts its output. Codex's tip under its
+// last answer ("└ Tip: …") goes away as the next command starts, so it is no anchor; and when the row above the last
+// one changed some other way, the last row alone still marks where the history ended. Only when none of the latest
+// history is on screen any more did the output push it out of sight, and then all of the screen is the command's.
+const transient = (row: string) => /^\s*(?:└\s*)?Tip:/.test(row);
 function rowsSince(before: readonly string[], rows: string[], end: number, command: string): string[] | null {
-  const last = before.filter(row => row.trim()).slice(-2);
+  const history = before.filter(row => row.trim() && !transient(row)), last = history.slice(-2);
   if (!last.length) return null;
-  const anchor = anchoredAt(last, rows, Math.min(end, before.length + 2));
+  const limit = Math.min(end, before.length + 2);
+  let anchor = anchoredAt(last, rows, limit);
+  if (anchor < 0 && last.length === 2) anchor = anchoredAt(last.slice(-1), rows, limit);
   const echo = (from: number) => { for (let index = end - 1; index > from; index--) if (command.trim() && rows[index].trim() === command.trim()) return index; return -1; };
   if (anchor >= 0) { const at = echo(anchor); return trimRows(rows.slice(at >= 0 ? at : anchor + 1, end)); }
   const at = echo(-1);
   if (at >= 0) return trimRows(rows.slice(at, end));
   if (rows.slice(0, end).some(codexBanner)) return null;
+  const shown = new Set(rows.slice(0, end).map(row => row.trimEnd()));
+  if (history.slice(-3).some(row => shown.has(row.trimEnd()))) return null;
   return trimRows(rows.slice(0, end));
 }
 // Where the history's last row (and the one before it) is, at or above `limit`; -1 when it scrolled out of sight.
 function anchoredAt(last: string[], rows: string[], limit: number): number {
   for (let index = Math.min(limit, rows.length) - 1; index >= 0; index--) {
     if (rows[index].trimEnd() !== last.at(-1)!.trimEnd()) continue;
-    if (last.length === 2 && rows.slice(0, index).filter(row => row.trim()).at(-1)?.trimEnd() !== last[0].trimEnd()) continue;
+    if (last.length === 2 && rows.slice(0, index).filter(row => row.trim() && !transient(row)).at(-1)?.trimEnd() !== last[0].trimEnd()) continue;
     return index;
   }
   return -1;

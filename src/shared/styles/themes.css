@@ -172,25 +172,25 @@
   --theme-button-ink: #2f2c58;
 }
 :root[data-theme="daylight"] .app-shell {
-  background: url('../../assets/daylight-glacier.webp') center 38% / cover no-repeat;
+  --wallpaper: url('../../assets/daylight-glacier.webp') center 38% / cover no-repeat;
 }
 :root[data-theme="mountain-blue"] .app-shell {
-  background: url('../../assets/macos-big-sur.webp') center 35% / cover no-repeat;
+  --wallpaper: url('../../assets/macos-big-sur.webp') center 35% / cover no-repeat;
 }
 :root[data-theme="wild-red"] .app-shell {
-  background: url('../../assets/macos-sierra.webp') center / cover no-repeat;
+  --wallpaper: url('../../assets/macos-sierra.webp') center / cover no-repeat;
 }
 :root[data-theme="yosemite"] .app-shell {
-  background: url('../../assets/macos-yosemite.webp') center 30% / cover no-repeat;
+  --wallpaper: url('../../assets/macos-yosemite.webp') center 30% / cover no-repeat;
 }
 :root[data-theme="el-capitan"] .app-shell {
-  background: url('../../assets/macos-el-capitan.webp') center 30% / cover no-repeat;
+  --wallpaper: url('../../assets/macos-el-capitan.webp') center 30% / cover no-repeat;
 }
 :root[data-theme="mojave"] .app-shell {
-  background: url('../../assets/macos-mojave.webp') center / cover no-repeat;
+  --wallpaper: url('../../assets/macos-mojave.webp') center / cover no-repeat;
 }
 :root[data-theme="catalina"] .app-shell {
-  background: url('../../assets/macos-catalina.webp') center 42% / cover no-repeat;
+  --wallpaper: url('../../assets/macos-catalina.webp') center 42% / cover no-repeat;
 }
 
 /* Shared theme materials; Daylight's complete light treatment is loaded last. */

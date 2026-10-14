@@ -47,7 +47,7 @@ async function chooseTheme(id, name) {
   await waitFor(async () => page.evaluate(id => document.documentElement.dataset.theme === id, id), 'theme applied');
   assert.ok(await dialog.getByRole('radio', { name, exact: true }).isChecked());
   const wallpaper = await page.evaluate(async id => {
-    const surface = getComputedStyle(document.querySelector('.app-shell'));
+    const surface = getComputedStyle(document.querySelector('.app-shell'), '::after');
     const swatch = getComputedStyle(document.querySelector(`[data-theme-preview="${id}"]`));
     const url = style => style.backgroundImage.match(/url\("([^"]+)"\)/)?.[1];
     const image = new Image(); image.src = url(surface); await image.decode();

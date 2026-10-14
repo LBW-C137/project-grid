@@ -15,6 +15,19 @@ function cleanHistory(input) {
   }).slice(0, HISTORY_LIMIT).map(item => ({ path: item.path, name: String(item.name || path.basename(item.path) || item.path).slice(0, 120), lastOpenedAt: Number.isSafeInteger(item.lastOpenedAt) ? item.lastOpenedAt : 0 }));
 }
 
+// SSH projects once opened, the same way: the host and remote folder, to add again in one click (connecting anew).
+const sshKey = item => `${item.host}\n${item.path}`;
+function cleanSSHHistory(input) {
+  const seen = new Set();
+  return (Array.isArray(input) ? input : []).flatMap(item => {
+    let connection;
+    try { connection = normalizeSSH({ host: item?.host, path: item?.path }); } catch { return []; }
+    if (seen.has(sshKey(connection))) return [];
+    seen.add(sshKey(connection));
+    return [{ host: connection.host, path: connection.path, name: String(item.name || connection.host).slice(0, 120), lastOpenedAt: Number.isSafeInteger(item.lastOpenedAt) ? item.lastOpenedAt : 0 }];
+  }).slice(0, HISTORY_LIMIT);
+}
+
 // Which coding agent a terminal restores (Codex unless recorded as Claude Code), whether its last Claude turn was
 // left unfinished. Only non-default values are stored.
 const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'claude' } : {}), ...(restore?.interrupted === true ? { interrupted: true } : {}) });
@@ -68,6 +81,7 @@ class WorkspaceStore {
     this.filename = filename;
     this.projects = [];
     this.history = [];
+    this.sshHistory = [];
     this.settings = { ...defaults };
     this.warning = null;
     if (!fs.existsSync(filename)) return;
@@ -94,11 +108,14 @@ class WorkspaceStore {
         lastCompletedAt: typeof p.lastCompletedAt === 'number' ? p.lastCompletedAt : null,
         completionArmed: p.completionArmed === true,
         seenEvents: Array.isArray(p.seenEvents) ? p.seenEvents.filter(x => typeof x === 'string').slice(-128) : [],
+        // The order its terminals were dragged into, when they were (ids it no longer has are ignored).
+        ...(Array.isArray(p.terminalOrder) ? { terminalOrder: p.terminalOrder.filter(id => typeof id === 'string' && /^[a-f\d-]{36}$/i.test(id)).slice(0, 64) } : {}),
         };
         return project;
       });
       this.settings = cleanSettings(value.settings);
       this.history = cleanHistory(value.history);
+      this.sshHistory = cleanSSHHistory(value.sshHistory);
       const terminalIds = new Set(this.projects.map(project => project.id));
       for (const project of this.projects) project.terminals = project.terminals.filter(item => { if (terminalIds.has(item.id)) return false; terminalIds.add(item.id); return true; });
     } catch {
@@ -121,9 +138,13 @@ class WorkspaceStore {
     return { project, added: true };
   }
 
-  // Record a local project as recently opened. Called when it is added and again when it is removed.
+  // Record a project as recently opened. Called when it is added and again when it is removed.
   remember(project, now = Date.now()) {
-    if (project.kind === 'ssh') return;
+    if (project.kind === 'ssh') {
+      const entry = { host: project.ssh.host, path: project.path, name: project.name, lastOpenedAt: now };
+      this.sshHistory = [entry, ...this.sshHistory.filter(item => sshKey(item) !== sshKey(entry))].slice(0, HISTORY_LIMIT);
+      return;
+    }
     const key = folderKey(project.path);
     this.history = [{ path: project.path, name: project.name, lastOpenedAt: now }, ...this.history.filter(item => folderKey(item.path) !== key)].slice(0, HISTORY_LIMIT);
   }
@@ -138,6 +159,13 @@ class WorkspaceStore {
   isRecent(folder) { return !!this.recentEntry(folder); }
   forget(folder) { if (typeof folder !== 'string') return; this.history = this.history.filter(item => folderKey(item.path) !== folderKey(folder)); this.save(); }
   clearHistory() { this.history = []; this.save(); }
+  // SSH connections once opened that are not open as a project right now.
+  recentSSH() {
+    const open = new Set(this.projects.filter(p => p.kind === 'ssh').map(p => sshKey({ host: p.ssh.host, path: p.path })));
+    return this.sshHistory.filter(item => !open.has(sshKey(item)));
+  }
+  forgetSSH(host, folder) { this.sshHistory = this.sshHistory.filter(item => sshKey(item) !== sshKey({ host, path: folder })); this.save(); }
+  clearSSHHistory() { this.sshHistory = []; this.save(); }
 
   addSSH(input) {
     const connection = normalizeSSH(input);
@@ -145,7 +173,7 @@ class WorkspaceStore {
     if (existing) return { project: existing, added: false };
     const base = path.posix.basename(connection.path);
     const project = { id: randomUUID(), name: String(input.name || (base === '~' ? connection.host : base) || connection.host).slice(0, 120), kind: 'ssh', path: connection.path, ssh: { host: connection.host, configFile: connection.configFile }, primaryTerminalClosed: false, restore: { terminal: false, codex: false }, unread: 0, lastCompletedAt: null, completionArmed: false, seenEvents: [] };
-    this.projects.push(project); this.save(); return { project, added: true };
+    this.projects.push(project); this.remember(project); this.save(); return { project, added: true };
   }
 
   setRestore(id, patch) {
@@ -193,6 +221,12 @@ class WorkspaceStore {
     else { found.project.terminals = found.project.terminals.filter(item => item.id !== id); this.save(); }
   }
 
+  setTerminalOrder(projectId, ids) {
+    const project = this.projects.find(item => item.id === projectId);
+    if (!project) throw new Error('项目不存在。');
+    project.terminalOrder = [...ids]; this.save();
+  }
+
   reorderProjects(ids) {
     if (!Array.isArray(ids) || ids.length !== this.projects.length || new Set(ids).size !== ids.length || ids.some(id => typeof id !== 'string' || !this.projects.some(project => project.id === id))) throw new Error('项目列表已变化，请重新拖动排序。');
     const records = new Map(this.projects.map(project => [project.id, project]));
@@ -236,7 +270,7 @@ class WorkspaceStore {
   save() {
     fs.mkdirSync(path.dirname(this.filename), { recursive: true });
     const tmp = `${this.filename}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ version: 2, projects: this.projects, settings: this.settings, history: this.history }, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify({ version: 2, projects: this.projects, settings: this.settings, history: this.history, sshHistory: this.sshHistory }, null, 2));
     for (let attempt = 0; ; attempt++) {
       try { fs.renameSync(tmp, this.filename); break; }
       catch (error) {

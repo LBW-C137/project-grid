@@ -90,7 +90,7 @@ try {
   await app.evaluate(() => { globalThis.desktopGlassMain.setFullScreen(false); globalThis.desktopGlassMain.setBounds({ x: 200, y: 120, width: 1500, height: 940 }); });
   await page.getByRole('treeitem', { name: 'README.md', exact: true }).click(); await page.locator('.file-preview').waitFor();
   const cdp = await page.context().newCDPSession(page); await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
-  assert.equal(await page.locator('.app-shell').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(244, 245, 246)'); await cdp.send('Emulation.setEmulatedMedia', { features: [] }); await cdp.detach();
+  assert.equal(await page.locator('.app-shell').evaluate(node => getComputedStyle(node, '::after').backgroundColor), 'rgb(244, 245, 246)'); await cdp.send('Emulation.setEmulatedMedia', { features: [] }); await cdp.detach();
   results.checks.push('material switches preserve terminal and draft; panel alpha changes without another blur; GPU, settings, resizing, expanded file view and reduced transparency work');
   assert.deepEqual(errors, []);
   await app.close(); app = null; await launch(); assert.ok((await state()).desktopGlass.active); assert.equal((await state()).settings.glassTransparency, 75);

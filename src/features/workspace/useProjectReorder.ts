@@ -5,7 +5,37 @@ import { motionReduced } from '../../shared/motion';
 type Drag = { id: string; targetId: string | null };
 type Rect = { left: number; top: number };
 
+// What is dragged where: the slots (children of the container that keep their place in the layout), the item a
+// pointer down on a handle picks up, and the element that scrolls while dragging near its edge.
+export type ReorderTarget = {
+  slots: string; slotId: (slot: HTMLElement) => string;
+  item: (target: Element) => { element: HTMLElement; id: string } | null;
+  area: (container: HTMLElement) => HTMLElement;
+};
+// Project cards on the grid, picked up by their header.
+const PROJECTS: ReorderTarget = {
+  slots: ':scope > [data-project-slot]', slotId: slot => slot.dataset.projectSlot!,
+  item: target => {
+    const header = target.closest<HTMLElement>('.panel-header'), panel = header?.closest<HTMLElement>('[data-project-id]');
+    return header && panel && !target.closest('button:not(.panel-name), [role="menu"]') ? { element: panel, id: panel.dataset.projectId! } : null;
+  },
+  area: container => container.closest<HTMLElement>('.grid-area')!,
+};
+// A project's terminal splits, picked up by their title bar; they scroll in their own area.
+export const TERMINAL_SPLITS: ReorderTarget = {
+  slots: ':scope > [data-terminal-slot]', slotId: slot => slot.dataset.terminalSlot!,
+  item: target => {
+    const header = target.closest<HTMLElement>('.terminal-split-header'), split = header?.closest<HTMLElement>('[data-terminal-id]');
+    return header && split && !target.closest('button') ? { element: split, id: split.dataset.terminalId! } : null;
+  },
+  area: container => container,
+};
+
 export function useProjectReorder(enabled: boolean, context: string, ids: string[], onReorder: (ids: string[]) => Promise<unknown>) {
+  return useReorder(enabled, context, ids, onReorder, PROJECTS);
+}
+
+export function useReorder(enabled: boolean, context: string, ids: string[], onReorder: (ids: string[]) => Promise<unknown>, target: ReorderTarget) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [order, setOrder] = useState<string[] | null>(null);
   const cancel = useRef<(() => void) | null>(null);
@@ -24,9 +54,9 @@ export function useProjectReorder(enabled: boolean, context: string, ids: string
     animations.current.forEach(animation => animation.cancel()); animations.current = [];
     const grid = gridRef.current;
     if (!grid || motionReduced()) { before.current.clear(); return; }
-    for (const slot of grid.querySelectorAll<HTMLElement>(':scope > [data-project-slot]')) {
-      const previous = before.current.get(slot.dataset.projectSlot!);
-      if (!previous || slot.dataset.projectSlot === drag?.id || !slot.getClientRects().length) continue;
+    for (const slot of grid.querySelectorAll<HTMLElement>(target.slots)) {
+      const previous = before.current.get(target.slotId(slot));
+      if (!previous || target.slotId(slot) === drag?.id || !slot.getClientRects().length) continue;
       const next = slot.getBoundingClientRect();
       const dx = previous.left - next.left, dy = previous.top - next.top;
       if (Math.abs(dx) + Math.abs(dy) < 1) continue;
@@ -39,34 +69,34 @@ export function useProjectReorder(enabled: boolean, context: string, ids: string
     if (cancel.current) return;
     suppressClick.current = false;
     if (!enabled || event.button !== 0 || !event.isPrimary || event.ctrlKey || event.altKey || event.metaKey) return;
-    const element = event.target as Element;
-    const header = element.closest<HTMLElement>('.panel-header');
-    const panel = header?.closest<HTMLElement>('[data-project-id]');
-    if (!header || !panel || element.closest('button:not(.panel-name), [role="menu"]')) return;
+    const picked = target.item(event.target as Element);
+    if (!picked) return;
+    const panel = picked.element, sourceId = picked.id;
     const grid = event.currentTarget; gridRef.current = grid;
-    const area = grid.closest<HTMLElement>('.grid-area')!;
-    const sourceId = panel.dataset.projectId!;
+    const area = target.area(grid);
     const pointerId = event.pointerId;
     const origin = panel.getBoundingClientRect();
     const startX = event.clientX, startY = event.clientY;
     let x = startX, y = startY, active = false, ended = false, settling = false, frame = 0;
     let draft = [...ids]; let landing: Animation | undefined; let lastIndex = ids.indexOf(sourceId);
-    const slots = () => [...grid.querySelectorAll<HTMLElement>(':scope > [data-project-slot]')];
-    const snapshot = () => { before.current = new Map(slots().filter(slot => slot.getClientRects().length).map(slot => [slot.dataset.projectSlot!, slot.getBoundingClientRect()])); };
+    const slots = () => [...grid.querySelectorAll<HTMLElement>(target.slots)];
+    const snapshot = () => { before.current = new Map(slots().filter(slot => slot.getClientRects().length).map(slot => [target.slotId(slot), slot.getBoundingClientRect()])); };
     const hit = () => {
       const viewport = area.getBoundingClientRect();
       if (x < viewport.left || x > viewport.right || y < viewport.top || y > viewport.bottom) return null;
-      const bounds = grid.getBoundingClientRect();
       // Offset coordinates ignore in-flight FLIP transforms, avoiding reorder
-      // oscillation when a neighboring card animates underneath the pointer.
-      return slots().find(slot => slot.getClientRects().length && x >= bounds.left + slot.offsetLeft && x <= bounds.left + slot.offsetLeft + slot.offsetWidth && y >= bounds.top + slot.offsetTop && y <= bounds.top + slot.offsetTop + slot.offsetHeight)?.dataset.projectSlot || null;
+      // oscillation when a neighboring card animates underneath the pointer. A container that scrolls itself moves its
+      // slots under a still box.
+      const bounds = grid.getBoundingClientRect(), left = bounds.left - (area === grid ? grid.scrollLeft : 0), top = bounds.top - (area === grid ? grid.scrollTop : 0);
+      const found = slots().find(slot => slot.getClientRects().length && x >= left + slot.offsetLeft && x <= left + slot.offsetLeft + slot.offsetWidth && y >= top + slot.offsetTop && y <= top + slot.offsetTop + slot.offsetHeight);
+      return found ? target.slotId(found) : null;
     };
     const update = () => {
       panel.style.setProperty('--drag-x', `${x - startX}px`);
       panel.style.setProperty('--drag-y', `${y - startY}px`);
       const targetId = hit();
       if (!targetId) { lastIndex = -1; return; }
-      const index = slots().findIndex(slot => slot.dataset.projectSlot === targetId);
+      const index = slots().findIndex(slot => target.slotId(slot) === targetId);
       if (index === lastIndex) return;
       lastIndex = index;
       if (targetId === sourceId) return;
@@ -93,8 +123,14 @@ export function useProjectReorder(enabled: boolean, context: string, ids: string
       // the pointer gesture or leave its terminal in a selection operation.
       grid.setPointerCapture(pointerId);
       for (const [name, value] of Object.entries({ left: origin.left, top: origin.top, width: origin.width, height: origin.height })) panel.style.setProperty(`--drag-${name}`, `${value}px`);
+      panel.style.setProperty('--drag-x', '0px'); panel.style.setProperty('--drag-y', '0px');
+      flushSync(() => { setOrder(draft); setDrag({ id: sourceId, targetId: null }); });
+      // A fixed element is placed against its nearest ancestor with a transform or filter (a project card's glass, for
+      // a terminal split), not the window: measured once lifted, the difference keeps it where it was picked up.
+      const placed = panel.getBoundingClientRect();
+      panel.style.setProperty('--drag-left', `${origin.left * 2 - placed.left - (placed.width - origin.width) / 2}px`);
+      panel.style.setProperty('--drag-top', `${origin.top * 2 - placed.top - (placed.height - origin.height) / 2}px`);
       panel.style.setProperty('--drag-x', `${x - startX}px`); panel.style.setProperty('--drag-y', `${y - startY}px`);
-      setOrder(draft); setDrag({ id: sourceId, targetId: null });
       window.getSelection()?.removeAllRanges(); frame = requestAnimationFrame(scroll);
     };
     const timer = window.setTimeout(activate, 260);
@@ -123,11 +159,11 @@ export function useProjectReorder(enabled: boolean, context: string, ids: string
       if (!persist) { snapshot(); draft = [...ids]; setOrder(draft); }
       requestAnimationFrame(() => {
         if (ended) return;
-        const slot = slots().find(slot => slot.dataset.projectSlot === sourceId);
+        const slot = slots().find(slot => target.slotId(slot) === sourceId);
         if (!slot) { clear(); return; }
-        const target = slot.getBoundingClientRect();
+        const home = slot.getBoundingClientRect();
         const reduced = motionReduced();
-        landing = panel.animate([{ transform: getComputedStyle(panel).transform }, { transform: `translate3d(${target.left - origin.left}px, ${target.top - origin.top}px, 0) scale(1)` }], { duration: reduced ? 0 : 170, easing: 'cubic-bezier(.2,.85,.25,1)', fill: 'forwards' });
+        landing = panel.animate([{ transform: getComputedStyle(panel).transform }, { transform: `translate3d(${home.left - origin.left}px, ${home.top - origin.top}px, 0) scale(1)` }], { duration: reduced ? 0 : 170, easing: 'cubic-bezier(.2,.85,.25,1)', fill: 'forwards' });
         Promise.all([landing.finished.catch(() => {}), persist ? commit.current(draft) : Promise.resolve()]).finally(() => { if (!ended) clear(); });
       });
     };

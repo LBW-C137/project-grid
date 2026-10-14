@@ -131,9 +131,10 @@ function findProject(id) {
 function publicState() {
   return {
     projects: store.projects.map(p => {
-      const terminals = terminalIds(p).map((id, index) => {
+      const opened = terminalIds(p);
+      const terminals = shownTerminalIds(p).map(id => {
         const s = sessions.get(id);
-        return { id, title: t('终端 {n}', { n: index + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : localShell().kind), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
+        return { id, title: t('终端 {n}', { n: opened.indexOf(id) + 1 }), shell: s?.shellKind || (p.kind === 'ssh' ? 'bash' : localShell().kind), sessionId: s?.sessionId || null, status: s?.status || 'stopped', codexActive: s?.codexActive || false, agent: s?.codexActive ? s.agent || 'codex' : null,
           agentStartedAt: s?.codexActive ? s.activitySince : null,
           // The model, effort and fast mode its records show, above the reading view's message box.
           agentSettings: s?.codexActive ? s.agentSettings || null : null,
@@ -181,6 +182,18 @@ function publicState() {
 function terminalIds(project) {
   const extra = (project.terminals || []).map(item => item.id);
   return !sessions.has(project.id) && project.primaryTerminalClosed === true && extra.length ? extra : [project.id, ...extra];
+}
+
+// The order a project's terminals are shown in, as they were dragged; titles keep the numbers they were opened with.
+function shownTerminalIds(project) {
+  const ids = terminalIds(project), order = project.terminalOrder || [];
+  const at = id => { const index = order.indexOf(id); return index < 0 ? Infinity : index; };
+  return [...ids].sort((a, b) => at(a) - at(b) || ids.indexOf(a) - ids.indexOf(b));
+}
+function reorderTerminals(projectId, ids) {
+  const project = findProject(projectId), current = terminalIds(project);
+  if (!Array.isArray(ids) || ids.length !== current.length || new Set(ids).size !== ids.length || ids.some(id => !current.includes(id))) throw new Error('终端已变化，请重新拖动。');
+  store.setTerminalOrder(project.id, ids);
 }
 
 function disposeProjectTerminals(project) {
@@ -809,10 +822,10 @@ function registerIpc() {
     startTerminal, setStartupError: (id, message) => startupErrors.set(id, message), broadcast });
   updatesIpc = registerUpdatesIpc({ handle, updateManager, openExternal: url => shell.openExternal(url), getWindow: () => window, dialog, t,
     allowEditorClose, liveTerminalCount: () => [...sessions.values()].filter(session => session.status !== 'exited').length, setQuitting: value => { quitting = value; } });
-  registerWorkspaceIpc({ handle, publicState, dialog, getWindow: () => window, t, addProject: (folder, name) => store.add(folder, name), getRecentProjects: () => store.recentProjects(), existsSync: fs.existsSync,
+  registerWorkspaceIpc({ handle, publicState, dialog, getWindow: () => window, t, addProject: (folder, name) => store.add(folder, name), getRecentProjects: () => store.recentProjects(), getRecentSSH: () => store.recentSSH(), forgetRecentSSH: (host, folder) => store.forgetSSH(host, folder), clearSSHHistory: () => store.clearSSHHistory(), existsSync: fs.existsSync,
     getRecentEntry: folder => store.recentEntry(folder), forgetRecent: folder => store.forget(folder), clearHistory: () => store.clearHistory(),
     getEditorFile, allowEditorClose, confirmTerminalClose, disposeProjectTerminals, findProject, closeProjectPreviews: id => previewResources.closeProject(id),
-    removeProject: id => store.remove(id), forgetBranch, broadcast, acknowledgeProject: id => store.acknowledge(id), reorderProjects: ids => store.reorderProjects(ids),
+    removeProject: id => store.remove(id), forgetBranch, broadcast, acknowledgeProject: id => store.acknowledge(id), reorderProjects: ids => store.reorderProjects(ids), reorderTerminals,
     getSettings: () => store.settings, updateStoreSettings: patch => store.updateSettings(patch),
     rebuildMenus: () => { trayMenu(); if (process.platform === 'darwin') Menu.setApplicationMenu(macMenu()); },
     clearRestorePlans: () => restorePlans.clear(), chooseVoiceModel: model => voiceManager.choose(model) });

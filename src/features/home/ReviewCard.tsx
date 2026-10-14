@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowSquareOut, CheckCircle, CircleNotch, FileText, PaperPlaneRight, Question, XCircle } from '@phosphor-icons/react';
 import type { AgentAction, ConversationEntry, GitStatus } from '../../shared/types';
 import type { Decision } from './decisions';
@@ -9,6 +9,8 @@ import { replyFiles } from '../reading/reply-files';
 import { atPrompt, sendToAgent } from './send-to-agent';
 import { parseDelivery } from './delivery';
 import { showPopup } from '../files/file-popup';
+import { VoiceButton } from '../voice/VoiceButton';
+import { useDictatedBox } from '../voice/voice-input';
 import { passed, reviewHistory, sentBack } from './review-history';
 import { t } from '../../shared/i18n';
 
@@ -38,6 +40,9 @@ export function ReviewCard({ decision, now, kind, onOpen, onDone, onError }: {
 }) {
   const [entries, setEntries] = useState<ConversationEntry[] | null>(null), [actions, setActions] = useState<AgentAction[]>([]), [git, setGit] = useState<GitStatus | null>(null);
   const [feedback, setFeedback] = useState(''), [revising, setRevising] = useState(false), [busy, setBusy] = useState(false), [fullReply, setFullReply] = useState(false);
+  // The comments can be spoken: the words go in at the caret, and are sent with the button as typed ones are.
+  const feedbackBox = useRef<HTMLTextAreaElement>(null), voiceTarget = `review:${decision.id}`;
+  useDictatedBox(voiceTarget, feedbackBox, setFeedback);
   useEffect(() => {
     let live = true;
     void window.agentrix.terminalConversation(decision.terminalId).then(result => { if (live) setEntries(result.ok ? result.value : []); });
@@ -110,9 +115,10 @@ export function ReviewCard({ decision, now, kind, onOpen, onDone, onError }: {
         {git.total > 0 && <p className="review-note">{t('这是工作区里所有未提交的改动，不一定都来自这一轮。')}</p>}
       </section>}
     </>}
-    {revising && <div className="review-feedback">
-      <textarea value={feedback} rows={3} autoFocus placeholder={t('写批语：哪里不对、要改成什么样，比如“错误提示再明确一点”')} onChange={event => setFeedback(event.target.value)}
+    {revising && <div className="review-feedback" data-voice-target={voiceTarget} aria-label={t('批语')}>
+      <textarea ref={feedbackBox} value={feedback} rows={3} autoFocus placeholder={t('写批语：哪里不对、要改成什么样，比如“错误提示再明确一点”；也可以点麦克风说')} onChange={event => setFeedback(event.target.value)}
         onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void revise(); } }} />
+      <VoiceButton terminalId={voiceTarget} sessionId={null} name={t('批语')} size={16} onError={onError} />
     </div>}
     <footer className="decision-actions">
       {revising

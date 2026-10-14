@@ -7,7 +7,7 @@
 }
 :root[data-surface="desktop-glass"]:is([data-theme="daylight"], [data-theme="mono-amber"]) { --desktop-tint: rgba(255, 255, 255, .1); }
 :root[data-surface="desktop-glass"] :is(body, #root) { background: transparent !important; }
-:root[data-surface="desktop-glass"] .app-shell { background: var(--desktop-tint) !important; }
+:root[data-surface="desktop-glass"] .app-shell { --wallpaper: var(--desktop-tint) !important; }
 :root[data-surface="desktop-glass"] .app-shell::before { display: none; }
 :root[data-surface="desktop-glass"] .app-shell :is(.project-panel, .focus-sidebar, .file-preview) { background: var(--desktop-pane) !important; backdrop-filter: none !important; }
 :root[data-surface="desktop-glass"] :is(.project-panel, .focus-sidebar, .file-preview)::before { display: none !important; }

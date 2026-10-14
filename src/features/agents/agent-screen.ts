@@ -155,6 +155,42 @@ function bareChoice(rows: string[]): ScreenChoice | null {
   return { title: above[0], kind: 'menu', options, hint, context: above.slice(1) };
 }
 
+// A numbered menu of Claude's that the forms here do not know (a new prompt, a row they do not expect around it): its
+// cursor on one of the options, the options numbered in order and Claude's key hint under them are enough to lay it out,
+// rather than leave nothing to answer in the reading view. The row just above the options heads it; what lies between
+// the dialog's rule (or the step it asks about) and that row explains it.
+const menuHint = (row: string) => hintRow(row) || /\b(?:esc|enter)\b[^·]*\bto (?:cancel|close|exit|go back|dismiss|select|confirm|continue)\b/i.test(row);
+function looseMenu(rows: string[]): ScreenChoice | null {
+  if (rows.some((row, index) => inputRow('claude', row) && (rule(rows[index - 1] ?? '') || rule(rows[index + 1] ?? '')))) return null;
+  let cursor = rows.length - 1;
+  while (cursor >= 0 && !/^\s*❯\s*\d+\.\s/.test(rows[cursor])) cursor--;
+  const hintAt = cursor < 0 ? -1 : rows.findIndex((row, index) => index > cursor && menuHint(row));
+  // It is still open only when nothing came after it but Claude's footer: an answered prompt has conversation under it.
+  if (hintAt < 0 || rows.slice(hintAt + 1).some(row => row.trim() && !rule(row) && !/^\s*(?:⏵⏵|⏸|◉)/.test(row))) return null;
+  const marked = optionRow(rows[cursor])!, column = marked[1].length + marked[2].length;
+  const under = (row: string) => !!row.trim() && !optionRow(row) && !rule(row) && row.search(/\S/) > column;
+  let first = cursor;
+  for (let index = cursor - 1; index >= 0; index--) {
+    if (optionRow(rows[index])) first = index;
+    else if (rows[index].trim() && !under(rows[index])) break;
+  }
+  const options: ScreenOption[] = [];
+  for (let index = first; index < hintAt; index++) {
+    const match = optionRow(rows[index]);
+    if (match) options.push({ number: Number(match[3]), label: match[4].trim(), detail: '', selected: index === cursor, hotkey: null });
+    else if (under(rows[index]) && options.length) options[options.length - 1].detail = `${options[options.length - 1].detail} ${rows[index].trim()}`.trim();
+  }
+  if (options.length < 2 || options.some((option, index) => option.number !== options[0].number + index)) return null;
+  let top = first - 1;
+  while (top >= 0 && !rows[top].trim()) top--;
+  if (top < 0 || rule(rows[top]) || conversationRow(rows[top])) return null;
+  let start = top - 1;
+  while (start >= 0 && !rule(rows[start]) && !/^\s*▔{8,}/.test(rows[start]) && !conversationRow(rows[start])) start--;
+  const title = rows[top].trim();
+  return { title, kind: permissionTitle(title) ? 'permission' : 'menu', options, hint: rows[hintAt].trim(),
+    context: rows.slice(start + 1, top).filter(row => row.trim() && !rule(row)).map(row => row.trim()) };
+}
+
 function parseChoice(agent: ScreenAgent, rows: string[]): ScreenChoice | null {
   let lastOption = rows.length - 1;
   while (lastOption >= 0 && !optionRow(rows[lastOption])) lastOption--;
@@ -296,5 +332,6 @@ export function parseAgentScreen(agent: ScreenAgent, rows: string[]): AgentScree
   const overlay = parseOverlay(agent, normalized, start);
   const picker = agent === 'codex' ? parseResumePicker(normalized) : null;
   return { banner: parseBanner(agent, normalized, status), status,
-    choice: picker ?? (overlay === 'none' ? parseQuestion(agent, normalized) ?? parseChoice(agent, normalized) : null), overlay: picker ? 'none' : overlay };
+    choice: picker ?? (overlay === 'none' ? parseQuestion(agent, normalized) ?? parseChoice(agent, normalized) ?? (agent === 'claude' ? looseMenu(normalized) : null) : null),
+    overlay: picker ? 'none' : overlay };
 }

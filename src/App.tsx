@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { SquaresFour, FolderSimplePlus, MagnifyingGlass, Check, X, Minus, Square, GearSix, CheckCircle, Info, Circle, Tray, CirclesFour, ListChecks } from '@phosphor-icons/react';
+import { SquaresFour, FolderSimplePlus, MagnifyingGlass, Check, X, Minus, Square, GearSix, CheckCircle, Info, Circle, Tray, CirclesFour } from '@phosphor-icons/react';
 import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SSHAuthPrompt, Workspace } from './shared/types';
 import { ProjectSwitchHud } from './features/workspace/ProjectSwitchHud';
 import { ProjectExplorer } from './features/files/ProjectExplorer';
@@ -24,7 +24,6 @@ import { showPopup, usePopup } from './features/files/file-popup';
 import { ProjectPanel, isRoundComplete } from './features/workspace/ProjectPanel';
 import { SettingsDialog } from './features/settings/SettingsDialog';
 import { DecisionHome } from './features/home/DecisionHome';
-import { TaskBoard } from './features/home/TaskBoard';
 import { useDecisions, type Decision } from './features/home/decisions';
 import { decisionKind, decisionTitle } from './features/home/DecisionCard';
 const FilePreview = lazy(() => import('./features/files/FilePreview').then(module => ({ default: module.FilePreview })));
@@ -80,9 +79,9 @@ export function App() {
   useEffect(() => { if (searchOpen) queryInput.current?.focus(); }, [searchOpen]);
   const { root: focusMotionRoot, focusedId, focus: setFocusedId } = useProjectFocusMotion(workspace?.settings.focusAnimation || 'smooth');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // The top-level page: the decisions to make (home), the workbench grid, or the task overview. Null until chosen: the
-  // window opens on the page the settings name.
-  const [view, setView] = useState<'decisions' | 'workspace' | 'tasks' | null>(null);
+  // The top-level page: the decisions to make (home, with every session beside them) or the workbench grid. Null until
+  // chosen: the window opens on the page the settings name.
+  const [view, setView] = useState<'decisions' | 'workspace' | null>(null);
   // The usage guide: welcome page on first use, "what's new" after an update, or opened from settings.
   // tour: the tutorial in the window itself, a bubble at each place to act.
   const [guide, setGuide] = useState<'tour' | 'keys' | 'news' | null>(null);
@@ -303,7 +302,6 @@ export function App() {
       <nav className="home-nav" aria-label={t('页面')}>
         <button type="button" aria-current={shownView === 'decisions' ? 'page' : undefined} title={t('回到决策 · {key}', { key: shortcut('decisions') })} onClick={() => setView('decisions')}><Tray size={16} />{t('决策')}{decisions.length > 0 && <span className="home-nav-count" aria-label={t('{count} 件待决定', { count: decisions.length })}>{decisions.length}</span>}</button>
         <button type="button" aria-current={shownView === 'workspace' ? 'page' : undefined} onClick={() => setView('workspace')}><CirclesFour size={16} />{t('工作台')}</button>
-        <button type="button" aria-current={shownView === 'tasks' ? 'page' : undefined} onClick={() => setView('tasks')}><ListChecks size={16} />{t('任务')}</button>
       </nav>
       {!!projects.length && <div className="workspace-summary" role="status" aria-label={t('工作区概况')}>
         <span>{projects.length === 1 ? t('1 个项目') : t('{count} 个项目', { count: projects.length })}{projects.some(project => project.kind === 'ssh') ? t(' · 含 SSH') : ''}</span>
@@ -356,8 +354,7 @@ export function App() {
         </div>
       </main>
       {shownView !== 'workspace' && <div className="home-layer">
-        {shownView === 'tasks' ? <TaskBoard projects={projects} decisions={decisions} onOpenProject={id => void focusProject(id)} />
-          : <DecisionHome projects={projects} decisions={decisions} snoozed={snoozed} onOpenProject={id => void focusProject(id)} onOpenDecision={openDecision} onAction={perform} onError={reportError} />}
+        <DecisionHome projects={projects} decisions={decisions} snoozed={snoozed} onOpenProject={id => void focusProject(id)} onOpenDecision={openDecision} onAction={perform} onError={reportError} />
       </div>}
     </div>
     {popup && <Suspense fallback={null}><FilePopup target={popup} onError={reportError} /></Suspense>}

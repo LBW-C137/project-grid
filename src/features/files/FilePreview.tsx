@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowClockwise, CaretLeft, CaretRight, Copy, FileText, FilmStrip, Globe, Image as ImageIcon, MagnifyingGlassMinus, MagnifyingGlassPlus, PencilSimple, SpinnerGap, Terminal, X } from '@phosphor-icons/react';
 import type { FilePreview as Preview, GitDiff, Result } from '../../shared/types';
 import { CodeEditor, findConflicts, resolveConflict, type Conflict } from './CodeEditor';
+import { runEditorKey } from './editor-commands';
 import { t } from '../../shared/i18n';
 const MarkdownPreview = lazy(() => import('./MarkdownPreview').then(module => ({ default: module.MarkdownPreview })));
 
@@ -173,7 +174,7 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
     onChange={event => { setDraft(event.target.value); setSaveMessage(''); }} onFocus={() => { window.agentrix.terminalFocus(projectId, false); window.agentrix.fileTreeFocus(projectId, false); }}
     onKeyDown={event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); }
-      if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); document.execCommand('insertText', false, '  '); }
+      else runEditorKey(event.nativeEvent, event.currentTarget, filePath);
     }} /></CodeEditor>;
   const markdownBody = markdown && previewUrl ? <Suspense fallback={<div className="file-preview-message">{t('正在渲染 Markdown…')}</div>}><MarkdownPreview content={editing ? draft : text || ''} baseUrl={previewUrl} onOpenLink={onOpenLink} /></Suspense> : null;
   let body;

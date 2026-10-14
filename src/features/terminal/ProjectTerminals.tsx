@@ -5,6 +5,7 @@ import { TerminalPane } from './TerminalPane';
 import { ReadingView } from '../reading/ReadingView';
 import { readingShown, setReading, syncReading, useTerminalChoice } from '../reading/reading-mode';
 import { VoiceButton } from '../voice/VoiceButton';
+import { TERMINAL_SPLITS, useReorder } from '../workspace/useProjectReorder';
 import type { Project, ProjectTerminal, Result } from '../../shared/types';
 import { t } from '../../shared/i18n';
 
@@ -33,11 +34,18 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
     const observer = new ResizeObserver(() => setWidth(node.clientWidth));
     observer.observe(node); return () => observer.disconnect();
   }, []);
-  return <div ref={area} className={`panel-terminal-area terminal-grid ${multiple ? 'has-splits' : ''}`} style={{ '--terminal-columns': columns, '--terminal-rows': rows } as CSSProperties}>
-    {terminals.map(terminal => {
+  // The splits are dragged by their title bar to another place, the way project cards are on the grid; each keeps its
+  // terminal, and the order is saved for the project.
+  const reorder = useReorder(multiple, project.id, terminals.map(terminal => terminal.id), ids => onAction(window.agentrix.reorderTerminals(project.id, ids)), TERMINAL_SPLITS);
+  const records = new Map(terminals.map(terminal => [terminal.id, terminal]));
+  const shown = reorder.order ? reorder.order.flatMap(id => records.get(id) ?? []) : terminals;
+  return <div ref={area} className={`panel-terminal-area terminal-grid ${multiple ? 'has-splits' : ''} ${reorder.drag ? 'is-reordering' : ''}`} style={{ '--terminal-columns': columns, '--terminal-rows': rows } as CSSProperties}
+    onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture}>
+    {shown.map(terminal => {
       const stopped = terminal.status === 'stopped' || terminal.status === 'exited';
       const name = `${project.name} ${terminal.title}`;
-      return <section key={terminal.id} className={`terminal-split ${selected === terminal.id ? 'is-active-terminal' : ''}`} data-terminal-id={terminal.id} data-session-id={terminal.sessionId || ''} data-codex-active={terminal.codexActive} aria-label={name} onPointerDownCapture={() => setActiveId(terminal.id)}>
+      return <div key={terminal.id} className={`terminal-slot ${reorder.drag?.id === terminal.id ? 'drag-placeholder' : ''}`} data-terminal-slot={terminal.id}>
+      <section className={`terminal-split ${selected === terminal.id ? 'is-active-terminal' : ''} ${reorder.drag?.id === terminal.id ? 'drag-source' : ''} ${reorder.drag?.targetId === terminal.id ? 'drop-target' : ''}`} data-terminal-id={terminal.id} data-session-id={terminal.sessionId || ''} data-codex-active={terminal.codexActive} aria-label={name} onPointerDownCapture={() => setActiveId(terminal.id)}>
         {multiple && <header className="terminal-split-header"><span>{terminal.title}</span><span className={`split-status ${terminal.codexActivity === 'working' ? 'working' : terminal.codexActivity === 'complete' ? 'complete' : ''}`}>{label(terminal)}</span>
           <button className="icon-button" title={t('重启此终端')} aria-label={t('重启 {name}', { name })} onClick={() => void onAction(window.agentrix.restartTerminal(terminal.id))}><ArrowCounterClockwise size={13} /></button>
           <button className="icon-button" title={t('关闭此终端')} aria-label={t('关闭 {name}', { name })} onClick={() => void onAction(window.agentrix.closeTerminal(terminal.id))}><X size={13} /></button>
@@ -54,7 +62,7 @@ export function ProjectTerminals({ project, focused, fontSize, activeId, setActi
           {stopped && terminal.sessionId && <button className="text-button" onClick={() => void onAction(window.agentrix.startTerminal(terminal.id))}>{t('重新启动')}</button>}
           {terminal.codexActive && <span className="session-label">{terminal.agent === 'claude' ? 'CLAUDE' : 'CODEX'}</span>}
         </div></footer>}
-      </section>;
+      </section></div>;
     })}
   </div>;
 }

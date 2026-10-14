@@ -38,12 +38,13 @@
 .reading-markdown ul > li::before { content: ''; position: absolute; left: -15px; top: .72em; width: 7px; height: 7px; border-radius: 50%; background: #ff6b9a; box-shadow: 0 0 6px rgba(255, 107, 154, .55); }
 .reading-markdown ul ul > li::before { background: transparent; box-shadow: inset 0 0 0 1.5px #b9cbdc; }
 .reading-markdown ol > li::marker { color: #9fd0ff; font-weight: 600; }
-.reading-markdown :not(pre) > code { padding: 1px 6px; border-radius: 2.5px; background: rgba(120, 170, 255, .16); box-shadow: inset 0 0 0 1px rgba(150, 190, 255, .22); color: #bcdcff; font: 500 calc(12px * var(--reading-text)) var(--font-mono); white-space: break-spaces; }
+.reading-markdown :not(pre) > code { padding: 1px 6px; border-radius: 2.5px; background: rgba(120, 170, 255, .16); box-shadow: inset 0 0 0 1px rgba(150, 190, 255, .22); color: #bcdcff; font: 500 .88em var(--font-mono); white-space: break-spaces; }
 .reading-markdown strong { color: #ffffff; font-weight: 700; }
 .reading-markdown a { color: #8fcbff; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .reading-markdown blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid rgba(255, 255, 255, .25); color: #b9cbdc; }
 .reading-markdown hr { border: 0; border-top: 1px solid rgba(255, 255, 255, .12); margin: 12px 0; }
-.reading-markdown table { border-collapse: collapse; margin: 8px 0; font-size: calc(12px * var(--reading-text)); display: block; overflow-x: auto; }
+/* A table reads at the size of the text around it: smaller, its cells were too small to read. */
+.reading-markdown table { border-collapse: collapse; margin: 8px 0; font-size: inherit; display: block; overflow-x: auto; }
 .reading-markdown :is(th, td) { padding: 5px 10px; border: 1px solid rgba(255, 255, 255, .12); }.reading-markdown th { background: rgba(255, 255, 255, .06); text-align: left; }
 .reading-code { margin: 8px 0; border-radius: 4.5px; background: rgba(3, 10, 18, .55); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); overflow: hidden; }
 .reading-code-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 12px; font-size: calc(11px * var(--reading-text)); color: #9fb5ce; background: rgba(255, 255, 255, .04); }
@@ -64,6 +65,7 @@
 /* The agent's state, as the last line of the conversation. */
 .reading-status { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 6px; font-size: calc(13px * var(--reading-text)); line-height: 1.5; color: #9fb5ce; min-width: 0; }
 .reading-status > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reading-status > .text-button { flex: none; }
 .reading-status > small { flex: none; font-size: calc(12px * var(--reading-text)); opacity: .7; font-variant-numeric: tabular-nums; }
 .reading-status-mark { flex: none; width: 14px; font-style: normal; text-align: center; }
 /* Claude's mark changes shape as its CLI's spinner does (· ✢ ✳ ✶ ✻ ✽ and back): a turning ✻ looks the same every 60°
@@ -87,7 +89,7 @@
 .reading-command > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b9cbdc; }
 .reading-command small { flex: none; padding: 1px 5px; border-radius: 3px; background: rgba(143, 203, 255, .15); color: #bfe3ff; font-size: calc(10px * var(--reading-text)); }
 .reading-composer:focus-within { box-shadow: inset 0 0 0 1px rgba(184, 215, 239, .5), 0 0 0 3px rgba(143, 203, 255, .12); }
-.reading-composer textarea { flex: 1; min-width: 0; max-height: 140px; field-sizing: content; resize: none; border: 0; outline: 0; padding: 5px 0; background: transparent; color: #f1f7ff; font: 400 calc(13px * var(--reading-text))/1.55 var(--font-ui); }
+.reading-composer textarea { flex: 1; min-width: 0; max-height: 140px; field-sizing: content; resize: none; border: 0; outline: 0; padding: 5px 0; background: transparent; color: #f1f7ff; font: 400 calc(15.6px * var(--reading-text))/1.55 var(--font-ui); }
 .reading-composer textarea::placeholder { color: #8ea6c1; }
 /* The model, effort and speed the agent runs with, on the message box's top edge at its right end. */
 .reading-agent-settings { position: absolute; top: -9px; right: 14px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; max-width: calc(100% - 28px); height: 18px; padding: 0 8px; border-radius: 9px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 calc(11px * var(--reading-text))/18px var(--font-ui); color: #c3d4e6; background: rgba(10, 16, 26, .94); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }

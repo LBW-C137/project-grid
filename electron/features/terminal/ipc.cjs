@@ -51,6 +51,10 @@ function registerTerminalIpc({ handle, listen, findProject, getSession, hasSessi
         const project = getProjectById(s.projectId);
         if (project) applyActivity(project, s, { threadId: s.claudeSessionId, turnId: null, state: 'interrupted', updatedAt: now() });
       }
+      // Claude runs no hook once its permission prompt is answered, so the key that answers it ends the waiting notice:
+      // Enter, a number or Escape, typed in the terminal or sent by the reading view's choice. Otherwise the notice
+      // (and the reading view's switch to the terminal) would last until the round ends.
+      else if (s.needsInput && s.codexActive && s.agent === 'claude' && /^(?:\r|\x1b|[1-9])$/.test(data)) { s.needsInput = null; scheduleState(); }
       if (!s.codexActive && !isTerminalResponse(data)) {
         const wasReady = s.ready && !s.inputDirty;
         s.inputDirty = true; if (data.includes('\r') || data.includes('\n')) s.ready = false;

@@ -75,7 +75,7 @@ flowchart LR
 
 ### 🧭 Decide first, then dive in
 
-Agentrix opens on **Decide**: everything across your projects that needs your call, in one place — approvals, questions, choices, sign-ins — each titled by what it would do ("Run a command: npm run migrate") with the command itself. An answer is sent only when you confirm it, after checking the question has not changed; or put it off, or open the source. Decide · Workbench · Tasks in the title bar switch at any time: the workbench is the project grid, and Tasks shows what each session is doing and waiting on.
+Agentrix opens on **Decide**: everything across your projects that needs your call, in one place — approvals, questions, choices, sign-ins — each titled by what it would do ("Run a command: npm run migrate") with the command itself. An answer is sent only when you confirm it, after checking the question has not changed; or put it off, or open the source. Beside the decisions, a column shows what every session is doing and waiting on, all on one page. Decide · Workbench in the title bar switch at any time: the workbench is the project grid.
 
 ### 🧩 Direct every project from one screen
 

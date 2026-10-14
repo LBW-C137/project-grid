@@ -249,14 +249,39 @@ test('removed local projects stay in a bounded recent list that can be pruned or
   assert.deepEqual(new WorkspaceStore(file).history, []);
 });
 
-test('SSH projects and malformed history entries are not remembered', t => {
+test('SSH projects go to their own history, and malformed history entries are not remembered', t => {
   const { file, store } = fixture(t);
-  store.remember({ kind: 'ssh', path: '/srv/app', name: 'app' });
+  store.remember({ kind: 'ssh', path: '/srv/app', name: 'app', ssh: { host: 'app-host' } });
   assert.equal(store.history.length, 1, 'only the local fixture project');
+  assert.deepEqual(store.sshHistory.map(item => [item.host, item.path]), [['app-host', '/srv/app']]);
   const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
   saved.history = [{ path: 'relative/folder' }, { path: 42 }, null, { path: path.resolve('/abs/one'), name: 'one', lastOpenedAt: 5 }, { path: path.resolve('/abs/one') }];
   fs.writeFileSync(file, JSON.stringify(saved));
   assert.deepEqual(new WorkspaceStore(file).history, [{ path: path.resolve('/abs/one'), name: 'one', lastOpenedAt: 5 }]);
+});
+
+test('SSH connections once opened are listed again when not open, newest first, and can be forgotten or cleared', t => {
+  const { file, store } = fixture(t);
+  const demo = store.addSSH({ host: 'linux-dev', path: '~/apps/demo', name: '远程项目' }).project;
+  store.addSSH({ host: 'user@10.0.0.2', path: '/srv/api' });
+  assert.deepEqual(store.recentSSH(), [], 'open connections are not offered again');
+  store.remove(demo.id);
+  assert.deepEqual(new WorkspaceStore(file).recentSSH().map(item => [item.host, item.path, item.name]), [['linux-dev', '~/apps/demo', '远程项目']], 'kept after removal, with its name');
+  const reopened = new WorkspaceStore(file);
+  reopened.addSSH({ host: 'linux-dev', path: '~/apps/demo', name: '远程项目' });
+  assert.deepEqual(reopened.recentSSH(), [], 're-adding hides it again');
+  for (let index = 0; index < 35; index++) reopened.remove(reopened.addSSH({ host: `h${index}`, path: '/srv/x' }).project.id);
+  const listed = new WorkspaceStore(file).recentSSH();
+  assert.equal(listed.length, 30, 'thirty entries at most');
+  assert.equal(listed[0].host, 'h34', 'newest first');
+  reopened.forgetSSH('h34', '/srv/x');
+  assert.equal(new WorkspaceStore(file).recentSSH().some(item => item.host === 'h34'), false);
+  reopened.clearSSHHistory();
+  assert.deepEqual(new WorkspaceStore(file).sshHistory, []);
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  saved.sshHistory = [{ host: '-oProxyCommand=x', path: '/srv' }, { host: 'ok', path: 'relative' }, null, { host: 'ok', path: '/srv/ok', name: 'ok', lastOpenedAt: 7 }, { host: 'ok', path: '/srv/ok' }];
+  fs.writeFileSync(file, JSON.stringify(saved));
+  assert.deepEqual(new WorkspaceStore(file).sshHistory, [{ host: 'ok', path: '/srv/ok', name: 'ok', lastOpenedAt: 7 }], 'unsafe or malformed entries are dropped');
 });
 
 test('each terminal remembers whether Claude Code or Codex ran, and an unfinished Claude turn', t => {
