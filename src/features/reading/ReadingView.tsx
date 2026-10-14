@@ -7,7 +7,7 @@ import { actionText, stepVerb } from '../agents/ActivityPane';
 import { dictateInto } from '../voice/voice-input';
 import { readScreen, useScreen } from '../terminal/terminal-screen';
 import { parseAgentScreen } from '../agents/agent-screen';
-import { cliCloseKey, cliDialogShown, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isSideConversation } from './cli-panel';
+import { cliCloseKey, cliDialogShown, cliFooter, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
 import { ReadingQuestion } from './ReadingQuestion';
@@ -399,9 +399,11 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       if (own) edit('');
       setSessionsOpen(true); return;
     }
-    // What the CLI shows above its input before the command is typed, to tell its output from what was there.
-    const now = readScreen(terminal.id);
-    const shown = typed && now ? cliHistory(agentKind, now.rows, parseAgentScreen(agentKind, now.rows)) : undefined;
+    // What the CLI shows above its input before the command is typed, to tell its output from what was there, and its
+    // footer, where a setting the command changes shows.
+    const now = readScreen(terminal.id), parsedNow = typed && now ? parseAgentScreen(agentKind, now.rows) : null;
+    const shown = now && parsedNow ? cliHistory(agentKind, now.rows, parsedNow) : undefined;
+    const footer = now && parsedNow && isCliIdle(agentKind, now.rows, parsedNow) ? cliFooter(parsedNow) : undefined;
     const pendingId = text && !typed && !side ? echo(text, attached) : null;
     if (pendingId) toBottom();
     // Text left in the CLI's own input would be sent along with this message. An earlier message of ours whose Enter
@@ -442,7 +444,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     // resume list shows as a choice of its own.
     const name = text.split(/\s/)[0], listed = commands.find(command => command.name === name);
     const inConversation = typed && (listed?.view === 'reading' && !(agentKind === 'codex' && name === '/side') || agentKind === 'codex' && name === '/resume');
-    if (typed && !inConversation) cli.begin(text, shown);
+    if (typed && !inConversation) cli.begin(text, shown, footer);
     if (clears(terminal.agent, text)) { const ids = new Set(conversationEntries.map(entry => entry.id)); cleared.set(conversation, ids); setHidden(ids); }
     window.agentrix.writeTerminal(terminal.id, '\r');
     if (text && !typed) await submitted(agentKind, text);
@@ -612,7 +614,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       <div className="reading-scroll" ref={scroller} tabIndex={0}><div className="reading-content" ref={content} style={{ visibility: entries.length && !ready ? 'hidden' : undefined }}>{body}<PendingPromptEntries prompts={pending} undelivered={undelivered} onResend={resend} onDiscard={prompt => cancelEcho(prompt.id)} />
         {status}</div></div>
       {signIn && <ReadingSignIn agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={signIn} terminalId={terminal.id} projectId={projectId} onError={onError} />}
-      {!screen.choice && !sessionsOpen && !signIn && cli.panel && <ReadingCliPanel command={cli.panel.command} rows={cli.panel.rows} done={!!cli.panel.done} terminalId={terminal.id} onClose={() => { void closeCommand(); input.current?.focus(); }} />}
+      {!screen.choice && !sessionsOpen && !signIn && cli.panel && <ReadingCliPanel command={cli.panel.command} rows={cli.panel.rows} done={!!cli.panel.done} terminalId={terminal.id} onClose={() => { void closeCommand(); input.current?.focus(); }} onShowTerminal={onShowTerminal} />}
       {!stuck && <div className="reading-latest">
         {unseen > 0 && <span className="reading-unseen" role="status">{t('{count} 条新消息', { count: unseen })}</span>}
         <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={() => toBottom('smooth')}><ArrowDown size={18} /></button>

@@ -87,9 +87,11 @@ try {
   await guide.waitFor();
   const version = (await page.evaluate(() => window.agentrix.getState())).value.version;
   await guide.getByRole('heading', { name: `本次更新 v${version}`, exact: true }).waitFor();
+  await page.screenshot({ path: path.join(output, 'guide-whats-new.png') });
   await guide.getByRole('button', { name: '上一步', exact: true }).click();
   await guide.getByRole('heading', { name: '常用快捷键', exact: true }).waitFor();
   assert.equal(await guide.locator('.guide-keys div', { hasText: '添加项目' }).locator('kbd').innerText(), 'Ctrl+Shift+N', 'the guide shows the shortcuts in use');
+  assert.equal(await guide.locator('.guide-keys div', { hasText: '下一个项目' }).locator('kbd').innerText(), 'Ctrl+Shift+→', 'an arrow key reads as an arrow');
   await page.screenshot({ path: path.join(output, 'guide-shortcuts.png') });
   await guide.getByRole('button', { name: '跳过', exact: true }).click();
   await guide.waitFor({ state: 'detached' });

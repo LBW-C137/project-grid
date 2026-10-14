@@ -13,7 +13,7 @@ const execGit = require('node:util').promisify(require('node:child_process').exe
 
 const integrationDir = path.resolve(__dirname, '..', 'integration');
 const sshPath = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/OpenSSH/ssh.exe') : 'ssh';
-const waitFor = async callback => { const started = Date.now(); while (Date.now() - started < 15000) { if (await callback()) return; await new Promise(resolve => setTimeout(resolve, 50)); } throw new Error('Timed out waiting for SSH test'); };
+const waitFor = async (callback, what = 'SSH test') => { const started = Date.now(); while (Date.now() - started < 15000) { if (await callback()) return; await new Promise(resolve => setTimeout(resolve, 50)); } throw new Error(`Timed out waiting for ${what}`); };
 
 test('native OpenSSH reuses host config, authenticates once and carries terminal plus file requests', { timeout: 30000 }, async t => {
   const fixture = await createSSHFixture();
@@ -52,7 +52,50 @@ test('native OpenSSH reuses host config, authenticates once and carries terminal
   await assert.rejects(connection.request('directory', { path: '' }), /关闭|断开/);
 });
 
-test('native SSH prompts for a first host key and password without writing credentials to project config', { timeout: 30000 }, async t => {
+test('terminals on one host share its SSH connection: one login, their own output, and each closes on its own', { timeout: 30000 }, async t => {
+  const fixture = await createSSHFixture({ password: true });
+  const askpassPath = process.platform === 'win32' ? path.join(fixture.directory, 'askpass.exe') : undefined;
+  if (askpassPath) await fs.copyFile(path.join(integrationDir, 'ssh-askpass.exe'), askpassPath);
+  const prompts = new Set();
+  const auth = await new SSHAuthServer(queue => {
+    const prompt = queue[0];
+    if (prompt && !prompts.has(prompt.id)) { prompts.add(prompt.id); setImmediate(() => auth.answer(prompt.id, fixture.secret)); }
+  }).start();
+  const project = { id: randomUUID(), kind: 'ssh', path: process.platform === 'win32' ? '/srv/fixture' : fixture.project, ssh: { host: 'fixture', configFile: fixture.configFile } };
+  const events = [], output = {}, opened = [];
+  const open = key => {
+    const connection = new RemoteConnection(project, { integrationDir, auth, sshPath, askpassPath, sessionKey: key, onEvent: event => events.push(event) });
+    output[key] = ''; connection.onData(data => { output[key] += data; }); opened.push(connection);
+    return connection;
+  };
+  t.after(async () => { for (const connection of opened) connection.close(); auth.close(); await fixture.close(); });
+  const prompted = key => waitFor(() => events.some(event => event.type === 'shell-prompt' && event.sessionKey === key), `the ${key} prompt`);
+  const first = open('first'), second = open('second');
+  await Promise.all([first.ready, second.ready, prompted('first'), prompted('second')]);
+  assert.equal(fixture.workers, 1);
+  assert.equal(prompts.size, 1);
+  second.write('printf "SECOND_OK\\n"\r');
+  await waitFor(() => output.second.includes('SECOND_OK'), 'the second terminal');
+  assert.ok(!output.first.includes('SECOND_OK'));
+  first.close();
+  second.write('printf "STILL_OK\\n"\r');
+  await waitFor(() => output.second.includes('STILL_OK'), 'the second terminal after the first closed');
+  assert.equal((await second.request('directory', { path: '', offset: 0 })).path, '');
+  const third = open('third');
+  await Promise.all([third.ready, prompted('third')]);
+  assert.equal(fixture.workers, 1);
+  const link = second.link.child;
+  second.close(); third.close();
+  // The connection ends with its last terminal, by itself, and the next terminal logs in again.
+  await waitFor(() => link.exitCode !== null || link.signalCode !== null, 'the connection to end');
+  assert.equal(link.exitCode, 0);
+  const fourth = open('fourth');
+  await fourth.ready;
+  assert.equal(fixture.workers, 2);
+  assert.equal(prompts.size, 2);
+});
+
+test('native SSH prompts for a first host key and password without writing credentials to project config',{ timeout: 30000 }, async t => {
   const fixture = await createSSHFixture({ password: true, unknownHost: true, nativeWorker: false });
   const askpassPath = process.platform === 'win32' ? path.join(fixture.directory, 'askpass.exe') : undefined;
   if (askpassPath) await fs.copyFile(path.join(integrationDir, 'ssh-askpass.exe'), askpassPath);

@@ -1,0 +1,22 @@
+---
+name: theme-style-overrides
+description: Use when changing a size, color or font of any Agentrix view (reading view text, cards, composer), or when a CSS change builds fine but makes no visible difference in the app.
+---
+
+# Theme stylesheets override feature styles
+
+Every theme sets `data-theme` on `<html>`, and `src/shared/styles/clarity.css` (with `monochrome.css` and the other
+theme files) restyles feature classes under `:root[data-theme] …`. Those rules win over a feature's own stylesheet,
+so a change made only in `src/features/<feature>/*.css` can do nothing at all.
+
+## Rule
+
+- Before changing a size or color, search the theme files for the same selector:
+  `grep -rn "reading-scroll" src/shared/styles` (use the class you change). Change both, or move the value into a
+  variable both use.
+- The reading view's text sizes all multiply by `--reading-text` (set on `:root` in `reading.css`), the theme's
+  overrides included (`clarity.css`: `.reading-scroll`, and `.focus-mode .reading-scroll`, the project opened full
+  screen). A new font size in the reading view is written `calc(13px * var(--reading-text))`.
+- Verify in the app, not by reading CSS: in a desktop probe read
+  `getComputedStyle(element).fontSize` on an isolated profile (`AGENTRIX_DATA_DIR`), and take a screenshot in the
+  晴空 theme.

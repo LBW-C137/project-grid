@@ -3,11 +3,11 @@ const path = require('node:path');
 const os = require('node:os');
 
 // Built-in commands as the installed CLIs answer them (checked live with scripts/slash-live.mjs against Claude Code
-// 2.1.294, which no longer knows /agents, /todos, /vim or /pr-comments).
+// 2.1.294, which no longer knows /agents, /todos, /vim or /pr-comments; /fast and /effort as 2.1.296 draws them).
 const BUILTINS = {
   claude: {
     terminal: [
-      ['help', '帮助与快捷键'], ['model', '切换模型'], ['resume', '恢复之前的对话'], ['status', '版本、账号与连接状态'],
+      ['help', '帮助与快捷键'], ['model', '切换模型'], ['fast', '切换快速模式'], ['effort', '推理强度'], ['resume', '恢复之前的对话'], ['status', '版本、账号与连接状态'],
       ['config', '设置'], ['permissions', '工具权限'], ['mcp', 'MCP 服务器'], ['hooks', 'Hook 设置'],
       ['memory', '编辑记忆文件'], ['context', '上下文占用'], ['cost', '用量与费用'], ['usage', '套餐用量'], ['doctor', '检查安装'],
       ['clear', '清空对话'], ['compact', '压缩对话'], ['rewind', '回退到之前的位置'], ['export', '导出对话'], ['add-dir', '添加工作目录'],

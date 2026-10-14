@@ -100,20 +100,29 @@ try {
   assert.equal(await searchBox.evaluate(input => input === document.activeElement), true, 'Ctrl+Shift+F opens and focuses search');
   await page.keyboard.type('abc'); await page.keyboard.press('Control+a');
   assert.deepEqual(await searchBox.evaluate(input => [input.selectionStart, input.selectionEnd]), [0, 3], 'inside a text box Ctrl+A still selects all');
+  await page.keyboard.press('End'); await page.keyboard.press('Control+Shift+ArrowLeft');
+  assert.deepEqual(await searchBox.evaluate(input => [input.selectionStart, input.selectionEnd, input === document.activeElement]), [0, 3, true], 'with text in it, Ctrl+Shift+Left selects a word');
   assert.equal(await page.locator('dialog[open]').count(), 0, 'and does not open add project');
   await page.keyboard.press('Escape');
   await waitFor(async () => (await titlebar.getByRole('textbox', { name: '搜索项目', exact: true }).count()) === 0, 'Escape clears and closes search');
-  // Ctrl+Tab moves between cards without expanding them; Ctrl+Shift+Enter expands and restores.
+  // Ctrl+Shift with an arrow moves between cards as they sit in the grid (three by two here) without expanding them;
+  // Ctrl+Shift+Enter expands and restores.
   const focusedCard = () => page.evaluate(() => document.activeElement?.closest('[data-project-id]')?.dataset.projectId || null);
-  await page.keyboard.press('Control+Tab');
-  const firstCard = await page.locator('.project-panel').first().getAttribute('data-project-id');
-  await waitFor(async () => (await focusedCard()) === firstCard, 'Ctrl+Tab focuses the first card');
-  await page.keyboard.press('Control+Tab');
-  const secondCard = await page.locator('.project-panel').nth(1).getAttribute('data-project-id');
-  await waitFor(async () => (await focusedCard()) === secondCard, 'Ctrl+Tab moves to the next card');
+  const cardAt = index => page.locator('.project-panel').nth(index).getAttribute('data-project-id');
+  await page.keyboard.press('Control+Shift+ArrowRight');
+  const firstCard = await cardAt(0);
+  await waitFor(async () => (await focusedCard()) === firstCard, 'Ctrl+Shift+Right focuses the first card');
+  await page.keyboard.press('Control+Shift+ArrowRight');
+  const secondCard = await cardAt(1);
+  await waitFor(async () => (await focusedCard()) === secondCard, 'Ctrl+Shift+Right moves to the next card');
+  await page.keyboard.press('Control+Shift+ArrowDown');
+  const belowCard = await cardAt(4);
+  await waitFor(async () => (await focusedCard()) === belowCard, 'Ctrl+Shift+Down moves to the card below');
+  await page.keyboard.press('Control+Shift+ArrowUp');
+  await waitFor(async () => (await focusedCard()) === secondCard, 'Ctrl+Shift+Up moves to the card above');
   assert.equal(await page.locator('.focus-mode').count(), 0, 'moving between cards never expands one');
-  await page.keyboard.press('Control+Shift+Tab');
-  await waitFor(async () => (await focusedCard()) === firstCard, 'Ctrl+Shift+Tab moves back');
+  await page.keyboard.press('Control+Shift+ArrowLeft');
+  await waitFor(async () => (await focusedCard()) === firstCard, 'Ctrl+Shift+Left moves back');
   await page.keyboard.press('Control+Shift+Enter');
   await waitFor(async () => (await page.locator(`.focus-mode [data-project-id="${firstCard}"].is-focused`).count()) === 1, 'Ctrl+Shift+Enter expands the current project');
   await page.keyboard.press('Control+Shift+Enter');

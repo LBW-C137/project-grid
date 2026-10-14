@@ -69,7 +69,8 @@ function getSSHInfo(options) {
 function sshArguments(connection) {
   const args = ['-T', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', 'RemoteCommand=none'];
   if (connection.configFile) args.push('-F', connection.configFile);
-  args.push('--', connection.host, 'exec python3 -u -c \'import base64,sys;exec(compile(base64.b64decode(sys.stdin.buffer.readline()),"<agentrix>","exec"))\'');
+  // The worker comes compressed on the first line (remote-connection.cjs): a quarter of the bytes to send.
+  args.push('--', connection.host, 'exec python3 -u -c \'import base64,sys,zlib;exec(compile(zlib.decompress(base64.b64decode(sys.stdin.buffer.readline())),"<agentrix>","exec"))\'');
   return args;
 }
 

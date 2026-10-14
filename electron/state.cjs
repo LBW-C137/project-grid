@@ -26,8 +26,8 @@ const defaults = { startView: DEFAULT_START, surface: 'glass', glassBackground: 
 
 // Keyboard shortcuts the user changed, by action; defaults live in the window (src/features/shortcuts/shortcuts.ts).
 // "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
-const SHORTCUT_ACTIONS = ['search', 'addProject', 'voice', 'overview', 'decisions', 'explorer', 'settings', 'nextProject', 'previousProject', 'maximize', 'fullscreen', 'newTerminal', 'removeProject'];
-const SHORTCUT = /^(?:(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:F(?:[1-9]|1[0-2]))|(?=Ctrl\+|Alt\+)(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:[A-Z0-9,./;'[\]\\=`-]|Space|Tab|Enter))$/;
+const SHORTCUT_ACTIONS = ['search', 'addProject', 'voice', 'overview', 'decisions', 'explorer', 'settings', 'nextProject', 'previousProject', 'projectAbove', 'projectBelow', 'maximize', 'fullscreen', 'newTerminal', 'removeProject'];
+const SHORTCUT = /^(?:(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:F(?:[1-9]|1[0-2]))|(?=Ctrl\+|Alt\+)(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:[A-Z0-9,./;'[\]\\=`-]|Space|Tab|Enter|Left|Right|Up|Down))$/;
 function cleanShortcuts(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
   return Object.fromEntries(SHORTCUT_ACTIONS.filter(action => typeof input[action] === 'string' && SHORTCUT.test(input[action])).map(action => [action, input[action]]));

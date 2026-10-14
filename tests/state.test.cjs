@@ -196,6 +196,7 @@ test('settings reject invalid layout and font values', () => {
   assert.equal(cleanSettings({ guideVersion: '0.5.16' }).guideVersion, '0.5.16');
   assert.equal(cleanSettings({ guideVersion: '<script>' }).guideVersion, '', 'only a version number marks the guide as seen');
   assert.deepEqual(cleanSettings({ shortcuts: { search: 'Ctrl+Shift+K', addProject: 'A', voice: 'Alt+V', overview: 'F6', settings: 'Ctrl+rm', nextProject: 'Ctrl+Tab', unknown: 'Ctrl+Q' } }).shortcuts, { search: 'Ctrl+Shift+K', voice: 'Alt+V', overview: 'F6', nextProject: 'Ctrl+Tab' }, 'only valid combinations for known actions are kept');
+  assert.deepEqual(cleanSettings({ shortcuts: { projectAbove: 'Ctrl+Shift+Up', projectBelow: 'Shift+Down', previousProject: 'Alt+Left' } }).shortcuts, { projectAbove: 'Ctrl+Shift+Up', previousProject: 'Alt+Left' }, 'an arrow needs Ctrl or Alt with it');
   assert.equal(cleanSettings({ language: 'en' }).language, 'en');
   assert.equal(cleanSettings({ focusAnimation: 'invalid' }).focusAnimation, 'smooth');
   assert.equal(cleanSettings({ focusAnimation: 'system' }).focusAnimation, 'system');

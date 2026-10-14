@@ -38,11 +38,11 @@ function publish(session: Session, snapshot: Snapshot) {
   session.view = { panel: snapshot.panel, busy };
   session.listeners.forEach(listener => listener());
 }
-function begin(session: Session, terminalId: string, agent: ScreenAgent, command: string, history?: string[]) {
+function begin(session: Session, terminalId: string, agent: ScreenAgent, command: string, history?: string[], footer?: string) {
   session.stop?.();
   let latest = readScreen(terminalId), subscribing = true;
   const before = history ?? (latest ? cliHistory(agent, latest.rows, parseAgentScreen(agent, latest.rows)) : undefined);
-  const pending: CliCommand = { id: `cli-output-${++sequence}`, command, at: Date.now(), observed: false, idleSince: null, output: [], dialog: [], before };
+  const pending: CliCommand = { id: `cli-output-${++sequence}`, command, at: Date.now(), observed: false, idleSince: null, output: [], dialog: [], before, footer };
   publish(session, { pending, panel: null });
   const update = (observation: boolean) => {
     const current = session.snapshot.pending;
@@ -56,7 +56,9 @@ function begin(session: Session, terminalId: string, agent: ScreenAgent, command
     if (next.done) {
       session.stop?.(); session.stop = null;
       const rows = cliResultRows(next.command);
-      publish(session, { pending: null, panel: rows.length ? { command, rows, done: true } : null });
+      // Finished with nothing printed, it says so and stays until closed: a spinner would mean it still runs. A command
+      // that asked something was answered in the reading view's own card, and leaves nothing more.
+      publish(session, { pending: null, panel: rows.length || !next.command.chose ? { command, rows, done: true } : null });
     } else if (observation || next.command.idleSince !== current.idleSince) {
       const panel = screen.choice ? null : isCliIdle(agent, latest.rows, screen) && !side
         ? agent === 'codex' && next.command.observed && !next.command.chose ? { command, rows: next.command.output } : session.snapshot.panel
@@ -91,7 +93,7 @@ export function useReadingCli(terminalId: string, sessionId: string | null, agen
   return {
     panel: snapshot.panel,
     busy: snapshot.busy,
-    begin: (command: string, history?: string[]) => begin(session, terminalId, agent, command, history),
+    begin: (command: string, history?: string[], footer?: string) => begin(session, terminalId, agent, command, history, footer),
     close: () => close(session),
   };
 }

@@ -15,6 +15,7 @@ import { terminalFontFamily } from './features/terminal/terminal-font';
 import { VoiceOverlay } from './features/voice/VoiceButton';
 import { applyLanguage, t } from './shared/i18n';
 import { actionFor, applyShortcuts, editingKeyInField, shortcut } from './features/shortcuts/shortcuts';
+import { gridColumns, gridNeighbor } from './features/workspace/grid-navigation';
 import { quickDictation } from './features/voice/voice-input';
 import { UsageGuide } from './features/guide/UsageGuide';
 import { GuideTour } from './features/guide/GuideTour';
@@ -234,11 +235,11 @@ export function App() {
       }
       else if (action === 'maximize') { if (focusedId) void returnToGrid(); else { const id = currentProject(); if (id) void focusProject(id); } }
       else if (action === 'fullscreen') api.toggleFullScreen();
-      else if (action === 'nextProject' || action === 'previousProject') {
-        const ids = navigation.current, current = currentProject();
-        if (!ids.length) return;
-        const index = current ? ids.indexOf(current) : -1, forward = action === 'nextProject';
-        const next = index < 0 ? ids[forward ? 0 : ids.length - 1] : ids[(index + (forward ? 1 : ids.length - 1)) % ids.length];
+      else if (action === 'nextProject' || action === 'previousProject' || action === 'projectAbove' || action === 'projectBelow') {
+        // The project beside this one where the cards sit in the grid (Ctrl+Shift with an arrow by default).
+        const direction = ({ nextProject: 'right', previousProject: 'left', projectAbove: 'up', projectBelow: 'down' } as const)[action];
+        const next = gridNeighbor(navigation.current, currentProject(), direction);
+        if (!next) return;
         // Expanded: preserve the editor guard. Overview: focus the card without expanding it.
         if (focusedId) void focusProject(next).then(accepted => {
           if (!accepted) return;
@@ -287,7 +288,7 @@ export function App() {
   const normalizedQuery = query.toLowerCase();
   const visible = projects.filter(p => !normalizedQuery || `${p.name} ${p.path} ${p.ssh?.host || ''}`.toLowerCase().includes(normalizedQuery));
   const visibleIds = new Set(visible.map(p => p.id));
-  const columns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(Math.max(visible.length, 1)))));
+  const columns = gridColumns(visible.length);
   const rows = Math.max(1, Math.ceil(visible.length / columns));
   const focus = projects.find(p => p.id === focusedId);
   navigation.current = (focusedId ? orderedProjects : orderedProjects.filter(project => visibleIds.has(project.id))).map(project => project.id);

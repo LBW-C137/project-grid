@@ -1,5 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
-import { CircleNotch } from '@phosphor-icons/react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { CheckCircle, CircleNotch } from '@phosphor-icons/react';
 import { cliPanelKey } from './cli-panel';
 import { renderCliRows } from './cli-render';
 import { t } from '../../shared/i18n';
@@ -39,8 +39,17 @@ function CliBlocks({ rows, live = false, onKeys }: { rows: readonly string[]; li
 // A slash command in a popup over the conversation, never in it. While the command runs, keys typed here go to the
 // CLI, so its dialogs (tabs, lists) work as in the terminal; once it has finished the popup shows what it showed.
 // Escape or a click outside closes it (onClose closes what the command opened in the CLI as well).
-export function ReadingCliPanel({ command, rows, done, terminalId, onClose }: { command: string; rows: string[]; done: boolean; terminalId: string; onClose: () => void }) {
+export function ReadingCliPanel({ command, rows, done, terminalId, onClose, onShowTerminal }: { command: string; rows: string[]; done: boolean; terminalId: string; onClose: () => void; onShowTerminal: () => void }) {
   const card = useRef<HTMLDivElement>(null);
+  // Nothing read from the command for a while (a screen this view no longer understands, hooks that take long): the
+  // terminal shows what the CLI is doing.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (rows.length || done) return;
+    const timer = window.setTimeout(() => setSlow(true), 10000);
+    return () => clearTimeout(timer);
+  }, [rows.length > 0, done]);
   // A live dialog takes the keys when the reader is here (in this reading view, or nowhere in particular); a result
   // that is done never takes focus from what is being typed, and another card's typing stays where it is.
   useLayoutEffect(() => {
@@ -72,7 +81,9 @@ export function ReadingCliPanel({ command, rows, done, terminalId, onClose }: { 
       onPaste={event => { const text = event.clipboardData.getData('text/plain'); if (text && !done) { event.preventDefault(); write(text); } }}
       onFocus={() => window.agentrix.terminalFocus(terminalId, false)}>
       <div className="reading-cli-head"><strong>{command}</strong><small>{t('Esc 关闭')}</small></div>
-      <div className="reading-cli-body">{!rows.length ? <p className="cli-waiting"><CircleNotch size={13} className="loading-spinner" />{t('正在等待 {command} 的结果…', { command })}</p>
+      <div className="reading-cli-body">{!rows.length && done ? <p className="cli-waiting"><CheckCircle size={14} weight="fill" className="cli-done" />{t('{command} 已完成，没有输出。', { command })}</p>
+        : !rows.length ? <p className="cli-waiting"><CircleNotch size={13} className="loading-spinner" />{t('正在等待 {command} 的结果…', { command })}
+        {slow && <button type="button" className="text-button" onClick={onShowTerminal}>{t('切换到终端')}</button>}</p>
         : <CliBlocks rows={rows} live={!done} onKeys={done ? undefined : keys => void writeKeys(keys)} />}</div>
     </div>
   </div>;

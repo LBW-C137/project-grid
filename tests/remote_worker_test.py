@@ -517,4 +517,47 @@ class RemoteFilesTest(unittest.TestCase):
         self.assertEqual((outside / "keep.txt").read_text(), "keep")
 
 
+    def test_terminals_on_the_host_are_channels_of_one_worker(self):
+        import queue
+        import threading
+        other = Path(self.temp.name) / "other"
+        other.mkdir()
+        (other / "only-here.txt").write_text("x", encoding="utf-8")
+        lines, written, channels = queue.Queue(), [], {}
+        send = lambda message: lines.put((json.dumps(message) + "\n").encode())
+        def wait(found):
+            for _ in range(250):
+                match = [message for message in list(written) if found(message)]
+                if match: return match[0]
+                time.sleep(0.02)
+            self.fail("no such message in %r" % written)
+        # The shell itself needs a Linux PTY; the channels around it are the same everywhere.
+        with mock.patch.object(remote.Worker, "spawn_terminal", lambda *_: None):
+            server = threading.Thread(target=remote.serve, args=(lambda _size: lines.get(), written.append, channels), daemon=True)
+            server.start()
+            send({"op": "open", "channel": 1, "path": str(self.root), "token": "one", "projectId": "p"})
+            send({"op": "open", "channel": 2, "path": str(other), "token": "two", "projectId": "p"})
+            send({"op": "open", "channel": 3, "path": str(Path(self.temp.name) / "missing"), "token": "three", "projectId": "p"})
+            self.assertEqual(wait(lambda m: m["type"] == "ready" and m["channel"] == 1)["info"]["root"], os.path.realpath(self.root))
+            self.assertEqual(wait(lambda m: m["type"] == "ready" and m["channel"] == 2)["info"]["root"], os.path.realpath(other))
+            self.assertIn("不存在", wait(lambda m: m["type"] == "error" and m.get("channel") == 3)["error"])
+            send({"op": "directory", "channel": 2, "id": 7, "path": ""})
+            listing = wait(lambda m: m["type"] == "response" and m["id"] == 7)
+            self.assertEqual((listing["channel"], [entry["name"] for entry in listing["value"]["entries"]]), (2, ["only-here.txt"]))
+            first = channels[1].worker
+            send({"op": "shutdown", "channel": 1})
+            send({"op": "directory", "channel": 1, "id": 8, "path": ""})
+            send({"op": "directory", "channel": 2, "id": 9, "path": ""})
+            self.assertEqual(wait(lambda m: m["type"] == "response" and m["id"] == 9)["channel"], 2)
+            self.assertTrue(first.stopping)
+            self.assertFalse([m for m in written if m.get("id") == 8])
+            # Input that is no message ends every channel.
+            second = channels[2].worker
+            lines.put(b"not a message\n")
+            server.join(5)
+            self.assertFalse(server.is_alive())
+            self.assertNotIn("channel", written[-1])
+            self.assertEqual(written[-1]["type"], "error")
+            self.assertTrue(second.stopping)
+
 if __name__ == "__main__": unittest.main()

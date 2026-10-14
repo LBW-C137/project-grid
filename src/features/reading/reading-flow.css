@@ -23,20 +23,20 @@
 .reading-assistant { color: var(--flow-ink); }
 .reading-assistant.has-mark { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; }
 .reading-assistant.has-mark > :not(.reading-agent-mark) { grid-column: 2; min-width: 0; }
-.reading-agent-mark { grid-row: 1; justify-self: center; font-style: normal; font-size: 19px; line-height: 1.25; }
+.reading-agent-mark { grid-row: 1; justify-self: center; font-style: normal; font-size: calc(19px * var(--reading-text)); line-height: 1.25; }
 .reading-assistant.is-claude .reading-agent-mark { color: var(--flow-claude); }
-.reading-assistant.is-codex .reading-agent-mark { color: var(--flow-codex); font-size: 22px; line-height: 1.05; }
+.reading-assistant.is-codex .reading-agent-mark { color: var(--flow-codex); font-size: calc(22px * var(--reading-text)); line-height: 1.05; }
 .reading-assistant .reading-markdown > :first-child { margin-top: 0; }
 
 /* A group of steps: a pill; opened, a card holding the pill and the steps. */
 .reading-tools { align-self: flex-start; max-width: 100%; display: flex; flex-direction: column; border-radius: 14px; }
 .reading-tools.is-open { align-self: stretch; background: var(--flow-card); box-shadow: inset 0 0 0 1px var(--flow-line); }
 .reading-tools-head { display: inline-flex; align-self: flex-start; align-items: center; gap: 9px; max-width: 100%; padding: 7px 14px 7px 12px; border: 0;
-  border-radius: 999px; font: inherit; font-size: 13.5px; color: var(--flow-ink); background: var(--flow-card); box-shadow: inset 0 0 0 1px var(--flow-line); cursor: pointer; }
+  border-radius: 999px; font: inherit; font-size: calc(13.5px * var(--reading-text)); color: var(--flow-ink); background: var(--flow-card); box-shadow: inset 0 0 0 1px var(--flow-line); cursor: pointer; }
 .reading-tools.is-open .reading-tools-head { background: transparent; box-shadow: none; }
 .reading-tools-head:hover { background: rgba(255, 255, 255, .1); }
 .reading-tools-head > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reading-tools-head em { font-style: normal; font-size: 12px; color: var(--flow-fail); }
+.reading-tools-head em { font-style: normal; font-size: calc(12px * var(--reading-text)); color: var(--flow-fail); }
 .reading-tools-lead { flex: none; color: var(--flow-lead); }
 .reading-tools-caret { flex: none; color: var(--flow-ok); }
 .reading-step-state { flex: none; color: var(--flow-ok); }
@@ -45,11 +45,11 @@
 /* The steps as a tree under the pill. */
 .reading-tools-tree { position: relative; display: flex; flex-direction: column; gap: 2px; margin: 0 0 0 22px; padding: 2px 14px 10px 18px; list-style: none; }
 .reading-tools-tree::before { content: ''; position: absolute; left: 0; top: 0; bottom: 22px; border-left: 1px solid var(--flow-line); }
-.reading-tools-tree li { position: relative; display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); align-items: center; column-gap: 10px; padding: 3px 0; font-size: 13px; }
+.reading-tools-tree li { position: relative; display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); align-items: center; column-gap: 10px; padding: 3px 0; font-size: calc(13px * var(--reading-text)); }
 .reading-tools-tree li::before { content: ''; position: absolute; left: -18px; top: 50%; width: 12px; border-top: 1px solid var(--flow-line); }
 .reading-tools-tree li > b { font-weight: 500; color: var(--flow-muted); white-space: nowrap; }
-.reading-tools-tree li > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12.5px/1.6 var(--font-mono); color: var(--flow-ink); }
-.reading-tools-tree li > small { grid-column: 4; font-size: 11.5px; color: var(--flow-faint); overflow-wrap: anywhere; }
+.reading-tools-tree li > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 calc(12.5px * var(--reading-text))/1.6 var(--font-mono); color: var(--flow-ink); }
+.reading-tools-tree li > small { grid-column: 4; font-size: calc(11.5px * var(--reading-text)); color: var(--flow-faint); overflow-wrap: anywhere; }
 .reading-tool-icon { color: var(--flow-muted); }
 .reading-tools-tree li.is-failed > code { color: var(--flow-fail); }
 /* What the steps wrote (cards, a picture being drawn) sits under the pill or inside the opened card. */
@@ -59,4 +59,4 @@
 /* An answer to the agent's own question: labelled as such, its "question → answer" lines under the label. */
 .reading-user.is-answer > :first-child { grid-row: span 2; }
 .reading-user.is-answer > :not(:first-child) { grid-column: 2; }
-.reading-user-label { font-size: 12px; font-weight: 600; color: var(--flow-muted, rgba(255, 255, 255, .72)); }
+.reading-user-label { font-size: calc(12px * var(--reading-text)); font-weight: 600; color: var(--flow-muted, rgba(255, 255, 255, .72)); }

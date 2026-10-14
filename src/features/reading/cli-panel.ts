@@ -168,7 +168,8 @@ export function extractCliPanelRows(agent: ScreenAgent, rows: string[], screen: 
   if (!input) {
     const statusRow = (row: string) => agent === 'claude'
       ? /^\s*[⏺⏸⏵]+\s+.*(?:·|mode on|permissions on)/.test(row)
-      : /^\s*(?:GPT|gpt|o\d|codex)[^·]*\s+·\s+[^·]+\s+·\s+.+$/.test(row);
+      // Codex's footer, with or without its context part (none before the first message).
+      : /^\s*(?:GPT|gpt|o\d|codex)[^·]*\s+·\s+.+$/.test(row);
     for (let index = rows.length - 1; index >= 0; index--) {
       if (!statusRow(rows[index])) continue;
       if (rows.slice(index + 1).some(row => row.trim() && !statusRow(row) && !/^\s*(?:\? for shortcuts|⚠)/.test(row))) continue;
@@ -237,7 +238,10 @@ export type CliCommand = {
   before?: string[];
   // It asked something (a picker, a menu): answered or dismissed, it has nothing more to print.
   chose?: boolean;
+  // The footer when it was sent: a setting it changed there (the model, fast mode) shows it has done its work.
+  footer?: string;
 };
+export const cliFooter = (screen: AgentScreen) => JSON.stringify(screen.status);
 
 // What a finished command shows in its popup: its dialog when it drew one (without the CLI's own "dialog dismissed"
 // note), else what it printed above the input.
@@ -251,7 +255,7 @@ export function cliResultRows(command: CliCommand): string[] {
 // pre-submit snapshot must never complete a command before the CLI receives it.
 // Codex returns to its input at once and prints some results a while later (/status fetches the account's limits):
 // it is done once its output has stopped changing, and a command that printed nothing yet is given several seconds,
-// unless it asked something (Codex's /model picker): then nothing more is coming.
+// unless it asked something (Codex's /model picker) or changed a setting its footer shows: then nothing more is coming.
 const CODEX_PATIENCE = 8000;
 export function advanceCliCommand(command: CliCommand, agent: ScreenAgent, rows: string[], screen: AgentScreen, now: number, observation: boolean) {
   const next = { ...command, observed: command.observed || observation, chose: command.chose || !!screen.choice };
@@ -263,7 +267,8 @@ export function advanceCliCommand(command: CliCommand, agent: ScreenAgent, rows:
     else next.idleSince ??= now;
     next.output = output;
   }
-  const waited = agent !== 'codex' || next.output.length > 0 || next.chose || now - command.at >= CODEX_PATIENCE;
+  const changed = idle && command.footer !== undefined && cliFooter(screen) !== command.footer;
+  const waited = agent !== 'codex' || next.output.length > 0 || next.chose || changed || now - command.at >= CODEX_PATIENCE;
   // Claude's dialog (/usage during a round) closed and its input back: the command is over though Claude still works.
   const dismissed = agent === 'claude' && next.observed && !!command.dialog?.length && !idle && hasCliInput(agent, rows, screen) && !cliDialogOpen(agent, rows, screen);
   return { command: next, done: dismissed || (next.idleSince !== null && now - next.idleSince >= 400 && waited) };

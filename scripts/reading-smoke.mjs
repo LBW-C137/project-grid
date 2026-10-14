@@ -118,6 +118,15 @@ try {
   await composer.fill('!echo reading-fixture'); await resetWrites(); await composer.press('Enter'); await settled('shell mode');
   assert.deepEqual((await writes()).map(item => item.data), ['!echo reading-fixture', '\r']);
   checks.push('partial/exact Enter, unknown command and shell mode');
+  // Here neither printed anything: the popup says the command is done, with no spinner, and stays until Escape puts it
+  // away, without a key reaching the CLI.
+  const finished = terminal.locator('.reading-cli-panel');
+  await finished.getByText('!echo reading-fixture 已完成，没有输出。').waitFor({ timeout: 10000 });
+  assert.equal(await finished.locator('.loading-spinner').count(), 0);
+  await resetWrites(); await composer.press('Escape');
+  await finished.waitFor({ state: 'detached', timeout: 5000 });
+  assert.deepEqual(await writes(), []);
+  checks.push('a command that printed nothing says it is done and closes with Escape');
   const permission = { session_id: 's1', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' };
   await write(hook('notify', permission));
   await waitFor(async () => (await state()).needsInput === permission.message, 'permission reaches renderer'); await raw();

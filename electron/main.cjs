@@ -203,7 +203,7 @@ function trayImage(name) {
   return process.platform === 'darwin' ? image.resize({ width: 18, height: 18 }) : image;
 }
 // The same "Ctrl+Shift+F" form the window records (src/features/shortcuts/shortcuts.ts), from an Electron input event.
-const SHORTCUT_KEYS = { Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`', Space: 'Space', Tab: 'Tab', Enter: 'Enter', NumpadEnter: 'Enter' };
+const SHORTCUT_KEYS = { Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`', Space: 'Space', Tab: 'Tab', Enter: 'Enter', NumpadEnter: 'Enter', ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up', ArrowDown: 'Down' };
 function isAppShortcut(input) {
   const code = String(input.code || '');
   const key = /^Key[A-Z]$/.test(code) ? code.slice(3) : /^Digit\d$/.test(code) ? code.slice(5) : /^F([1-9]|1[0-2])$/.test(code) ? code : SHORTCUT_KEYS[code];

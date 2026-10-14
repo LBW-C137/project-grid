@@ -1,0 +1,11 @@
+
+  >_ OpenAI Codex (v0.162.1)
+     C:\work\demo-app
+
+• Service tier set to priority
+
+
+› Ask Codex to do anything
+
+  GPT-6-Sol default · C:\work\demo-app
+  ? for shortcuts                                                                                                      ⚠ 1 warning · f2 to view

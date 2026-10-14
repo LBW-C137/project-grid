@@ -51,6 +51,9 @@ An approval only shows after the model asks for a tool. Never use the real sign-
   `/effort` became a centred slider with an Ultracode switch beside it.
 - Codex 0.162 prints `fast` after the effort in its footer, and its resume list's Esc means "start new" after
   `codex resume` but "back" after `/resume`.
+- Codex 0.162.1's footer has no context part before the first message (`GPT-6-Sol default · <folder>`); a parser that
+  needs `· 90% left` never sees Codex idle, and every slash command's popup then waits forever. Capture a fresh
+  conversation as well as one in progress. `/fast` there prints `• Service tier set to priority`.
 - Codex asks "Would you like to run the following command?", "…make the following edits?" (hotkey `(a)` for "don't ask
   again for these files"), "…grant these permissions?" and "<server> needs your approval."; match the family, not one
   title.

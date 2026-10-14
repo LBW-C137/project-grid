@@ -56,14 +56,17 @@ function parseStatus(agent: ScreenAgent, rows: string[], start: number): ScreenS
     }
   } else {
     const footer = rows.slice(start).map(row => row.trim()).filter(Boolean);
-    const model = /^(.+?)\s+·\s+[^·]+\s+·\s+(.+)$/.exec(footer[0] ?? '');
+    // "model effort · folder · context left". A conversation with nothing in it yet has no context part
+    // ("GPT-6-Sol default · ~\work", Codex 0.162.1): its first part is then told by the effort that ends it.
+    const parts = /^(.+?)\s+·\s+([^·]+?)(?:\s+·\s+(.+))?$/.exec(footer[0] ?? '');
+    const model = parts && (parts[3] !== undefined || /\s(?:none|minimal|low|medium|high|xhigh|max|ultra|default)(?:\s+fast)?$/.test(parts[1])) ? parts : null;
     if (model) {
       // "default": the model's own effort ("GPT-6.1-Sol default · ~\work"); "fast": fast mode on ("GPT-6.1-Sol high fast").
       const effort = /^(.*?)\s+(none|minimal|low|medium|high|xhigh|max|ultra|default)(\s+fast)?$/.exec(model[1]);
       status.model = effort ? effort[1] : model[1].replace(/\s+fast$/, '');
       status.effort = effort?.[2] ?? null;
       if (effort?.[3] || /\s+fast$/.test(model[1])) status.fast = true;
-      status.context = model[2];
+      status.context = model[3] ?? null;
       for (const row of footer.slice(1)) {
         const note = row.replace(/^\? for shortcuts\s*/, '').trim();
         if (note && note !== '? / esc close') status.notes.push(note);

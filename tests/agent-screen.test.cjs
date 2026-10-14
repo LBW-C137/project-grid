@@ -63,6 +63,13 @@ const expected = {
   'claude-slash-typed': claudeScreen({ overlay: 'slash' }),
   'claude-mention': claudeScreen({ overlay: 'mention' }),
   'claude-shortcuts': claudeScreen({ overlay: 'shortcuts' }),
+  // Codex 0.162.1 before the first message: no context part in its footer.
+  'codex-fresh-default': codexScreen({ banner: { ...codexBanner, version: '0.162.1', model: 'GPT-6-Sol', effort: 'default' }, status: {
+    ...emptyStatus, model: 'GPT-6-Sol', effort: 'default', notes: ['⚠ 1 warning · f2 to view'],
+  } }),
+  'codex-fast-done': codexScreen({ banner: { ...codexBanner, version: '0.162.1', model: 'GPT-6-Sol', effort: 'default' }, status: {
+    ...emptyStatus, model: 'GPT-6-Sol', effort: 'default', notes: ['⚠ 1 warning · f2 to view'],
+  } }),
   'codex-startup': codexFooterScreen('872K wi…', { status: {
     ...codexStatus('872K wi…'), notes: ['⚠ 1 warning · f2 to view'],
   } }),

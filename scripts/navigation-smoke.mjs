@@ -111,43 +111,43 @@ try {
     else assert.equal(await panel.isVisible(), true);
   };
   await second.locator('.xterm-helper-textarea').focus();
-  for (const project of [local, legacy, closed, remote]) { await page.keyboard.press('Control+Tab'); await assertSwitch(project); }
-  for (const project of [closed, legacy, local, remote]) { await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(project); }
-  await page.keyboard.press('Control+Tab'); await page.waitForTimeout(350); await page.screenshot({ path: path.join(output, 'project-switch-overview.png') }); await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(remote);
+  for (const project of [local, legacy, closed, remote]) { await page.keyboard.press('Control+Shift+ArrowRight'); await assertSwitch(project); }
+  for (const project of [closed, legacy, local, remote]) { await page.keyboard.press('Control+Shift+ArrowLeft'); await assertSwitch(project); }
+  await page.keyboard.press('Control+Shift+ArrowRight'); await page.waitForTimeout(350); await page.screenshot({ path: path.join(output, 'project-switch-overview.png') }); await page.keyboard.press('Control+Shift+ArrowLeft'); await assertSwitch(remote);
   // If the composer refuses focus, the hidden xterm also fails and the card is the final fallback.
   await first.locator('.reading-composer textarea').evaluate(node => { node.focus = () => {}; });
-  try { await page.keyboard.press('Control+Tab'); await assertSwitch(local, true, null); }
+  try { await page.keyboard.press('Control+Shift+ArrowRight'); await assertSwitch(local, true, null); }
   finally { await first.locator('.reading-composer textarea').evaluate(node => { delete node.focus; }); }
-  await page.keyboard.press('Control+Tab'); await assertSwitch(legacy);
-  await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(local);
-  await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(remote);
+  await page.keyboard.press('Control+Shift+ArrowRight'); await assertSwitch(legacy);
+  await page.keyboard.press('Control+Shift+ArrowLeft'); await assertSwitch(local);
+  await page.keyboard.press('Control+Shift+ArrowLeft'); await assertSwitch(remote);
   // Stopped cards fall back to the card itself. Even a failed card focus must advance the cursor.
   const closedTerminal = (await state()).projects.find(project => project.id === closed.id).terminals[0].id;
   assert.deepEqual(await page.evaluate(id => window.agentrix.closeTerminal(id), closedTerminal), { ok: true, value: true });
   await page.locator(`[data-project-id="${closed.id}"] .xterm-helper-textarea`).waitFor({ state: 'detached' });
-  await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(closed, true, null);
+  await page.keyboard.press('Control+Shift+ArrowLeft'); await assertSwitch(closed, true, null);
   await second.locator('.xterm-helper-textarea').focus();
   await page.evaluate(id => { document.querySelector(`[data-project-id="${id}"]`).focus = () => {}; }, closed.id);
   try {
-    await page.keyboard.press('Control+Shift+Tab');
+    await page.keyboard.press('Control+Shift+ArrowLeft');
     await assertSwitch(closed, false);
     assert.equal(await second.locator('.xterm-helper-textarea').evaluate(node => document.activeElement === node), true);
-    await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(legacy);
+    await page.keyboard.press('Control+Shift+ArrowLeft'); await assertSwitch(legacy);
   } finally { await page.evaluate(id => { delete document.querySelector(`[data-project-id="${id}"]`).focus; }, closed.id); }
   // Turning off motion leaves a static blue ring, and repeated presses renew the feedback timer.
   const motion = await page.evaluate(() => document.documentElement.dataset.motion);
   await page.evaluate(() => { document.documentElement.dataset.motion = 'off'; });
-  await page.keyboard.press('Control+Shift+Tab'); await assertSwitch(local);
+  await page.keyboard.press('Control+Shift+ArrowLeft'); await assertSwitch(local);
   assert.equal(await first.locator('.panel-nav-ring').evaluate(node => getComputedStyle(node).animationName), 'none');
   await page.waitForTimeout(700);
-  await page.keyboard.press('Control+Tab'); await assertSwitch(legacy);
+  await page.keyboard.press('Control+Shift+ArrowRight'); await assertSwitch(legacy);
   await page.waitForTimeout(700);
   assert.equal(await legacyPanel.evaluate(node => node.classList.contains('is-nav-target')), true, 'feedback timer restarts after each switch');
   await page.waitForFunction(() => !document.querySelector('.project-panel.is-nav-target, .panel-nav-hud, .project-switch-hud-content'));
   await page.evaluate(motion => { if (motion) document.documentElement.dataset.motion = motion; else delete document.documentElement.dataset.motion; }, motion);
   await first.getByRole('button', { name: `全屏查看 ${local.name}`, exact: true }).click(); await settled(true);
-  await page.keyboard.press('Control+Tab'); await settled(true); await assertSwitch(legacy, false);
-  await page.keyboard.press('Control+Shift+Tab'); await settled(true); await assertSwitch(local, false);
+  await page.keyboard.press('Control+Shift+ArrowRight'); await settled(true); await assertSwitch(legacy, false);
+  await page.keyboard.press('Control+Shift+ArrowLeft'); await settled(true); await assertSwitch(local, false);
   await page.screenshot({ path: path.join(output, 'project-switch-expanded.png') });
   await page.getByRole('button', { name: '返回总览', exact: true }).click(); await settled(false);
   await second.getByRole('button', { name: `${remote.name} 的更多操作`, exact: true }).click();

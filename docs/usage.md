@@ -30,7 +30,7 @@ Windows 多项目终端工作台。每个目录对应一个真实终端，Codex 
 2. 新项目的方框里有两个按钮：**Claude Code** 和 **Codex**。上方选「开始新开发」或「继承开发历史」，继承会接上这个文件夹最近的那次对话（按钮下注明上次是什么时候）。其他命令行助手点「只打开终端」后自己运行；终端里也可以照常用 `codex resume` 或 `claude --resume` 挑选更早的对话。若会话仍在其他窗口运行，先在原窗口结束当前会话，再在这里恢复。阅读视图目前支持 Claude Code 和 Codex，之后会陆续支持更多 CLI。
 3. Codex 或 Claude Code **一轮结束**后，方框缓缓呼吸并显示「等待你查看」。在终端输入 `claude` 即可让 Claude Code 的每轮对话同样被识别。如果开启桌面通知，后台也会提醒。
 4. **点击红框**：方框从原位置逐渐放大进入全屏，并标记本轮已查看。直接在终端里继续输入指令。
-5. 点击左侧的 **返回总览**，或按 **Ctrl+Shift+G**，方框平滑缩回网格。终端进程、未发送的输入和任务继续保留；默认使用平滑缩放，可在设置中选择“跟随系统”或“关闭”。
+5. 点击左侧的 **返回总览**，或按 **Ctrl+Shift+G**，方框平滑缩回网格。按 **Ctrl+Shift+方向键** 按网格位置切换到左、右、上、下的项目（左右到行尾时接上一行或下一行）；总览里只选中方框，放大时直接切换放大的项目。文本框里有文字时，这组键仍用来按词选择。终端进程、未发送的输入和任务继续保留；默认使用平滑缩放，可在设置中选择“跟随系统”或“关闭”。
 6. 查看本轮结果后，可直接输入下一条指令；应用按 Codex 主会话轮次自动显示状态，不再提供人工完成标记。
 
 每个方框右上角的菜单可以新建终端、打开项目目录、重启终端或移除项目。本地目录通过系统资源管理器打开，SSH 目录在应用内展开。移除项目不会删除项目文件。
@@ -78,7 +78,7 @@ Windows 多项目终端工作台。每个目录对应一个真实终端，Codex 
 
 主机列表沿用 VS Code 的 `remote.SSH.configFile`，未设置时使用 `~/.ssh/config`，并读取 Include 中的主机。连接由 OpenSSH 处理，沿用配置中的 IdentityFile、Port、ProxyJump 等参数。密码仅用于这次认证，不写入项目配置。
 
-远端需要 **Linux、Python 3.6+ 和 Bash**；远端 Bash 中需能找到 `codex`。Git 面板需要远端 Git 2.11 或更高版本。远端的 CLI 读不到这台电脑的剪贴板：在 SSH 项目里粘贴截图时，图片会先放进远端的临时目录（`/tmp/agentrix-images-<用户号>`，一周后清理），再把路径交给助手。每个项目通过同一条 SSH 连接传输终端、目录和文件预览，文件按需读取。远端终端会加载 `~/.bashrc`。连接断开后，项目菜单可重新连接；文件目录外的符号链接不会被预览。
+远端需要 **Linux、Python 3.6+ 和 Bash**；远端 Bash 中需能找到 `codex`。Git 面板需要远端 Git 2.11 或更高版本。远端的 CLI 读不到这台电脑的剪贴板：在 SSH 项目里粘贴截图时，图片会先放进远端的临时目录（`/tmp/agentrix-images-<用户号>`，一周后清理），再把路径交给助手。同一台主机上的所有终端（同一项目的多个终端，以及这台主机上的其他项目）共用一条 SSH 连接，终端、目录和文件预览都经由它传输，文件按需读取：只认证一次，之后新开的终端不再重新握手、登录或输入密码，几乎立即打开。最后一个终端关闭时连接才断开。远端终端会加载 `~/.bashrc`。连接断开后，项目菜单可重新连接；文件目录外的符号链接不会被预览。
 
 SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入应用内资源管理器。项目列表、SSH 主机别名和路径保存在本机，项目文件与 Codex 对话留在服务器上。
 
@@ -129,7 +129,7 @@ SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入
 - 在输入框里粘贴图片（Ctrl+V）：图片交给 Codex 或 Claude Code 本身，附在下一条消息上，输入框上方显示已附加几张，点 × 移除；只有图片也可以直接发送。
 - 回答里写到的本机图片、HTML 页面和视频（完整路径、反引号里的路径或 Markdown 图片 `![说明](路径)`）直接显示在回答下面；工具写出的图片、网页、Markdown 和视频也以卡片显示在那一组步骤下。点卡片或回答里的文件链接，在当前界面弹窗显示大图、网页、文档或文件夹，Esc、× 或点弹窗外面关闭；不会进入项目页，也不会打开其他程序。SSH 项目的文件通过 SSH 读取。
 - Agentrix 启动 Claude Code 和 Codex 时会临时告诉它们「写出完整路径，阅读视图就会显示图片、网页和视频，不要用别的程序打开」（Claude 用 `--append-system-prompt`，Codex 用 `developer_instructions`，不写入配置文件；命令行里你自己给的同类参数优先）。SSH 项目目前只对 Codex 生效。
-- 斜杠命令的结果以弹窗显示，Esc 或点弹窗外面关闭；命令在 CLI 里打开的对话框随之关闭，没能关上的会在下一条消息发出前关闭。
+- 斜杠命令的结果以弹窗显示，Esc 或点弹窗外面关闭；命令在 CLI 里打开的对话框随之关闭，没能关上的会在下一条消息发出前关闭。等了 10 秒仍没有读到结果时，弹窗里会出现「切换到终端」，可在终端查看命令的实际情况。
 - 启动前的确认（信任文件夹、选主题、绕过权限警告、新 MCP 服务器、从摘要恢复、Codex 更新提示）、权限确认和选择题都以弹窗或卡片呈现，点选即可。
 - 第一次启动、尚未登录时弹出「登录 Claude Code / Codex」窗口：一键在浏览器打开登录页、复制链接，把浏览器给的授权码或 OpenAI API Key 粘贴进去提交，或复制 Codex 的一次性验证码；成功或出错后按「继续」「取消」。这里输入的内容只交给 CLI，不算作对话消息，也不会显示在任务列表里。
 - 新项目卡片上没安装的助手标为「未安装 · 点击一键安装」，点一下用 npm 全局安装后直接启动；没有 Node.js 时先打开它的下载页。
@@ -229,20 +229,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=1.2.8`：安装指定版本。
+- `AGENTRIX_VERSION=1.2.9`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 1.2.8：
+例如，安装 1.2.9：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.8 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.9 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-1.2.8-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-1.2.9-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：

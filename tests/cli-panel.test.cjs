@@ -136,7 +136,7 @@ test('panel keys forward navigation, editing, search, tabs and control keys', ()
 
 // Test the renderer's screen subscriptions with fake clocks; no DOM, Electron or
 // actual agent sessions are started. This also exercises state across remounts.
-function rendererHarness(t) {
+function rendererHarness(t, agent = 'claude') {
   const Module = require('node:module');
   const ts = require('typescript');
   const filename = path.join(__dirname, '..', 'src/features/reading/useReadingCli.ts');
@@ -162,7 +162,7 @@ function rendererHarness(t) {
   const previousWindow = globalThis.window;
   globalThis.window = { setInterval, clearInterval };
   t.after(() => { if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow; });
-  const render = (id = 'a', session = 'session') => mod.exports.useReadingCli(id, session, 'claude', { current: { focus: () => focused++ } }, true);
+  const render = (id = 'a', session = 'session') => mod.exports.useReadingCli(id, session, agent, { current: { focus: () => focused++ } }, true);
   const emit = (id, rows) => { screens.set(id, { rows }); watchers.get(id)?.({ rows }); };
   return { render, emit, tick: ms => t.mock.timers.tick(ms), remount: () => { prior = null; }, focused: () => focused, watchers };
 }
@@ -188,6 +188,45 @@ test('renderer waits for screen output, keeps the finished popup until it is clo
   done.close();
   assert.equal(harness.render().panel, null);
   assert.equal(harness.focused(), 1, 'the message box takes the keyboard back once the popup closes');
+});
+test('Codex /fast before the first message (a footer with no context part) ends with what it printed', t => {
+  const fresh = fixture('codex-fresh-default'), done = fixture('codex-fast-done');
+  assert.equal(isCliIdle('codex', fresh, inspect('codex', fresh)), true);
+  const harness = rendererHarness(t, 'codex');
+  harness.emit('a', fresh);
+  harness.render().begin('/fast');
+  assert.equal(harness.render().busy, true);
+  harness.emit('a', done);
+  harness.tick(400);
+  const finished = harness.render();
+  assert.equal(finished.busy, false, 'not a spinner that never stops');
+  assert.deepEqual(finished.panel, { command: '/fast', rows: ['• Service tier set to priority'], done: true });
+});
+test('a Codex command that prints nothing ends once its footer shows the change, and its popup says it is done', t => {
+  const { parseAgentScreen: parse } = require('../src/features/agents/agent-screen.ts');
+  const { cliFooter } = require('../src/features/reading/cli-panel.ts');
+  const before = ['• Earlier answer', '', ...input('codex')];
+  const harness = rendererHarness(t, 'codex');
+  harness.emit('a', before);
+  harness.render().begin('/fast', undefined, cliFooter(parse('codex', before)));
+  harness.emit('a', ['• Earlier answer', '', '› ', '', '  GPT-6.1-Sol high fast · C:\\work\\demo · 90% left', '? for shortcuts']);
+  harness.tick(400);
+  const done = harness.render();
+  assert.equal(done.busy, false, 'not the eight seconds a command that changed nothing is given');
+  assert.deepEqual(done.panel, { command: '/fast', rows: [], done: true });
+});
+test('a Codex command that prints and changes nothing still finishes, and says so rather than vanishing', t => {
+  const { parseAgentScreen: parse } = require('../src/features/agents/agent-screen.ts');
+  const { cliFooter } = require('../src/features/reading/cli-panel.ts');
+  const screen = ['• Earlier answer', '', ...input('codex')];
+  const harness = rendererHarness(t, 'codex');
+  harness.emit('a', screen);
+  harness.render().begin('/quiet', undefined, cliFooter(parse('codex', screen)));
+  harness.emit('a', screen);
+  harness.tick(7000);
+  assert.equal(harness.render().busy, true);
+  harness.tick(1200);
+  assert.deepEqual(harness.render().panel, { command: '/quiet', rows: [], done: true });
 });
 test('renderer choice takes priority and a dialog closed without content leaves no popup', t => {
   const harness = rendererHarness(t);

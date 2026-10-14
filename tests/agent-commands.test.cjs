@@ -19,7 +19,7 @@ test('builtins have the requested views and sorted names; no project means built
   const { projectPath, home, write } = await fixture(t);
   await write(path.join(home, '.claude/commands/local.md'), '# Local');
   await write(path.join(home, '.codex/prompts/local.md'), '# Local');
-  for (const [agent, count, reading] of [['claude', 31, ['/btw', '/init', '/review', '/security-review']], ['codex', 52, ['/goal', '/init', '/plan', '/review', '/side']]]) {
+  for (const [agent, count, reading] of [['claude', 33, ['/btw', '/init', '/review', '/security-review']], ['codex', 52, ['/goal', '/init', '/plan', '/review', '/side']]]) {
     const commands = await listAgentCommands({ agent, home });
     assert.equal(commands.length, count);
     assert.deepEqual(commands.map(item => item.name), commands.map(item => item.name).sort((a, b) => a.localeCompare(b)));
@@ -143,7 +143,7 @@ test('a linked commands root is read, but linked folders inside it are not follo
 });
 
 test('local slash commands (no model turn) are told apart from prompts and prompt commands', () => {
-  for (const text of ['/context', '/doctor', '/compact', '/model', '/model opus', ' /status ']) assert.equal(isLocalAgentCommand('claude', text), true, text);
+  for (const text of ['/context', '/doctor', '/compact', '/model', '/model opus', '/fast', '/effort high', ' /status ']) assert.equal(isLocalAgentCommand('claude', text), true, text);
   for (const text of ['/init', '/review', '/btw why', '/fix-issue 3', 'fix /context parsing', '/contextual', '']) assert.equal(isLocalAgentCommand('claude', text), false, text);
   assert.equal(isLocalAgentCommand('codex', '/status'), true);
   assert.equal(isLocalAgentCommand('codex', '/init'), false);

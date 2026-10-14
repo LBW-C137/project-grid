@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, shortcutFromEvent, type ShortcutAction } from './shortcuts';
+import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, shortcutFromEvent, shortcutLabel, type ShortcutAction } from './shortcuts';
 import { t } from '../../shared/i18n';
 import type { Settings } from '../../shared/types';
 
@@ -18,7 +18,7 @@ export function ShortcutSettings({ settings, update }: { settings: Settings; upd
       const value = shortcutFromEvent(event);
       if (!value) { setMessage(t('请按包含 Ctrl 或 Alt 的组合键，或 F1–F12。')); return; }
       const owner = SHORTCUT_ACTIONS.find(action => action.id !== recording && keys[action.id] === value);
-      if (owner) { setMessage(t('{key} 已用于「{action}」', { key: value, action: t(owner.label) })); return; }
+      if (owner) { setMessage(t('{key} 已用于「{action}」', { key: shortcutLabel(value), action: t(owner.label) })); return; }
       const next = { ...settings.shortcuts, [recording]: value };
       if (value === DEFAULT_SHORTCUTS[recording]) delete next[recording];
       update({ shortcuts: next }); setRecording(null); setMessage('');
@@ -31,9 +31,9 @@ export function ShortcutSettings({ settings, update }: { settings: Settings; upd
     <div className="shortcut-list">{SHORTCUT_ACTIONS.map(action => <div className="shortcut-row" key={action.id}>
       <span>{t(action.label)}</span>
       <button type="button" className={`shortcut-key ${recording === action.id ? 'is-recording' : ''}`} aria-label={t('{action}的快捷键', { action: t(action.label) })} aria-pressed={recording === action.id}
-        onClick={() => { setRecording(recording === action.id ? null : action.id); setMessage(''); }}>{recording === action.id ? t('按下新的组合键…') : keys[action.id]}</button>
+        onClick={() => { setRecording(recording === action.id ? null : action.id); setMessage(''); }}>{recording === action.id ? t('按下新的组合键…') : shortcutLabel(keys[action.id])}</button>
     </div>)}</div>
     {message && <p className="form-error" role="alert">{message}</p>}
-    <p className="shortcut-note">{t('在文本框和编辑器里，Ctrl+A、Ctrl+C 等编辑键保持原有作用。')}</p>
+    <p className="shortcut-note">{t('在文本框和编辑器里，Ctrl+A、Ctrl+C 等编辑键保持原有作用；有文字时 Ctrl+Shift+方向键按词选择，空的文本框里用来切换项目。')}</p>
   </div></section>;
 }

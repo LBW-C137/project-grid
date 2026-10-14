@@ -1,4 +1,4 @@
-"""Agentrix's session-scoped Linux worker, transported over one SSH connection."""
+"""Agentrix's Linux worker: every terminal opened on the host, each a channel of it, over one SSH connection."""
 import base64
 import calendar
 import concurrent.futures
@@ -474,6 +474,8 @@ class Worker:
         self.activity_reader = None
         self.claude_reader = None
         self.activity_lock = threading.Lock()
+        # Its channel opens in a thread of its own (main): a shutdown that arrives meanwhile waits for the shell.
+        self.lock = threading.RLock()
 
     def codex_status(self, since, thread_id=None):
         if not isinstance(since, (int, float)) or since <= 0: raise ValueError("无效的会话时间。")
@@ -831,6 +833,10 @@ class Worker:
         return path
 
     def start_terminal(self, cols, rows, reading_note=""):
+        with self.lock:
+            if not self.stopping: self.spawn_terminal(cols, rows, reading_note)
+
+    def spawn_terminal(self, cols, rows, reading_note):
         if os.name != "posix": raise ValueError("SSH 远端目前需要 Linux、Python 3 和 Bash。")
         import pty
         bash = shutil.which("bash")
@@ -919,8 +925,9 @@ class Worker:
                 data = data[written:]
 
     def stop(self):
-        if self.stopping: return
-        self.stopping = True
+        with self.lock:
+            if self.stopping: return
+            self.stopping = True
         for identity in list(self.uploads): self.cancel_upload(identity)
         if self.master is not None:
             try: os.close(self.master)
@@ -932,17 +939,32 @@ class Worker:
         if self.temp and os.path.dirname(os.path.realpath(self.temp)) == os.path.realpath(tempfile.gettempdir()) and os.path.basename(self.temp).startswith("agentrix-"):
             shutil.rmtree(self.temp, ignore_errors=True)
 
-def main():
-    output_lock = threading.Lock()
-    def emit(message):
-        with output_lock:
-            sys.stdout.write(PREFIX + json.dumps(message, ensure_ascii=True, separators=(",", ":")) + "\n")
-            sys.stdout.flush()
-    worker = Worker(emit)
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-    input_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    def dispatch(message):
-        identity = message.get("id")
+class Channel:
+    """One terminal of the host: a worker of its own (folder, shell, readers), whose messages carry the channel's name
+    both ways, so every terminal opened on the host shares this process and its SSH connection
+    (electron/remote-connection.cjs)."""
+    def __init__(self, name, write):
+        self.worker = Worker(lambda message: write(dict(message, channel=name)))
+        self.requests = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        self.typing = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+    def open(self, config):
+        worker = self.worker
+        try:
+            info = worker.initialize(config)
+            # The shell starts before "ready", so the size and keys sent after it find the terminal there.
+            worker.start_terminal(config.get("cols", 90), config.get("rows", 24), config.get("readingNote", ""))
+            worker.emit({"type": "ready", "info": info})
+        except Exception as error: worker.emit({"type": "error", "error": str(error)[:1000]})
+
+    def receive(self, message):
+        op, worker = message.get("op"), self.worker
+        if op == "resize": worker.resize(message["cols"], message["rows"])
+        elif op == "input": self.typing.submit(worker.input, message["data"])
+        else: self.requests.submit(self.dispatch, message)
+
+    def dispatch(self, message):
+        worker, identity = self.worker, message.get("id")
         try:
             op = message["op"]
             if op == "directory": value = worker.directory(message.get("path", ""), message.get("offset", 0))
@@ -966,32 +988,50 @@ def main():
             elif op == "upload-finish": value = worker.finish_upload(message["transfer"])
             elif op == "upload-cancel": value = worker.cancel_upload(message["transfer"])
             else: raise ValueError("不支持的远程请求。")
-            emit({"type": "response", "id": identity, "ok": True, "value": value})
-        except Exception as error: emit({"type": "response", "id": identity, "ok": False, "error": str(error)[:1000]})
-    def shutdown(*_):
-        worker.stop()
-        os._exit(0)
-    for event in (signal.SIGTERM, signal.SIGHUP): signal.signal(event, shutdown)
+            worker.emit({"type": "response", "id": identity, "ok": True, "value": value})
+        except Exception as error: worker.emit({"type": "response", "id": identity, "ok": False, "error": str(error)[:1000]})
+
+    def close(self):
+        self.worker.stop()
+        self.requests.shutdown(wait=False)
+        self.typing.shutdown(wait=False)
+
+def serve(read_line, write, channels):
+    """Runs the channels the lines read open ("open"), feed and close ("shutdown") until the input ends."""
     try:
-        config = json.loads(sys.stdin.buffer.readline(MAX_MESSAGE + 1))
-        info = worker.initialize(config)
-        emit({"type": "ready", "info": info})
-        worker.start_terminal(config.get("cols", 90), config.get("rows", 24), config.get("readingNote", ""))
-        while not worker.stopping:
-            line = sys.stdin.buffer.readline(MAX_MESSAGE + 1)
+        while True:
+            line = read_line(MAX_MESSAGE + 1)
             if not line: break
             if len(line) > MAX_MESSAGE: raise ValueError("远程请求过大。")
             message = json.loads(line)
-            op = message.get("op")
-            if op == "shutdown": break
-            if op == "resize": worker.resize(message["cols"], message["rows"])
-            elif op == "input": input_pool.submit(worker.input, message["data"])
-            else: pool.submit(dispatch, message)
+            name, op = message.get("channel"), message.get("op")
+            channel = channels.get(name)
+            if op == "open":
+                if channel is None:
+                    channels[name] = channel = Channel(name, write)
+                    # Its folder and Git are read in a thread of its own, so the other terminals' keys go on meanwhile.
+                    threading.Thread(target=channel.open, args=(message,), daemon=True).start()
+            elif channel is None: continue
+            elif op == "shutdown": channels.pop(name).close()
+            else:
+                try: channel.receive(message)
+                except Exception as error: channel.worker.emit({"type": "error", "error": str(error)[:1000]})
     except Exception as error:
-        emit({"type": "error", "error": str(error)[:1000]})
+        write({"type": "error", "error": str(error)[:1000]})
     finally:
-        worker.stop()
-        pool.shutdown(wait=False)
-        input_pool.shutdown(wait=False)
+        for channel in list(channels.values()): channel.close()
+
+def main():
+    output_lock = threading.Lock()
+    def write(message):
+        with output_lock:
+            sys.stdout.write(PREFIX + json.dumps(message, ensure_ascii=True, separators=(",", ":")) + "\n")
+            sys.stdout.flush()
+    channels = {}
+    def shutdown(*_):
+        for channel in list(channels.values()): channel.worker.stop()
+        os._exit(0)
+    for event in (signal.SIGTERM, signal.SIGHUP): signal.signal(event, shutdown)
+    serve(sys.stdin.buffer.readline, write, channels)
 
 if __name__ == "__main__": main()

@@ -23,6 +23,7 @@ async function createSSHFixture({ password = false, unknownHost = false, nativeW
   await fs.writeFile(path.join(home, '.bashrc'), 'export PATH="$HOME/bin:$PATH"\nPS1="SSH_TEST> "\n');
   const secret = '测试口令-' + randomBytes(12).toString('hex');
   const connections = new Set(); const children = new Set();
+  let workers = 0;
   const server = new Server({ hostKeys: [hostKey] }, client => {
     connections.add(client);
     client.on('error', () => {});
@@ -37,6 +38,7 @@ async function createSSHFixture({ password = false, unknownHost = false, nativeW
       const session = accept();
       session.on('exec', (accept, _reject, info) => {
         const channel = accept();
+        workers++;
         if (nativeWorker) {
           const child = spawn('/bin/sh', ['-c', info.command], { cwd: project, env: { ...process.env, HOME: home, CODEX_HOME: path.join(home, '.codex') }, stdio: ['pipe', 'pipe', 'pipe'] });
           children.add(child);
@@ -47,8 +49,9 @@ async function createSSHFixture({ password = false, unknownHost = false, nativeW
         } else {
           // Windows exercises the real OpenSSH transport and askpass, while
           // Linux CI executes the actual Python worker and remote PTY.
-          let buffer = ''; let step = 0; let config;
-          const send = value => channel.write('PGW1 ' + JSON.stringify(value) + '\n');
+          // Each terminal is a channel of the one worker (remote-connection.cjs), named in every message both ways.
+          let buffer = ''; let started = false;
+          const send = (name, value) => channel.write('PGW1 ' + JSON.stringify({ ...value, channel: name }) + '\n');
           const request = async message => {
             const local = { path: project };
             if (message.op === 'directory') return listDirectory(local, message.path, message.offset || 0);
@@ -73,19 +76,17 @@ async function createSSHFixture({ password = false, unknownHost = false, nativeW
             let at;
             while ((at = buffer.indexOf('\n')) >= 0) {
               const line = buffer.slice(0, at); buffer = buffer.slice(at + 1);
-              if (step++ === 0) continue;
-              if (!config) {
-                config = JSON.parse(line);
-                send({ type: 'ready', info: { root: '/srv/fixture', branch: 'main', platform: 'linux' } });
-                send({ type: 'event', event: { type: 'shell-prompt', projectId: config.projectId, sessionKey: config.token, sequence: 1, codexAvailable: true } });
-                continue;
-              }
-              const message = JSON.parse(line);
-              if (message.op === 'shutdown') { channel.exit(0); channel.end(); }
-              else if (message.op === 'input') send({ type: 'data', data: message.data });
-              else if (message.id) request(message).then(value => send({ type: 'response', id: message.id, ok: true, value }), error => send({ type: 'response', id: message.id, ok: false, error: error.message }));
+              if (!started) { started = true; continue; }
+              const message = JSON.parse(line), name = message.channel;
+              if (message.op === 'open') {
+                send(name, { type: 'ready', info: { root: '/srv/fixture', branch: 'main', platform: 'linux' } });
+                send(name, { type: 'event', event: { type: 'shell-prompt', projectId: message.projectId, sessionKey: message.token, sequence: 1, codexAvailable: true } });
+              } else if (message.op === 'input') send(name, { type: 'data', data: message.data });
+              else if (message.id) request(message).then(value => send(name, { type: 'response', id: message.id, ok: true, value }), error => send(name, { type: 'response', id: message.id, ok: false, error: error.message }));
             }
           });
+          // The worker ends with its input, once the last terminal is closed.
+          channel.on('end', () => { try { channel.exit(0); channel.end(); } catch { } });
         }
       });
     }));
@@ -99,6 +100,8 @@ async function createSSHFixture({ password = false, unknownHost = false, nativeW
   const quoted = value => '"' + value.replace(/\\/g, '/') + '"';
   await fs.writeFile(configFile, `Host fixture\n  HostName 127.0.0.1\n  Port ${port}\n  User fixture\n  IdentityFile ${quoted(identity)}\n  IdentitiesOnly yes\n  UserKnownHostsFile ${quoted(knownHosts)}\n  StrictHostKeyChecking ${unknownHost ? 'ask' : 'yes'}\n  LogLevel ERROR\n`);
   return { directory, home, project, secret, configFile, knownHosts,
+    // How many SSH connections started a worker.
+    get workers() { return workers; },
     async close() {
       for (const child of children) child.kill();
       for (const connection of connections) connection.end();
