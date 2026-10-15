@@ -93,7 +93,6 @@ contextBridge.exposeInMainWorld('agentrix', {
   isFullScreen: () => ipcRenderer.invoke('window:is-fullscreen'),
   onFullScreen: callback => listen('window:fullscreen-changed', callback),
   terminalActions: id => ipcRenderer.invoke('terminal:actions', id),
-  onTerminalAction: callback => listen('terminal:action', callback),
   terminalConversation: id => ipcRenderer.invoke('terminal:conversation', id),
   terminalCommands: id => ipcRenderer.invoke('terminal:commands', id),
   agentHistory: id => ipcRenderer.invoke('agent:history', id),

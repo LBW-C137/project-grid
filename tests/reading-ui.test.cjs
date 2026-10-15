@@ -392,7 +392,7 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
     './markdown-escape': { readingMarked: { parse: text => { parsed.push(text); return text; } } },
     dompurify: { default: () => ({ sanitize: html => html }) },
     '@phosphor-icons/react': Object.fromEntries(['ArrowDown', 'CaretDown', 'CaretRight', 'CircleNotch', 'Image', 'PaperPlaneRight', 'Stop'].map(name => [name, icon])),
-    './ActivityPane': {}, './voice-input': {}, './terminal-screen': { useScreen: () => null },
+    './action-text': {}, './voice-input': {}, './terminal-screen': { useScreen: () => null },
     './agent-screen': { parseAgentScreen: () => fakeScreen() },
     './ReadingWelcome': { ReadingWelcome: () => React.createElement('p', null, 'welcome preserved') },
     './ReadingChoice': {}, './ReadingQuestion': {}, './choice-keys': {}, './reading-mode': {},

@@ -2,7 +2,7 @@ import type { Project, ProjectTerminal } from '../../shared/types';
 import type { Decision } from './decisions';
 import { relativeTime } from '../../shared/time';
 import { t } from '../../shared/i18n';
-import { actionText } from '../agents/ActivityPane';
+import { actionText } from '../agents/action-text';
 import './home.css';
 
 type State = { key: 'deciding' | 'working' | 'unread' | 'done' | 'idle' | 'stopped'; label: string };

@@ -139,6 +139,24 @@ test('Claude bookkeeping records neither create user messages nor reset current 
   assert.equal(conversation.list.at(-1).role, 'user', 'a real prompt mentioning the marker is still a prompt');
 });
 
+test("a session's first prompt, which Claude Code writes after its reply, still comes first and keeps its steps", () => {
+  const changes = [], actions = new ActionLog(), conversation = new ConversationLog(change => changes.push(change));
+  const feed = record => { claudeRecord(actions, record); claudeConversation(conversation, record); };
+  const reply = (uuid, at, content) => ({ type: 'assistant', uuid, timestamp: at, message: { content } });
+  // As Claude Code 2.1.300 writes a new session: the reply and its step, then the prompt stamped before them.
+  feed(reply('r1', '2026-10-15T13:12:06.900Z', [{ type: 'tool_use', id: 'read', name: 'Read', input: { file_path: 'a.txt' } }]));
+  feed(reply('r2', '2026-10-15T13:12:06.934Z', [{ type: 'text', text: 'First answer.' }]));
+  changes.length = 0;
+  feed(user('First question', { uuid: 'p1', parentUuid: null, timestamp: '2026-10-15T13:12:06.230Z' }));
+  assert.deepEqual(conversation.list.map(entry => entry.text || entry.role), ['First question', 'tool', 'First answer.']);
+  assert.ok(changes.some(change => change.reset && change.entry?.text === 'First question'), 'the window gets the reordered list, and the prompt is still announced');
+  assert.deepEqual(actions.list.map(action => action.id), ['read'], 'the step stamped after the prompt stays in its round');
+  // A later prompt comes in order and starts a round without the earlier steps.
+  feed(user('Second question', { uuid: 'p2', parentUuid: 'r2', timestamp: '2026-10-15T13:12:10.892Z' }));
+  assert.equal(conversation.list.at(-1).text, 'Second question');
+  assert.deepEqual(actions.list, []);
+});
+
 test('Codex script commands and workdirs stay with their own calls across literal quote styles', () => {
   const input = [
     "tools.exec_command({cmd: 'npm test', workdir: 'tests'});",

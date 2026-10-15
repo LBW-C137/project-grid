@@ -112,7 +112,8 @@ function mainHarness(t, f) {
   // while a large file is still being written.
   const context = vm.createContext({ path, sessions, store, TranscriptTail, monitorActivity: (read, changed, options) => monitorActivity(read, changed, { ...options, watch: null }), claudeConversation, claudeRecord,
     claudeConfigDir: () => f.home, findClaudeSession: (cwd, id) => findClaudeSession(cwd, id, f.home),
-    describeActions() {}, broadcast() {}, acceptShellEvent: () => true, noteSettings() {}, readEvery: () => 1000, agentCommand: require('../electron/features/agents/agent-command.cjs').agentCommand,
+    describeActions() {}, broadcast() {}, scheduleState() {}, acceptShellEvent: () => true, noteSettings() {}, readEvery: () => 1000,
+    ...require('../electron/features/agents/agent-usage.cjs'), agentCommand: require('../electron/features/agents/agent-command.cjs').agentCommand,
     quitting: false, Date, claudeResumeCommand, restorePlans: new Map(), agentCommand, sshHandoff: async () => false,
     // The handoff of earlier work is written on start (handoff.cjs, tested on its own).
     writeHandoff: async () => false, handoffFile: id => path.join(f.home, 'handoff', `${id}.md`), memoryDir: () => path.join(f.home, 'memory'), scrubProjectSkills: async () => [],

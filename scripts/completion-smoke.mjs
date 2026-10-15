@@ -54,7 +54,7 @@ try {
   await notify(child, 'before-input'); assert.equal(await notices(), 0);
   await input('first instruction\r');
   const said = message => JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message } }) + '\n';
-  await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: { id: thread, cwd: project.path, source: 'cli' } }) + '\n' + record('task_started', 'first') + said('first instruction'));
+  await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: { id: thread, cwd: project.path, source: 'cli', model_provider: 'openai' } }) + '\n' + record('task_started', 'first') + said('first instruction'));
   await fs.writeFile(path.join(home, 'sessions', `rollout-${child}.jsonl`), JSON.stringify({ type: 'session_meta', payload: { id: child, cwd: project.path, source: { subagent: thread } } }) + '\n' + record('task_started', 'child-turn') + record('task_complete', 'child-turn'));
   await notify(child, 'child-turn');
   await waitFor(async () => (await state()).codexActivity === 'working', 'parent stays running');
@@ -66,20 +66,28 @@ try {
   await waitFor(async () => (await state()).action?.kind === 'command' && (await state()).action.target === 'npm test', 'running command is reported');
   await fs.appendFile(transcript, JSON.stringify({ type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'custom_tool_call_output', call_id: 'call-1', output: [] } }) + '\n' + step('call-2', 'apply_patch\n*** Begin Patch\n*** Update File: src/login.ts\n*** End Patch'));
   await waitFor(async () => (await state()).action?.kind === 'edit' && (await state()).action.target === 'src/login.ts', 'file edit is reported');
-  assert.equal((await page.evaluate(id => window.agentrix.terminalActions(id), project.id)).value.length, 2, 'both steps are listed for the activity pane');
-  // Expanded, the pane beside the terminal lists the steps, newest first, and the running edit is marked.
+  assert.equal((await page.evaluate(id => window.agentrix.terminalActions(id), project.id)).value.length, 2, 'both steps are listed for the review card');
+  // Expanded, the pane beside the terminal shows the prompts being worked on, then the model's route, the context it
+  // fills and what it has used, as Codex's records give them.
   await page.getByRole('button', { name: '全屏查看 Parent task status', exact: true }).click();
   const pane = page.locator('.activity-pane'); await pane.waitFor();
-  // The prompts being worked on head the pane, the round's numbers follow in one line, then the live feed.
   const overview = pane.locator('.activity-tasks'); await overview.waitFor();
-  await waitFor(async () => (await pane.locator('.activity-round-figures b').innerText()) === '2 步', 'the pane counts the calls');
-  assert.equal(await overview.locator('code').count(), 0, 'no list of changed files below the feed');
-  await waitFor(async () => await pane.locator('.activity-item').count() === 2, 'activity pane lists the steps');
-  // A step names what it really is, newest first: its kind, the file or the command itself, and what it did.
-  const feedItem = index => pane.locator('.activity-item').nth(index).evaluate(item => ['.activity-tag', '.activity-title', 'p'].map(selector => item.querySelector(selector)?.textContent));
-  assert.deepEqual(await feedItem(0), ['文件', 'login.ts', '文件 · 修改 src/login.ts'], 'the edit names its file and what happened to it');
-  assert.deepEqual(await feedItem(1), ['命令', 'npm test', '命令 · 运行测试'], 'the command shows as typed');
-  assert.ok((await pane.locator('.activity-item').first().getAttribute('class')).includes('is-running'), 'the running edit is marked');
+  assert.equal(await pane.locator('.activity-context .activity-figure').count(), 0, 'no context before Codex counts one');
+  const tokens = (total, last, limits) => JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'token_count', info: { total_token_usage: total, last_token_usage: last, model_context_window: 828400 }, rate_limits: limits } }) + '\n';
+  const used = (input, cached, output) => ({ input_tokens: input, cached_input_tokens: cached, output_tokens: output, reasoning_output_tokens: 0, total_tokens: input + output });
+  const resets = Math.round(Date.now() / 1000) + 3 * 86400;
+  await fs.appendFile(transcript, JSON.stringify({ type: 'turn_context', timestamp: new Date().toISOString(), payload: { cwd: project.path, model: 'gpt-6.1-sol', effort: 'high' } }) + '\n'
+    + tokens(used(320000, 290000, 4200), used(310000, 300000, 4200), { primary: { used_percent: 34, window_minutes: 300, resets_at: resets }, secondary: { used_percent: 92, window_minutes: 10080, resets_at: resets } }));
+  const text = selector => pane.locator(selector).evaluateAll(nodes => nodes.map(node => node.textContent.replace(/\s+/g, ' ').trim()));
+  await waitFor(async () => (await text('.activity-route-steps li')).join(' > ') === 'Codex > OpenAI > GPT-6.1-Sol', 'the route names the agent, the service and the model');
+  assert.deepEqual(await text('.activity-route .activity-note'), ['思考 high'], 'the route says how the model runs');
+  await waitFor(async () => (await text('.activity-context .activity-figure')).join() === '314k / 828k tokens', 'the context shows how full the window is');
+  assert.deepEqual(await text('.activity-context .activity-percent'), ['38%']);
+  assert.deepEqual(await text('.activity-limit > span:first-child'), ['5 小时额度', '每周额度'], 'the plan windows are named by their length');
+  assert.deepEqual(await text('.activity-limit > b'), ['34%', '92%']);
+  assert.ok((await pane.locator('.activity-limit .activity-meter').nth(1).getAttribute('class')).includes('is-high'), 'a nearly used-up allowance is marked');
+  assert.deepEqual(await text('.activity-token-row dt'), ['本轮', '本次对话']);
+  assert.deepEqual(await text('.activity-token-row small'), ['输入 320k · 缓存命中 91% · 输出 4.2k', '输入 320k · 缓存命中 91% · 输出 4.2k']);
   // The overview lists the prompts: the one being worked on, then one sent while it works.
   await input('给登录页加上验证码。然后跑一下测试\r');
   const prompts = () => overview.locator('.activity-prompts li').evaluateAll(items => items.map(item => `${item.classList.contains('is-working') ? 'working' : 'queued'}:${item.querySelector('p').textContent}`));
@@ -98,18 +106,15 @@ try {
   await page.getByRole('button', { name: '切换到终端', exact: true }).click();
   await waitFor(async () => !await reading.count(), 'the toggle shows the terminal');
   await page.getByRole('button', { name: '阅读视图：按文档排版显示对话', exact: true }).click(); await reading.waitFor();
-  // A long step is cut inside the pane instead of widening it.
-  await fs.appendFile(transcript, JSON.stringify({ type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'custom_tool_call_output', call_id: 'call-2', output: [] } }) + '\n'
-    + step('call-3', 'apply_patch\n*** Begin Patch\n*** Update File: src/' + 'verification-code-'.repeat(12) + 'page.ts\n*** End Patch'));
-  await waitFor(async () => await pane.locator('.activity-item').count() === 3, 'the long step is listed');
+  // Each count Codex writes updates the figures.
+  await fs.appendFile(transcript, tokens(used(400000, 360000, 5000), used(80000, 70000, 800)));
+  await waitFor(async () => (await text('.activity-token-row dd')).join() === '405k tokens,405k tokens', 'a later count updates the tokens');
+  assert.deepEqual(await text('.activity-context .activity-figure'), ['81k / 828k tokens']);
   const overflow = await pane.evaluate(node => {
     const right = node.getBoundingClientRect().right + 1;
-    return [...node.querySelectorAll('.activity-card, .activity-prompts, .activity-round-figures, .activity-item')].filter(item => item.getBoundingClientRect().right > right).map(item => item.className);
+    return [...node.querySelectorAll('.activity-card, .activity-prompts, .activity-route-steps li, .activity-limit, .activity-token-row')].filter(item => item.getBoundingClientRect().right > right).map(item => item.className);
   });
   assert.deepEqual(overflow, [], 'nothing in the activity pane reaches past its edge');
-  const heights = await pane.evaluate(node => ['.activity-live', '.activity-tasks'].map(selector => Math.round(node.querySelector(selector).getBoundingClientRect().height)));
-  assert.ok(heights[0] > heights[1], `the live feed takes most of the height: ${heights}`);
-  await page.screenshot({ path: path.join(output, 'activity-pane-long-step.png') });
   await page.getByRole('button', { name: '隐藏活动栏', exact: true }).click(); await waitFor(async () => !await pane.count(), 'activity pane can be hidden');
   await page.getByRole('button', { name: '显示活动栏：它正在做什么', exact: true }).click(); await pane.waitFor();
   await page.getByRole('button', { name: '返回总览', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('.focus-mode') && !document.querySelector('[data-focus-motion]'));

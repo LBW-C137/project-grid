@@ -69,11 +69,15 @@ class ConversationLog {
   endHistory() { if (!this.loading) return; this.loading = false; this.changed({ reset: true }); }
   snapshot() { return this.loading ? [] : this.list; }
   reset() { if (!this.list.length) return; this.list = []; this.changed({ reset: true }); }
-  put(entry) {
+  // inOrder: a new entry goes before those stamped after it, and the window gets the whole list again.
+  put(entry, inOrder = false) {
     const index = this.list.findIndex(item => item.id === entry.id);
-    if (index >= 0) this.list[index] = entry;
-    else { this.list.push(entry); if (this.list.length > this.limit) this.list.shift(); }
-    this.changed({ entry });
+    if (index >= 0) { this.list[index] = entry; this.changed({ entry }); return; }
+    let at = this.list.length;
+    if (inOrder) while (at > 0 && this.list[at - 1].at > entry.at) at--;
+    this.list.splice(at, 0, entry);
+    if (this.list.length > this.limit) this.list.shift();
+    this.changed(at < this.list.length - 1 ? { reset: true, entry } : { entry });
   }
   // A tool whose result arrived. prefix: a Codex call id covers every step its script made.
   finish(id, failed = false, prefix = false) {
@@ -113,7 +117,8 @@ function claudeConversation(log, record, cwd) {
     }
     const text = clean(typeof content === 'string' ? content : Array.isArray(content) ? content.filter(block => block.type === 'text').map(block => block.text).join('\n') : '');
     const entry = withImages({ id: `u:${base}`, at, role: 'user', text: bounded(text) }, content);
-    if (text || entry.images) log.put(entry);
+    // A conversation's first prompt, which Claude Code writes after the reply to it, goes before that reply.
+    if (text || entry.images) log.put(entry, record.parentUuid === null);
     return;
   }
   if (record.type !== 'assistant' || !Array.isArray(content)) return;

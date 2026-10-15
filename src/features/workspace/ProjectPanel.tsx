@@ -113,7 +113,7 @@ export function ProjectPanel({ project, index, hidden, focused, navTarget, navPo
       </div>
     </header>
     <ProjectTerminals project={project} focused={focused} fontSize={fontSize} activeId={activeTerminalId} setActiveId={setActiveTerminalId} onAction={onAction} onError={onError} onOpenLink={onOpenLink} />
-    {showActivity && <ActivityPane project={project} terminal={currentTerminal} />}
+    {showActivity && <ActivityPane terminal={currentTerminal} />}
     {project.error && <div className="panel-error"><Info size={13} /><span>{t(project.error)}</span></div>}
   </article>;
 }

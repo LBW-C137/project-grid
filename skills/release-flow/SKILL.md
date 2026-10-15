@@ -33,7 +33,7 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
    "failed"), and download the run's `desktop-test-screenshots` artifact: each smoke saves `failure.png` when it fails.
    If the same commit passed in the branch run, the failure is a race, not this release: re-running the failed jobs
    finishes the release. Re-running is a write action, so ask before using the token for it.
-10. **Short temp paths on Windows CI.** The runner's temp folder is an 8.3 name (`C:\Users\RUNNER~1\…`). A test
+10. **Short temp paths on Windows CI.** The runner's temp folder is an 8.3 name (`<home>\…`). A test
    comparing a path the app resolved with `fs.promises.realpath` (native: it spells the long name out) must expect
    `fs.realpathSync.native`, not `fs.realpathSync` (which keeps `RUNNER~1`). To reproduce locally, set `TEMP` and
    `TMP` to the `ShortPath` of a long-named folder (`(New-Object -ComObject Scripting.FileSystemObject).GetFolder(<dir>).ShortPath`).

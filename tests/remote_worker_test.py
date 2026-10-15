@@ -98,7 +98,9 @@ class RemoteFilesTest(unittest.TestCase):
         filename = self.claude_file()
         rows = [
             {"type": "user", "uuid": "u1", "message": {"content": "Remote prompt"}},
-            {"type": "assistant", "uuid": "a1", "effort": "high", "message": {"model": "claude-test", "usage": {"speed": "fast", "other": 1}, "content": [
+            {"type": "assistant", "uuid": "a1", "effort": "high", "message": {"id": "msg-1", "model": "claude-test", "usage": {
+                "speed": "fast", "input_tokens": 120, "cache_creation_input_tokens": 40, "cache_read_input_tokens": 80, "output_tokens": 15,
+                "service_tier": "standard", "server_tool_use": {"web_search_requests": 1}, "cache_creation": {"ephemeral_5m_input_tokens": 40}, "other": 1}, "content": [
                 {"type": "thinking", "thinking": "hidden"}, {"type": "text", "text": "Reading"},
                 {"type": "tool_use", "id": "read", "name": "Read", "input": {"file_path": "/srv/project/a.py"}},
                 {"type": "tool_use", "id": "skill", "name": "Skill", "input": {"skill": "test-skill", "args": "check"}}]}},
@@ -111,7 +113,8 @@ class RemoteFilesTest(unittest.TestCase):
         self.assertEqual([row["uuid"] for row in status["records"]], ["u1", "a1", "queued"])
         reply = status["records"][1]
         self.assertEqual(reply["message"]["model"], "claude-test"); self.assertEqual(reply["effort"], "high")
-        self.assertEqual(reply["message"]["usage"], {"speed": "fast"})
+        self.assertEqual(reply["message"]["id"], "msg-1")
+        self.assertEqual(reply["message"]["usage"], {"speed": "fast", "input_tokens": 120, "cache_creation_input_tokens": 40, "cache_read_input_tokens": 80, "output_tokens": 15})
         self.assertEqual([block["type"] for block in reply["message"]["content"]], ["text", "tool_use", "tool_use"])
         result = {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "read", "is_error": True, "content": "output" * 10000}]}}
         with filename.open("a", encoding="utf-8") as output: output.write(json.dumps(result))
@@ -121,6 +124,21 @@ class RemoteFilesTest(unittest.TestCase):
         self.assertFalse(status["reset"])
         self.assertEqual(status["records"][0]["message"]["content"], [{"type": "tool_result", "tool_use_id": "read", "is_error": True, "content": ""}])
         self.assertEqual(self.worker.claude_status(str(filename), 1000)["records"], [])
+
+    def test_claude_compaction_omits_invalid_usage_and_message_ids(self):
+        for usage in (None, [], "invalid", {}, {"input_tokens": True, "cache_creation_input_tokens": 1.5, "cache_read_input_tokens": "2", "output_tokens": False, "speed": 1}):
+            with self.subTest(usage=usage):
+                kept = remote.compact_claude_record({"type": "assistant", "message": {"id": 1, "content": "Reply", "usage": usage}})
+                self.assertEqual(kept["message"], {"role": None, "content": "Reply"})
+        for usage in ({"speed": "fast"}, {"input_tokens": 0}):
+            kept = remote.compact_claude_record({"type": "assistant", "message": {"content": "Reply", "usage": usage}})
+            self.assertEqual(kept["message"]["usage"], usage)
+
+    def test_claude_compaction_keeps_whether_a_prompt_starts_the_conversation(self):
+        first = remote.compact_claude_record({"type": "user", "parentUuid": None, "uuid": "a", "message": {"role": "user", "content": "hi"}})
+        later = remote.compact_claude_record({"type": "user", "parentUuid": "a", "uuid": "b", "message": {"role": "user", "content": "more"}})
+        self.assertIsNone(first["parentUuid"]); self.assertIn("parentUuid", first)
+        self.assertEqual(later["parentUuid"], "a")
 
     def test_claude_status_resets_on_replacement_truncation_or_new_run(self):
         filename = self.claude_file()
@@ -287,7 +305,8 @@ class RemoteFilesTest(unittest.TestCase):
         self.assertEqual(snapshot["state"], "working")
         self.assertTrue(answer["reset"]); self.assertTrue(answer["historyDone"])
         kinds = [(record["type"], record["payload"].get("type")) for record in answer["records"]]
-        self.assertEqual(kinds, [("session_meta", None), ("event_msg", "task_started"), ("event_msg", "item_completed"), ("response_item", "custom_tool_call"), ("response_item", "custom_tool_call_output"), ("event_msg", "item_completed")])
+        self.assertEqual(kinds, [("session_meta", None), ("event_msg", "task_started"), ("event_msg", "item_completed"), ("response_item", "custom_tool_call"), ("response_item", "custom_tool_call_output"), ("event_msg", "item_completed"), ("event_msg", "token_count")])
+        self.assertEqual(answer["records"][-1], {"type": "event_msg", "timestamp": at, "payload": {"type": "token_count", "info": {}}})
         self.assertEqual(answer["records"][0]["payload"], {"id": identity, "cwd": str(self.root), "source": "cli"})
         self.assertEqual(answer["records"][2]["payload"]["item"]["content"], [{"type": "text", "text": "预处理太慢"}])
         self.assertEqual(answer["records"][4]["payload"], {"type": "custom_tool_call_output", "call_id": "c1"})
@@ -306,6 +325,63 @@ class RemoteFilesTest(unittest.TestCase):
             "model": "gpt-6.1-sol", "service_tier": "priority", "reasoning_effort": "high", "cwd": "/srv", "collaboration_mode": {"settings": {"developer_instructions": "long"}}}}})
         self.assertEqual(applied["payload"], {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6.1-sol", "reasoning_effort": "high", "service_tier": "priority"}})
         self.assertEqual(remote.compact_record({"type": "turn_context", "payload": {"cwd": "/srv"}})["payload"], {"cwd": "/srv"})
+
+    def test_session_meta_keeps_the_model_provider(self):
+        payload = {"id": "session", "cwd": "/srv", "source": "cli", "model_provider": "openai", "base_instructions": {"text": "hidden"}}
+        self.assertEqual(remote.compact_record({"type": "session_meta", "timestamp": "t", "payload": payload}), {
+            "type": "session_meta", "timestamp": "t", "payload": {"id": "session", "cwd": "/srv", "source": "cli", "model_provider": "openai"}})
+        for provider in (None, 1, True, {}):
+            with self.subTest(provider=provider):
+                self.assertNotIn("model_provider", remote.compact_record({"type": "session_meta", "payload": dict(payload, model_provider=provider)})["payload"])
+
+    def test_token_count_keeps_only_context_usage_and_rate_limit_windows(self):
+        usage = {"input_tokens": 23821304, "cached_input_tokens": 21937920, "cache_write_input_tokens": 0,
+                 "output_tokens": 77102, "reasoning_output_tokens": 43935, "total_tokens": 23898406}
+        window = {"used_percent": 18, "window_minutes": 10080, "resets_at": 1792472784}
+        record = {"type": "event_msg", "timestamp": "t", "payload": {"type": "token_count", "extra": "hidden",
+            "info": {"total_token_usage": usage, "last_token_usage": usage, "model_context_window": 828400, "extra": "hidden"},
+            "rate_limits": {"limit_id": "codex", "limit_name": None, "primary": dict(window, extra="hidden"), "secondary": None,
+                            "credits": {"has_credits": True, "unlimited": False, "balance": "62500.0000000000"}, "plan_type": None}}}
+        expected_usage = {"input_tokens": 23821304, "cached_input_tokens": 21937920, "output_tokens": 77102, "reasoning_output_tokens": 43935, "total_tokens": 23898406}
+        self.assertEqual(remote.compact_record(record), {"type": "event_msg", "timestamp": "t", "payload": {"type": "token_count",
+            "info": {"total_token_usage": expected_usage, "last_token_usage": expected_usage, "model_context_window": 828400},
+            "rate_limits": {"primary": window, "secondary": None}}})
+
+    def test_token_count_allows_null_info_and_missing_rate_limits(self):
+        for info in (None, [], "invalid", 1):
+            for limits in ({}, {"rate_limits": None}, {"rate_limits": []}, {"rate_limits": "invalid"}):
+                with self.subTest(info=info, limits=limits):
+                    payload = dict({"type": "token_count", "info": info}, **limits)
+                    self.assertEqual(remote.compact_record({"type": "event_msg", "timestamp": "t", "payload": payload}), {
+                        "type": "event_msg", "timestamp": "t", "payload": {"type": "token_count", "info": None}})
+
+    def test_token_count_rejects_invalid_numbers_and_usage_dicts(self):
+        record = {"type": "event_msg", "timestamp": "t", "payload": {"type": "token_count", "info": {
+            "total_token_usage": {"input_tokens": True, "cached_input_tokens": "2", "output_tokens": 1.5, "reasoning_output_tokens": False, "total_tokens": 0},
+            "last_token_usage": None, "model_context_window": True},
+            "rate_limits": {"primary": {"used_percent": False, "window_minutes": True, "resets_at": 1.5},
+                            "secondary": {"used_percent": 18.5, "window_minutes": 0, "resets_at": 1792472784}}}}
+        self.assertEqual(remote.compact_record(record), {"type": "event_msg", "timestamp": "t", "payload": {"type": "token_count",
+            "info": {"total_token_usage": {"total_tokens": 0}}, "rate_limits": {"primary": {}, "secondary": {"used_percent": 18.5, "window_minutes": 0, "resets_at": 1792472784}}}})
+        record["payload"]["info"] = {"total_token_usage": [], "last_token_usage": "invalid", "model_context_window": 1.5}
+        record["payload"]["rate_limits"] = {"primary": [], "secondary": "invalid"}
+        self.assertEqual(remote.compact_record(record)["payload"], {"type": "token_count", "info": {}, "rate_limits": {"primary": None, "secondary": None}})
+
+    def test_history_records_excludes_token_counts_before_spending_its_budget(self):
+        home = Path(self.temp.name) / "history-home"
+        sessions = home / "sessions"
+        sessions.mkdir(parents=True)
+        identity = str(uuid.uuid4())
+        rows = [
+            {"type": "session_meta", "payload": {"id": identity, "cwd": str(self.root), "source": "cli"}},
+            {"type": "event_msg", "payload": {"type": "agent_message", "message": "Earlier work"}},
+        ]
+        token_count = {"type": "event_msg", "payload": {"type": "token_count", "info": {"model_context_window": 828400}}}
+        filename = sessions / ("rollout-" + identity + ".jsonl")
+        filename.write_text("".join(json.dumps(row) + "\n" for row in rows[:1] + [token_count] * 50 + rows[1:] + [token_count] * 50), encoding="utf-8")
+        expected = [remote.compact_record(row) for row in rows]
+        found = remote.history_records(str(self.root), str(home), str(Path(self.temp.name) / "claude-history"), budget=len(json.dumps(expected, ensure_ascii=True)))
+        self.assertEqual(found, {"codex": [{"id": identity, "records": expected}], "claude": []})
 
     @unittest.skipUnless(os.name == "posix", "the remote side runs on Linux and macOS")
     def test_document_reads_a_markdown_file_anywhere_and_nothing_else(self):

@@ -116,16 +116,18 @@ try {
   const call = (id, cmd) => ({ type: 'response_item', timestamp: stamp(), payload: { type: 'custom_tool_call', call_id: id, name: 'exec', input: `text(await tools.exec_command({cmd:${JSON.stringify(cmd)}}))` } });
   const done = id => ({ type: 'response_item', timestamp: stamp(), payload: { type: 'custom_tool_call_output', call_id: id, output: [] } });
   const rollout = async (index, records) => fs.writeFile(path.join(home, 'sessions', `rollout-${sessions[index].thread}.jsonl`), records.map(item => JSON.stringify(item)).join('\n') + '\n');
-  const meta = index => ({ type: 'session_meta', payload: { id: sessions[index].thread, cwd: projects[index].path, source: 'cli' } });
+  const meta = index => ({ type: 'session_meta', payload: { id: sessions[index].thread, cwd: projects[index].path, source: 'cli', model_provider: 'openai' } });
+  const tokens = (input, cached, output, last) => event('token_count', { info: { total_token_usage: { input_tokens: input, cached_input_tokens: cached, output_tokens: output, total_tokens: input + output }, last_token_usage: { input_tokens: last, cached_input_tokens: 0, output_tokens: 0, total_tokens: last }, model_context_window: 258400 },
+    rate_limits: { primary: { used_percent: 23, window_minutes: 300, resets_at: Math.round(Date.now() / 1000) + 7200 }, secondary: { used_percent: 41, window_minutes: 10080, resets_at: Math.round(Date.now() / 1000) + 3 * 86400 } } });
   // The storefront: a round in progress, with an answer in Markdown, edits and a running test.
-  await rollout(0, [meta(0), event('task_started', { turn_id: 't1' }),
+  await rollout(0, [meta(0), event('task_started', { turn_id: 't1' }), { type: 'turn_context', timestamp: stamp(), payload: { cwd: projects[0].path, model: 'gpt-6.1-sol', effort: 'high' } },
     message('user', 'u1', '给结算页加上优惠券输入框，输入后实时重算合计，并补上测试'),
     message('agent', 'a1', '先看一下结算页的组件结构和现有的价格计算。'),
-    call('c1', 'Get-Content src/pages/Checkout.tsx'), done('c1'), call('c2', 'rg -n "totalOf" src'), done('c2'),
+    call('c1', 'Get-Content src/pages/Checkout.tsx'), done('c1'), call('c2', 'rg -n "totalOf" src'), done('c2'), tokens(186400, 151200, 3900, 61800),
     message('agent', 'a2', '## 方案\n\n- 新增 `CouponInput` 组件，受控输入\n- 在 `lib/price.ts` 里加 `applyCoupon(total, code)`，未知券码不改价格\n- `Checkout` 用 `applyCoupon(totalOf(cart), coupon)` 计算合计\n\n```ts\nexport function applyCoupon(total: number, code: string) {\n  const rate = COUPONS[code.trim().toUpperCase()] ?? 1;\n  return Math.round(total * rate);\n}\n```'),
     call('c3', `apply_patch <<'EOF'\n*** Begin Patch\n*** Update File: src/pages/Checkout.tsx\n*** Add File: src/pages/CouponInput.tsx\n*** Update File: src/lib/price.ts\n*** End Patch\nEOF`), done('c3'),
     message('agent', 'a3', '改好了，这是结算页加上优惠券后的效果图：\n\n![优惠券输入框](design/coupon-preview.png)\n\n接下来跑结算相关的测试。'),
-    call('c4', 'npm test -- checkout')]);
+    tokens(412300, 356900, 9100, 84600), call('c4', 'npm test -- checkout')]);
   await waitFor(async () => (await state(0)).codexActivity === 'working', 'storefront working');
   // Payments and dashboard: finished rounds; the dashboard has been looked at (green), payments waits (pink).
   const finished = {
@@ -153,7 +155,7 @@ try {
   // An agent's terminal opens in the reading view by default; switch only if it shows the terminal.
   if (!await page.locator('.project-panel.is-focused .reading-view').count()) await page.getByRole('button', { name: '阅读视图：按文档排版显示对话', exact: true }).click();
   await page.locator('.reading-view .reading-markdown h2').waitFor();
-  await page.locator('.activity-pane .activity-round').waitFor();
+  await page.locator('.activity-pane .activity-context .activity-figure').waitFor();
   await page.mouse.move(800, 2); await page.waitForTimeout(600);
   await shot('reading-view.jpg');
 

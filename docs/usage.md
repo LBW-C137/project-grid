@@ -117,8 +117,11 @@ SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入
 
 ## 活动：Codex 与 Claude Code 正在做什么
 
-- **活动栏**：展开项目后显示在终端右侧，按时间倒序列出这一轮的步骤。每一步有类别（修改、读取、运行、搜索、访问、技能、MCP、子代理）、对象（文件、命令、技能名、`服务 · 工具`）和时间；进行中的一步带转动标记，失败的一步标注「失败」。技能会附上它的用途说明（取自项目、`~/.claude`、`~/.codex` 或已安装插件里的 `SKILL.md`）；MCP 工具显示由哪个服务提供。点击标题栏上的列表按钮收起或展开，选择会被记住；窗口较窄时自动隐藏。多个分屏终端时显示当前选中的那个。
-- **本轮概览**：活动栏下半部分，与上面的实时动态上下等分。列出正在处理和排队中的提示，工具调用数、已完成、失败和用时，以及修改的文件、用到的技能和 MCP。很长的命令或路径在栏内截断，悬停查看全文。
+- **活动栏**：展开项目后显示在终端右侧。点击标题栏上的列表按钮收起或展开，选择会被记住；窗口较窄时自动隐藏。多个分屏终端时显示当前选中的那个。从上到下依次是：
+  - **正在处理的任务**：正在处理和排队中的提示。
+  - **模型路由**：代理 › 接口 › 模型，下面是思考强度和快速/普通模式。接口取自 Codex 记录里的 `model_provider`（自定义的服务显示 `config.toml` 里它的 `base_url` 主机名），Claude Code 则看它设置里的 `ANTHROPIC_BASE_URL`、Bedrock、Vertex 等开关；远程项目的 Claude Code 不显示接口。
+  - **上下文长度**：当前对话占用的 token / 模型的上下文窗口，70% 起变黄，90% 起变红。
+  - **用量**：本轮和本次对话用掉的 token（输入、缓存命中比例、输出）。Codex 另有 5 小时和每周额度的已用比例及重置时间；Claude Code 的记录里没有账号额度，在终端输入 `/usage` 查看；它的「本次对话」从对话的第一条提示算起，很长的对话只读取最近一段记录、看不到开头时只显示本轮。
 - **来源**：Claude Code 的步骤读自它的会话记录（`~/.claude/projects/…/会话.jsonl`），Codex 的读自 rollout 记录（`~/.codex/sessions`）；应用只读取，不注入逐个工具的 hook，因此不影响它们的速度。新的一轮开始时列表清空，只保留最近 200 步。
 - **范围与限制**：目前支持本地项目；SSH 项目不显示活动。Codex 把所有调用包在脚本里执行，用 shell 脚本改文件时只能显示「通过命令修改文件」而没有文件名；MCP 工具本身的说明文字无法从记录中得到。
 
@@ -240,20 +243,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=1.2.11`：安装指定版本。
+- `AGENTRIX_VERSION=1.2.12`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 1.2.11：
+例如，安装 1.2.12：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.11 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.12 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-1.2.11-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-1.2.12-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：

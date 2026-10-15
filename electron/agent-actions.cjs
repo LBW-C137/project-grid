@@ -36,6 +36,13 @@ function claudeOwnRecord(record) {
   return /^\[Request interrupted by user(?: for tool use)?\]$/.test(text) || text.startsWith('This session is being continued from a previous conversation');
 }
 
+// A prompt sent to Claude, which starts a round; tool results come back as user records too.
+function claudePrompt(record) {
+  const content = record?.message?.content;
+  return record?.type === 'user' && !record.isSidechain && !record.isMeta && !claudeOwnRecord(record)
+    && (typeof content === 'string' || Array.isArray(content) && content.some(block => block?.type === 'text') && !content.some(block => block?.type === 'tool_result'));
+}
+
 // mcp__server__tool, the name both agents give a tool that an MCP server provides.
 function mcpTool(name) {
   const match = /^mcp__(.+?)__(.+)$/.exec(name);
@@ -192,7 +199,13 @@ function codexFailed(payload) {
 // The steps of the current round, oldest first. changed is called with what to tell the window.
 class ActionLog {
   constructor(changed = () => {}, limit = 200) { this.changed = changed; this.limit = limit; this.list = []; }
-  reset() { if (!this.list.length) return; this.list = []; this.changed({ reset: true }); }
+  // since: a prompt's time. Claude Code writes a session's first prompt after the steps it started, so the steps stamped
+  // after the prompt stay.
+  reset(since) {
+    const kept = Number.isFinite(since) ? this.list.filter(action => action.at > since) : [];
+    if (kept.length === this.list.length) return;
+    this.list = kept; this.changed({ reset: true });
+  }
   add(action) {
     if (!action.id || this.list.some(item => item.id === action.id)) return;
     this.list.push(action);
@@ -261,7 +274,7 @@ class TranscriptTail {
 function claudeRecord(log, record, cwd) {
   if (!record || record.isSidechain || !record.message || claudeOwnRecord(record)) return;
   const content = record.message.content, at = Date.parse(record.timestamp) || Date.now();
-  if (record.type === 'user' && !record.isMeta && (typeof content === 'string' || Array.isArray(content) && content.some(block => block.type === 'text') && !content.some(block => block.type === 'tool_result'))) { log.reset(); return; }
+  if (claudePrompt(record)) { log.reset(Date.parse(record.timestamp)); return; }
   if (!Array.isArray(content)) return;
   const added = [];
   for (const block of content) {
@@ -323,4 +336,4 @@ async function skillDescription(name, cwd, file) {
   return '';
 }
 
-module.exports = { ActionLog, TranscriptTail, claudeAction, claudeRecord, claudeOwnRecord, codexActions, codexRecord, codexFailed, commandPhrase, PHRASES, skillDescription, projectPath, resolvePath };
+module.exports = { ActionLog, TranscriptTail, claudeAction, claudeRecord, claudeOwnRecord, claudePrompt, codexActions, codexRecord, codexFailed, commandPhrase, PHRASES, skillDescription, projectPath, resolvePath };

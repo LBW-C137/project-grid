@@ -160,7 +160,8 @@ def json_records(filename, history_window=False):
             except (ValueError, UnicodeError): continue
 
 def compact_claude_record(record):
-    """The messages, tool calls, results and settings the other computer needs; pictures and outputs stay here."""
+    """The messages, tool calls, results and settings the other computer needs, with the model route, context and token
+    usage kept for the activity pane. Pictures and outputs stay here."""
     if not isinstance(record, dict) or record.get("isSidechain"): return None
     if record.get("type") == "attachment":
         attachment = record.get("attachment") or {}
@@ -185,11 +186,15 @@ def compact_claude_record(record):
                               "input": {key: clip(value, 600) for key, value in arguments.items() if isinstance(value, (str, int, float, bool))}})
             elif kind == "tool_result": parts.append({"type": "tool_result", "tool_use_id": block.get("tool_use_id"), "is_error": bool(block.get("is_error")), "content": ""})
     else: return None
-    kept = {key: record.get(key) for key in ("type", "uuid", "timestamp", "cwd", "sessionId", "isMeta", "isCompactSummary", "isVisibleInTranscriptOnly", "effort") if key in record}
+    kept = {key: record.get(key) for key in ("type", "uuid", "parentUuid", "timestamp", "cwd", "sessionId", "isMeta", "isCompactSummary", "isVisibleInTranscriptOnly", "effort") if key in record}
     kept["message"] = {"role": message.get("role"), "content": parts}
     if isinstance(message.get("model"), str): kept["message"]["model"] = message["model"]
+    if isinstance(message.get("id"), str): kept["message"]["id"] = message["id"]
     usage = message.get("usage") or {}
-    if isinstance(usage, dict) and isinstance(usage.get("speed"), str): kept["message"]["usage"] = {"speed": usage["speed"]}
+    if isinstance(usage, dict):
+        numbers = {key: usage[key] for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens") if type(usage.get(key)) is int}
+        if isinstance(usage.get("speed"), str): numbers["speed"] = usage["speed"]
+        if numbers: kept["message"]["usage"] = numbers
     return kept
 
 def history_records(root, codex_home, claude_home, per_agent=4, budget=1200 * 1024):
@@ -217,7 +222,9 @@ def history_records(root, codex_home, claude_home, per_agent=4, budget=1200 * 10
         try:
             for record in json_records(filename, history_window=True):
                 kept = compact(record)
-                if kept is not None: records.append(kept)
+                if kept is None: continue
+                if agent == "codex" and kept.get("type") == "event_msg" and kept["payload"].get("type") == "token_count": continue
+                records.append(kept)
         except (OSError, ValueError): return
         while records and size + len(json.dumps(records, ensure_ascii=True)) > budget: records = records[len(records) // 4 + 1:]
         if records:
@@ -298,9 +305,13 @@ def clip(value, limit=RECORD_TEXT_LIMIT):
 
 def compact_record(record):
     """What the reading view and the activity pane on the other computer take from one rollout record, small: the
-    conversation's messages, the tools called and which call finished. Outputs, reasoning and instructions stay here."""
+    conversation's messages, the tools called and which call finished. The model route, context and token usage are
+    kept for the activity pane. Outputs, reasoning and instructions stay here."""
     kind, payload, at = record.get("type"), record.get("payload") or {}, record.get("timestamp")
-    if kind == "session_meta": return {"type": kind, "timestamp": at, "payload": {"id": payload.get("id"), "cwd": payload.get("cwd"), "source": payload.get("source")}}
+    if kind == "session_meta":
+        kept = {"id": payload.get("id"), "cwd": payload.get("cwd"), "source": payload.get("source")}
+        if isinstance(payload.get("model_provider"), str): kept["model_provider"] = payload["model_provider"]
+        return {"type": kind, "timestamp": at, "payload": kept}
     # A turn's model and effort, and the settings applied (fast mode is the "priority" tier), for the reading view.
     if kind == "turn_context":
         kept = {"cwd": payload.get("cwd")}
@@ -309,6 +320,27 @@ def compact_record(record):
     if kind == "event_msg" and payload.get("type") == "thread_settings_applied":
         settings = payload.get("thread_settings") if isinstance(payload.get("thread_settings"), dict) else {}
         return {"type": kind, "timestamp": at, "payload": {"type": "thread_settings_applied", "thread_settings": dict((key, settings.get(key)) for key in ("model", "reasoning_effort", "service_tier") if key in settings)}}
+    if kind == "event_msg" and payload.get("type") == "token_count":
+        info = payload.get("info")
+        kept = {"type": "token_count", "info": None}
+        if isinstance(info, dict):
+            context = {}
+            for key in ("total_token_usage", "last_token_usage"):
+                usage = info.get(key)
+                if isinstance(usage, dict):
+                    context[key] = {name: usage[name] for name in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens") if type(usage.get(name)) is int}
+            if type(info.get("model_context_window")) is int: context["model_context_window"] = info["model_context_window"]
+            kept["info"] = context
+        limits = payload.get("rate_limits")
+        if isinstance(limits, dict):
+            windows = {}
+            for key in ("primary", "secondary"):
+                window = limits.get(key)
+                windows[key] = None
+                if isinstance(window, dict):
+                    windows[key] = {name: window[name] for name in ("used_percent", "window_minutes", "resets_at") if type(window.get(name)) in ((int, float) if name == "used_percent" else (int,))}
+            kept["rate_limits"] = windows
+        return {"type": kind, "timestamp": at, "payload": kept}
     if kind == "event_msg" and payload.get("type") in CONVERSATION_EVENTS:
         item = payload.get("item")
         if payload.get("type") == "item_completed":

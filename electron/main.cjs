@@ -15,6 +15,7 @@ const { READING_NOTE } = require('./features/agents/reading-note.cjs');
 const { writeHandoff, handoffText, startupNote } = require('./features/agents/handoff.cjs');
 const { remember, roundsOf } = require('./features/agents/project-memory.cjs');
 const { agentSettings } = require('./features/agents/agent-settings.cjs');
+const { UsageMeter, claudeProvider, codexProvider } = require('./features/agents/agent-usage.cjs');
 const { agentCommand } = require('./features/agents/agent-command.cjs');
 const { scrubSkills } = require('./features/agents/skill-privacy.cjs');
 const { setThumbnailer, isGeneratedImage } = require('./conversation.cjs');
@@ -138,6 +139,8 @@ function publicState() {
           agentStartedAt: s?.codexActive ? s.activitySince : null,
           // The model, effort and fast mode its records show, above the reading view's message box.
           agentSettings: s?.codexActive ? s.agentSettings || null : null,
+          // The service its model is reached through, the context it fills and the tokens it took, for the activity pane.
+          agentUsage: s?.codexActive && s.usage ? s.usage.snapshot() : null,
           // A run of the CLI that is no conversation (update, --version, login), for the reading view to say so.
           agentCommand: s?.codexActive ? s.agentCommand || null : null,
           codexActivity: s?.codexActivity || 'unknown', needsInput: s?.needsInput?.message || null, shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
@@ -288,19 +291,9 @@ function notifyCompletion(project) {
 }
 
 function briefAction(action) { return action ? { kind: action.kind, tool: action.tool, target: action.target, detail: action.detail, done: action.done, phrase: action.phrase, object: action.object } : null; }
-// The agent's steps reach the window in small batches; after a long history is read at once (a resumed
-// conversation) the whole list replaces what the window has.
-function publishAction(s, change) {
-  if (sessions.get(s.terminalId) !== s) return;
-  (s.actionChanges ||= []).push(change);
-  s.actionTimer ||= setTimeout(() => {
-    const changes = s.actionChanges; s.actionChanges = []; s.actionTimer = null;
-    if (sessions.get(s.terminalId) !== s) return;
-    send('terminal:action', changes.length > 40 || changes.some(item => item.reset) ? { id: s.terminalId, list: s.actions.list } : { id: s.terminalId, changes: changes.map(item => item.action) });
-    scheduleState();
-  }, 120);
-}
-// The conversation for the reading view reaches the window the same way, in small batches.
+// A step that starts or ends changes the card's one-line status.
+function publishAction(s) { if (sessions.get(s.terminalId) === s) scheduleState(); }
+// The conversation for the reading view reaches the window in small batches.
 function publishConversation(s, change) {
   if (sessions.get(s.terminalId) !== s || s.conversation.loading) return;
   (s.conversationChanges ||= []).push(change);
@@ -319,10 +312,12 @@ function publishConversation(s, change) {
 // How often an agent's records are read when nothing told of a write: often while it works, so the reading view keeps
 // up with it (and over SSH, where no write is told), seldom while it waits.
 const readEvery = s => s.codexActivity === 'working' ? 250 : 1000;
-// The model, effort and fast mode an agent's record shows (agent-settings.cjs): a change is published with the state.
+// The model, effort and fast mode an agent's record shows (agent-settings.cjs), and the tokens it reports
+// (agent-usage.cjs): a change is published with the state.
 function noteSettings(s, agent, record) {
   const next = agentSettings(s.agentSettings || null, agent, record);
   if (next !== (s.agentSettings || null)) { s.agentSettings = next; scheduleState(); }
+  if (s.usage?.apply(record)) scheduleState();
 }
 // A skill step names the skill; what the skill is for comes from its SKILL.md, a moment later.
 function describeActions(s, cwd, actions) {
@@ -343,7 +338,7 @@ function followClaude(project, s, event) {
   if (s.claudeTranscript?.filename !== file) {
     const onHistory = ready => {
       if (ready) s.conversation.endHistory();
-      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); }
+      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.usage?.reset(); }
     };
     s.claudeTranscript = remote ? { filename: file } : new TranscriptTail(file, { onHistory });
     s.activityMonitor?.stop();
@@ -366,6 +361,16 @@ function followClaude(project, s, event) {
       await tail.read(onRecord); return null;
     }, () => {}, { interval: () => readEvery(s), watch: () => remote ? null : tail.filename });
   } else void s.activityMonitor?.poll();
+}
+
+// What the activity pane shows of the model route and the tokens spent. Which service a model is reached through is
+// read from this computer's settings; over SSH, Claude's stays unnamed and Codex's is the id its records give.
+function startUsage(project, s, event) {
+  const usage = s.usage = new UsageMeter(s.agent);
+  if (project.kind === 'ssh') return;
+  const named = update => { if (s.usage === usage) { update(); scheduleState(); } };
+  if (s.agent === 'claude') void claudeProvider(event.cwd || project.path, claudeConfigDir()).then(provider => named(() => { usage.provider = provider; })).catch(() => {});
+  else void codexProvider(event.codexHome || s.codexHome).then(names => named(() => { usage.names = names; })).catch(() => {});
 }
 
 // Restores and the reading-view picker know the id before Claude emits its next prompt hook.
@@ -469,7 +474,7 @@ function onEvent(event) {
     // says what it does and shows its output; nothing is handed over, followed or restored for it.
     s.agentCommand = agentCommand(event.agent, event.command);
     if (s.agentCommand) {
-      s.ready = false; s.codexActive = true; s.status = 'codex'; s.error = null; s.codexActivity = 'unknown'; s.agentSettings = null;
+      s.ready = false; s.codexActive = true; s.status = 'codex'; s.error = null; s.codexActivity = 'unknown'; s.agentSettings = null; s.usage = null;
       s.agent = event.agent === 'claude' ? 'claude' : 'codex';
       s.activityMonitor?.stop(); s.activityMonitor = null; s.actions.reset(); s.conversation.reset(); s.promptQueue.reset();
       broadcast(); return;
@@ -493,6 +498,7 @@ function onEvent(event) {
     s.promptQueue.reset();
     s.agent = event.agent === 'claude' ? 'claude' : 'codex';
     if (!keepClaudeHistory) { s.activityMonitor?.stop(); s.activityMonitor = null; }
+    if (!keepClaudeHistory || !s.usage) startUsage(project, s, event);
     // A terminal restores the agent it last ran. Switching agents drops the other one's conversation id.
     const previousAgent = store.findTerminal(s.terminalId)?.record.restore?.agent || 'codex';
     const agentRestore = { agent: s.agent, ...(previousAgent !== s.agent ? { threadId: null, interrupted: false } : {}) };
@@ -510,7 +516,7 @@ function onEvent(event) {
     // sent back compacted with each status (integration/remote-worker.py), with the same history start and end.
     const onHistory = ready => {
       if (ready) s.conversation.endHistory();
-      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); }
+      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.usage?.reset(); }
     };
     const onRecord = record => {
       codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
@@ -717,7 +723,7 @@ function startTerminal(id) {
     codexActive: false, codexAvailable: null, seq: 0, chunks: [], bytes: 0, pending: '',
     flushTimer: null, error: null, submissions: new SubmissionTracker(),
   };
-  s.actions = new ActionLog(change => publishAction(s, change));
+  s.actions = new ActionLog(() => publishAction(s));
   s.gate = new InputGate(data => { if (sessions.get(id) === s && s.status !== 'exited') terminal.write(data); }, { shellOwnsInput: () => !s.codexActive });
   s.promptQueue = new PromptQueue(() => { if (sessions.get(id) === s) scheduleState(); });
   // A prompt the agent's own record shows it received is being worked on. History read when a session is

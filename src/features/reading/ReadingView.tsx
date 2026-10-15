@@ -3,7 +3,7 @@ import { readingMarked } from './markdown-escape';
 import createDOMPurify from 'dompurify';
 import { ArrowDown, CaretDown, CaretUp, CheckCircle, CircleNotch, FileText, Globe, Image as ImageIcon, MagnifyingGlass, PaperPlaneRight, PencilSimple, Plugs, Robot, Sparkle, Stop, TerminalWindow, Wrench, X, XCircle, type Icon } from '@phosphor-icons/react';
 import type { AgentCommand, ConversationEntry, ProjectTerminal } from '../../shared/types';
-import { actionText, stepVerb } from '../agents/ActivityPane';
+import { actionText, stepVerb } from '../agents/action-text';
 import { dictateInto } from '../voice/voice-input';
 import { readScreen, useScreen } from '../terminal/terminal-screen';
 import { parseAgentScreen } from '../agents/agent-screen';

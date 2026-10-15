@@ -18,7 +18,12 @@ export type Project = {
 export type FileCard = { kind: 'markdown'; path: string; excerpt: string; outside?: boolean } | { kind: 'html'; path: string; picture: string | null } | { kind: 'video'; path: string; url: string } | { kind: 'image'; path: string; picture: string; remote?: boolean };
 // The model, effort and fast mode an agent's records show (electron/features/agents/agent-settings.cjs); null: not shown yet.
 export type AgentSettings = { model: string | null; effort: string | null; fast: boolean | null };
-export type ProjectTerminal = { agentStartedAt?: number | null; agentSettings?: AgentSettings | null; agentCommand?: string | null; action: AgentActionBrief | null; task: string; prompts: PendingPrompt[]; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; needsInput: string | null; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
+// What an agent spends, as its records show (electron/features/agents/agent-usage.cjs): the service its model is reached
+// through, the context it fills, the tokens of this round and of the conversation, and the plan's limits (Codex only).
+// input counts the cached part, output the reasoning; null: not known (yet).
+export type AgentTokens = { input: number; cached: number; output: number };
+export type AgentUsage = { provider: string | null; context: { used: number; window: number } | null; round: AgentTokens | null; total: AgentTokens | null; limits: { minutes: number | null; percent: number; resetsAt: number | null }[] };
+export type ProjectTerminal = { agentStartedAt?: number | null; agentSettings?: AgentSettings | null; agentUsage?: AgentUsage | null; agentCommand?: string | null; action: AgentActionBrief | null; task: string; prompts: PendingPrompt[]; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; needsInput: string | null; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
 export type Settings = { startView: 'decisions' | 'workspace'; surface: 'glass' | 'solid'; glassBackground: 'theme' | 'desktop'; glassTransparency: number | null; terminalRenderer: 'gpu' | 'dom'; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; terminalFontWeight: 400 | 500 | 600; terminalFontFamily: string; terminalCjkFontFamily: string; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: ThemeId; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'decisions' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'projectAbove' | 'projectBelow' | 'maximize' | 'fullscreen' | 'newTerminal' | 'removeProject', string>>; guideVersion: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; voiceModel: string };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type RecentSSH = { host: string; path: string; name: string; lastOpenedAt: number };
@@ -41,12 +46,11 @@ export type GitChange = { path: string; index: string; worktree: string; origina
 export type GitStatus = { repository: boolean; branch: string; head: string; detached: boolean; unborn: boolean; upstream: string | null; ahead: number | null; behind: number | null; files: GitChange[]; total: number; staged: number; unstaged: number; conflicts: number; truncated: boolean };
 export type GitCommit = { hash: string; parents: string[]; author: string; date: string; refs: string; subject: string };
 export type GitHistory = { commits: GitCommit[]; nextOffset: number | null };
-// One step an agent took (a tool call). The card shows the brief form, the activity pane the whole list.
+// One step an agent took (a tool call). The card shows the brief form; a review card reads the whole list for its checks.
 type AgentActionKind = 'edit' | 'command' | 'read' | 'search' | 'web' | 'skill' | 'mcp' | 'agent' | 'other';
 export type AgentActionBrief = { kind: AgentActionKind; tool: string; target: string; detail: string; done: boolean; phrase?: string; object?: string; written?: string[] };
 export type PendingPrompt = { id: string; text: string; state: 'queued' | 'working'; at: number };
 export type AgentAction = AgentActionBrief & { id: string; at: number; description: string; failed: boolean; server?: string; files?: { path: string; change: 'add' | 'update' | 'delete' | 'write' }[] };
-export type AgentActionPacket = { id: string; list?: AgentAction[]; changes?: AgentAction[] };
 // One message or tool call of an agent's conversation, for the reading view.
 export type ConversationEntry = { id: string; at: number; role: 'user' | 'assistant' | 'tool'; text?: string; answer?: boolean; images?: string[]; generated?: { path: string; prompt: string }; tool?: AgentActionBrief & { failed: boolean } };
 export type ConversationPacket = { id: string; list?: ConversationEntry[]; changes?: ConversationEntry[] };
@@ -155,7 +159,7 @@ type Bridge = {
   notifyDecision(projectId: string, title: string, kind: string): Promise<Result<boolean>>;
   onDecisionShow(callback: () => void): () => void;
   onError(callback: (message: string) => void): () => void;
-  minimize(): void; maximize(): void; toggleFullScreen(): void; isFullScreen(): Promise<Result<boolean>>; onFullScreen(callback: (fullScreen: boolean) => void): () => void; terminalActions(id: string): Promise<Result<AgentAction[]>>; terminalConversation(id: string): Promise<Result<ConversationEntry[]>>; onTerminalConversation(callback: (packet: ConversationPacket) => void): () => void; onTerminalAction(callback: (packet: AgentActionPacket) => void): () => void; close(): void; focusMode(enabled: boolean): void;
+  minimize(): void; maximize(): void; toggleFullScreen(): void; isFullScreen(): Promise<Result<boolean>>; onFullScreen(callback: (fullScreen: boolean) => void): () => void; terminalActions(id: string): Promise<Result<AgentAction[]>>; terminalConversation(id: string): Promise<Result<ConversationEntry[]>>; onTerminalConversation(callback: (packet: ConversationPacket) => void): () => void; close(): void; focusMode(enabled: boolean): void;
   quit(): Promise<Result<boolean>>;
 };
 declare global { interface Window { agentrix: Bridge; } }

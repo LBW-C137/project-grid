@@ -1,14 +1,14 @@
-/* The activity pane as three frosted cards: the task being worked on (a ring, the prompt, a moving bar), the round in
-   one line (steps · failures · time), and the live feed (time, a check or a ring, the step, what it is). */
+/* The activity pane as frosted cards: the task being worked on (a ring, the prompt, a moving bar), then the model's
+   route (agent › service › model), the context it fills and what it has used (plan allowance, tokens). */
 .activity-pane {
   --flow-card: var(--card-fill, rgba(255, 255, 255, .07)); --flow-line: var(--card-line, rgba(255, 255, 255, .13)); --flow-inset: rgba(0, 0, 0, .2);
   --flow-ink: var(--ink, #f2f7fc); --flow-muted: var(--ink-secondary, #b9c8d8); --flow-faint: var(--ink-faint, rgba(255, 255, 255, .5));
-  --flow-ok: var(--accent-green, #3ddc97); --flow-fail: #ff7b72;
-  gap: 10px; padding: 10px;
+  --flow-ok: var(--accent-green, #3ddc97); --flow-warm: #f2c14e; --flow-fail: #ff7b72;
+  gap: 10px; padding: 10px; overflow-y: auto;
 }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .activity-pane {
   --flow-card: var(--theme-hover); --flow-line: var(--theme-line); --flow-inset: var(--theme-hover);
-  --flow-ink: var(--theme-ink); --flow-muted: var(--theme-muted); --flow-faint: var(--theme-muted); --flow-ok: var(--theme-ink); --flow-fail: var(--mono-alert-ink);
+  --flow-ink: var(--theme-ink); --flow-muted: var(--theme-muted); --flow-faint: var(--theme-muted); --flow-ok: var(--theme-ink); --flow-warm: var(--mono-alert-ink); --flow-fail: var(--mono-alert-ink);
 }
 .activity-card { flex: none; min-width: 0; border-radius: var(--card-radius, 12px); background: var(--flow-card); box-shadow: inset 0 0 0 1px var(--flow-line); }
 .activity-card-title { margin: 0; padding: 11px 14px 8px; font-size: 12.5px; font-weight: 600; color: var(--flow-ink); }
@@ -27,29 +27,42 @@
 @keyframes activity-progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(230%); } }
 .activity-task-quiet { margin: 0 14px; font-size: 12.5px; line-height: 1.6; color: var(--flow-muted); overflow-wrap: anywhere; }
 
-/* The round in one line. */
-.activity-round { display: flex; align-items: center; gap: 10px; padding-right: 14px; }
-.activity-round .activity-card-title { flex: 1; padding: 12px 14px; }
-.activity-round-figures { display: flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--flow-muted); font-variant-numeric: tabular-nums; }
-.activity-round-figures b { font-weight: 600; color: var(--flow-ok); }
-.activity-round-figures .is-failed { color: var(--flow-fail); }
-.activity-round-figures time { font-weight: 600; color: var(--flow-ink); }
-.activity-round > svg { flex: none; color: var(--flow-muted); }
+/* Agent › service › model, then how the model runs. */
+.activity-route-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; margin: 0; padding: 0 14px; list-style: none; }
+.activity-route-steps li { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.activity-route-steps li > svg { flex: none; color: var(--flow-faint); }
+.activity-route-steps span { min-width: 0; padding: 3px 9px; border-radius: 999px; background: var(--flow-inset); font-size: 12px; line-height: 1.5; color: var(--flow-muted); overflow-wrap: anywhere; }
+.activity-route-steps .is-model span { font-weight: 600; color: var(--flow-ink); box-shadow: inset 0 0 0 1px var(--flow-ok); }
+.activity-note { margin: 0; padding: 8px 14px 12px; font-size: 11.5px; line-height: 1.6; color: var(--flow-faint); overflow-wrap: anywhere; }
+.activity-note + .activity-note { padding-top: 0; }
 
-/* The live feed fills what is left. */
-.activity-live { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.activity-list { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 10px; }
-.activity-empty { margin: 4px 8px; font-size: 12px; line-height: 1.7; color: var(--flow-muted); }
-.activity-item { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; column-gap: 9px; padding: 6px 8px; border-radius: 8px; }
-.activity-item:hover { background: rgba(255, 255, 255, .06); }
-.activity-item time { font-size: 11.5px; color: var(--flow-ok); font-variant-numeric: tabular-nums; }
-.activity-mark { color: var(--flow-ok); }
-.activity-item.is-running .activity-mark { color: var(--flow-muted); }
-.activity-item.is-failed .activity-mark { color: var(--flow-fail); }
-.activity-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 500; color: var(--flow-ink); }
-.activity-title.is-code { font: 500 12px/1.5 var(--font-mono); }
-.activity-item.is-failed .activity-title { color: var(--flow-fail); }
-.activity-item p { grid-column: 3; margin: 1px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.5; color: var(--flow-faint); }
-.activity-tag { color: var(--flow-muted); }
+/* A title with its figure at the right end, a big number, and a meter that warms as it fills. */
+.activity-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-right: 14px; }
+.activity-percent { font-size: 13px; font-weight: 600; color: var(--flow-ok); font-variant-numeric: tabular-nums; }
+.activity-figure { margin: 0; padding: 0 14px 8px; font-size: 12px; color: var(--flow-muted); font-variant-numeric: tabular-nums; }
+.activity-figure b { font-size: 20px; font-weight: 600; color: var(--flow-ink); }
+.activity-meter { position: relative; display: block; height: 6px; border-radius: 999px; overflow: hidden; background: var(--flow-inset); }
+.activity-meter i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--flow-ok); transition: width .3s ease; }
+.activity-context > .activity-meter { margin: 0 14px; }
+.activity-meter.is-warm i { background: var(--flow-warm); }
+.activity-meter.is-high i { background: var(--flow-fail); }
+:is(.activity-percent, .activity-limit b).is-warm { color: var(--flow-warm); }
+:is(.activity-percent, .activity-limit b).is-high { color: var(--flow-fail); }
+
+/* The plan's windows, then the tokens of the round and the conversation. */
+.activity-limits { display: grid; gap: 10px; padding: 0 14px 10px; }
+.activity-limit { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; row-gap: 5px; column-gap: 8px; font-size: 12px; color: var(--flow-muted); }
+.activity-limit b { font-weight: 600; color: var(--flow-ok); font-variant-numeric: tabular-nums; }
+.activity-limit .activity-meter, .activity-limit small { grid-column: 1 / -1; }
+.activity-limit small { font-size: 11px; color: var(--flow-faint); }
+.activity-tokens { display: grid; gap: 8px; margin: 0; padding: 0 14px 12px; }
+.activity-limits + .activity-tokens { margin: 0 14px; padding: 10px 0 12px; border-top: 1px solid var(--flow-line); }
+.activity-token-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 8px; }
+.activity-token-row dt { font-size: 12px; color: var(--flow-muted); }
+.activity-token-row dd { margin: 0; font-size: 11.5px; color: var(--flow-muted); font-variant-numeric: tabular-nums; }
+.activity-token-row dd b { font-size: 14px; font-weight: 600; color: var(--flow-ink); }
+.activity-token-row small { grid-column: 1 / -1; font-size: 11px; line-height: 1.6; color: var(--flow-faint); font-variant-numeric: tabular-nums; }
+.activity-tokens + .activity-note { padding-top: 0; }
+.activity-empty { margin: 0; padding: 12px 14px; font-size: 12px; line-height: 1.7; color: var(--flow-muted); }
 :root[data-motion="off"] .activity-progress i { width: 100%; opacity: .5; }
 @media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .activity-progress i { width: 100%; opacity: .5; } }

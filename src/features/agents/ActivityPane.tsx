@@ -1,129 +1,117 @@
-import { useEffect, useState } from 'react';
-import { CheckCircle, CircleNotch, Timer, XCircle } from '@phosphor-icons/react';
-import type { AgentAction, AgentActionPacket, AgentActionBrief, Project, ProjectTerminal } from '../../shared/types';
+import { CaretRight, CircleNotch } from '@phosphor-icons/react';
+import type { AgentTokens, AgentUsage, ProjectTerminal } from '../../shared/types';
 import { t } from '../../shared/i18n';
+import { modelName } from '../reading/model-name';
 import './activity-pane.css';
 
-// What each kind of step is called, in the card's one-line status and in the activity pane.
-const KIND_LABELS: Record<AgentActionBrief['kind'], string> = { edit: '修改', command: '运行', read: '读取', search: '搜索', web: '访问', skill: '技能', mcp: 'MCP', agent: '子代理', other: '调用' };
-
-const base = (file: string) => file.split(/[\\/]/).pop() || file;
-// What kind of step it is, in a word or two: a command says what it does ("运行测试"), others their kind.
-export function stepVerb(action: AgentActionBrief) {
-  return action.kind === 'command' && action.phrase ? t(action.phrase) : t(KIND_LABELS[action.kind]);
+// 1234 → "1.2k", 828400 → "828k", 23898406 → "23.9M": token counts the way a person reads them at a glance.
+export function tokenCount(value: number) {
+  if (value < 1000) return String(Math.round(value));
+  if (value < 1e6) return `${(value / 1e3).toFixed(value < 1e4 ? 1 : 0).replace(/\.0$/, '')}k`;
+  return `${(value / 1e6).toFixed(value < 1e7 ? 2 : 1).replace(/\.?0+$/, '')}M`;
 }
-// "运行测试", "修改 App.tsx": what a step does, in a few words a person reads at a glance. The full command
-// or path is left for the tooltip. An edit made through a shell script names no file.
-export function actionText(action: AgentActionBrief) {
-  const target = action.target;
-  if (action.kind === 'edit') return target ? `${t('修改')} ${target.split('、').map(base).join('、')}` : t('通过命令修改文件');
-  if (action.kind === 'read') return `${t('读取')} ${base(target)}`.trim();
-  if (action.kind === 'search') return target ? t('搜索“{text}”', { text: target }) : t('搜索');
-  if (action.kind === 'web') { let host = ''; try { host = new URL(target).host; } catch { } return host ? `${t('访问')} ${host}` : t('搜索网页“{text}”', { text: target }); }
-  if (action.kind === 'skill') return `${t('使用技能')} ${target}`.trim();
-  if (action.kind === 'mcp') { const [server, tool] = target.split(' · '); return t('调用 {server} 的 {tool}', { server, tool: tool || t('工具') }); }
-  if (action.kind === 'agent') return `${t('派出子代理')} ${target}`.trim();
-  if (action.kind === 'command') return action.phrase ? `${t(action.phrase)} ${action.object || ''}`.trim() : `${t('运行')} ${target}`.trim();
-  return `${t('调用工具')} ${target}`.trim();
-}
-const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour12: false });
+// How full a meter is: calm, then amber from 70%, red from 90%.
+const level = (percent: number) => percent >= 90 ? 'is-high' : percent >= 70 ? 'is-warm' : '';
+const percentOf = (part: number, whole: number) => whole > 0 ? Math.min(100, Math.round(part / whole * 100)) : 0;
 
-// The live feed names each step by what it really is: a tag for its kind, then the command itself, the skill, the
-// MCP server's tool or the files it made or changed; a second line says what that is or did.
-const KIND_TAGS: Record<AgentActionBrief['kind'], string> = { edit: '文件', command: '命令', read: '读取', search: '搜索', web: '网页', skill: '技能', mcp: 'MCP', agent: '子代理', other: '工具' };
-const CHANGE_LABELS: Record<string, string> = { add: '新建', update: '修改', delete: '删除', write: '写入' };
-function stepLines(action: AgentAction): { title: string; note: string; code: boolean } {
-  const target = action.target, detail = action.detail;
-  if (action.kind === 'edit') return action.files?.length
-    ? { title: action.files.map(file => base(file.path)).join('、'), note: action.files.map(file => `${t(CHANGE_LABELS[file.change] || '修改')} ${file.path}`).join('、'), code: false }
-    : { title: detail || t('通过命令修改文件'), note: t('通过命令修改文件'), code: !!detail };
-  if (action.kind === 'command') return { title: target, note: [action.phrase ? `${t(action.phrase)} ${action.object || ''}`.trim() : '', detail].filter(Boolean).join(' · '), code: true };
-  if (action.kind === 'read') return { title: base(target), note: target, code: false };
-  if (action.kind === 'search') return { title: target, note: detail ? t('在 {path} 中搜索', { path: detail }) : t('搜索代码'), code: true };
-  if (action.kind === 'web') return { title: target, note: /^https?:/i.test(target) ? t('访问网页') : t('搜索网页'), code: false };
-  if (action.kind === 'skill') return { title: target, note: action.description || detail, code: false };
-  if (action.kind === 'mcp') { const [server, tool] = target.split(' · '); return { title: tool || target, note: t('MCP 服务 {server}', { server: action.server || server }), code: false }; }
-  if (action.kind === 'agent') return { title: target, note: [t('子代理'), detail].filter(Boolean).join(' · '), code: false };
-  return { title: target || action.tool, note: t('调用工具'), code: false };
-}
-
-// The steps of the current round for one terminal, newest first: which files the agent edits, which commands
-// it runs, which skills and MCP tools it calls and what those are for. The main process reads them from the
-// agent's own transcript and sends changes as they happen.
-export function ActivityPane({ project, terminal }: { project: Project; terminal: ProjectTerminal }) {
-  const [actions, setActions] = useState<AgentAction[]>([]);
-  useEffect(() => {
-    let active = true; setActions([]);
-    let waiting = true;
-    let queued: AgentActionPacket[] = [];
-    const apply = (current: AgentAction[], packet: AgentActionPacket) => {
-      if (packet.list) return packet.list.slice(-200);
-      const next = [...current], positions = new Map(next.map((action, index) => [action.id, index]));
-      for (const action of packet.changes || []) {
-        const at = positions.get(action.id);
-        if (at === undefined) { positions.set(action.id, next.length); next.push(action); }
-        else next[at] = action;
-      }
-      return next.slice(-200);
-    };
-    const snapshot = (initial: AgentAction[]) => {
-      if (!active) return;
-      const next = queued.reduce(apply, initial.slice(-200));
-      queued = []; waiting = false; setActions(next);
-    };
-    const off = window.agentrix.onTerminalAction(packet => {
-      if (packet.id !== terminal.id) return;
-      if (waiting) queued.push(packet);
-      else setActions(current => apply(current, packet));
-    });
-    void window.agentrix.terminalActions(terminal.id).then(
-      result => snapshot(result.ok ? result.value : []), () => snapshot([]),
-    );
-    return () => { active = false; off(); };
-  }, [terminal.id, terminal.sessionId]);
-  const working = terminal.codexActive && terminal.codexActivity === 'working';
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { if (!working) return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [working]);
-  const failed = actions.filter(action => action.failed).length;
-  const started = actions[0]?.at, ended = working ? now : actions.at(-1)?.at;
+// Beside an expanded project's terminal: the prompts being worked on, then what the agent runs on and spends — the
+// route its model is reached through, how full the context window is and the tokens and plan allowance used.
+export function ActivityPane({ terminal }: { terminal: ProjectTerminal }) {
   return <aside className="activity-pane" aria-label={t('活动')}>
     <section className="activity-card activity-tasks" aria-label={t('正在处理的任务')}>
       <h4 className="activity-card-title">{t('正在处理的任务')}</h4>
       <PromptList terminal={terminal} />
     </section>
-    <section className="activity-card activity-round" aria-label={t('本轮概览')}>
-      <h4 className="activity-card-title">{t('活动')}</h4>
-      <span className="activity-round-figures"><b>{t('{count} 步', { count: actions.length })}</b><span>·</span>
-        <span className={failed ? 'is-failed' : ''}>{t('{count} 失败', { count: failed })}</span><span>·</span>
-        <time>{started && ended ? elapsed(ended - started) : '0:00'}</time></span>
-      <Timer size={17} aria-hidden="true" />
-    </section>
-    <section className="activity-card activity-live" aria-label={t('实时动态')}>
-      <h4 className="activity-card-title">{t('实时动态')}</h4>
-      <div className="activity-list" role="list">
-        {!actions.length && <p className="activity-empty">{!terminal.codexActive
-          ? project.kind === 'ssh' ? t('远程项目暂不显示活动。') : t('在终端里启动 Codex 或 Claude Code 后，这里显示它每一步在做什么：改了哪些文件、运行了什么命令、调用了哪些技能和 MCP 工具。')
-          : t('这一轮还没有调用工具。')}</p>}
-        {[...actions].reverse().map(action => {
-          const { title, note, code } = stepLines(action);
-          const Mark = action.failed ? XCircle : action.done ? CheckCircle : CircleNotch;
-          return <div key={action.id} role="listitem" title={[title, note].filter(Boolean).join('\n')} className={`activity-item activity-${action.kind} ${action.done ? '' : 'is-running'} ${action.failed ? 'is-failed' : ''}`}>
-            <time>{clock(action.at)}</time>
-            <Mark size={17} weight={action.done ? 'fill' : 'bold'} className={`activity-mark ${action.done ? '' : 'loading-spinner'}`} aria-label={action.failed ? t('失败') : action.done ? t('已完成') : t('进行中')} />
-            <span className={`activity-title ${code ? 'is-code' : ''}`}>{title}</span>
-            <p><span className="activity-tag">{t(KIND_TAGS[action.kind])}</span>{note && <> · {note}</>}</p>
-          </div>;
-        })}
-      </div>
-    </section>
+    {terminal.codexActive ? <>
+      <RouteCard terminal={terminal} />
+      <ContextCard usage={terminal.agentUsage} />
+      <UsageCard usage={terminal.agentUsage} claude={terminal.agent === 'claude'} />
+    </> : <section className="activity-card">
+      <p className="activity-empty">{t('在终端里启动 Codex 或 Claude Code 后，这里显示它的模型路由、上下文长度和用量。')}</p>
+    </section>}
   </aside>;
 }
 
-// How long the round has run, the way a stopwatch shows it: 8:56, or 1:02:07 past an hour.
-const elapsed = (ms: number) => {
-  const total = Math.max(0, Math.round(ms / 1000)), h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, sec = String(total % 60).padStart(2, '0');
-  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
-};
+// Agent › service › model, and how the model runs: its effort and whether fast mode is on.
+function RouteCard({ terminal }: { terminal: ProjectTerminal }) {
+  const settings = terminal.agentSettings, provider = terminal.agentUsage?.provider;
+  const steps = [
+    { label: terminal.agent === 'claude' ? 'Claude Code' : 'Codex', title: t('代理') },
+    ...(provider ? [{ label: provider, title: t('接口') }] : []),
+    ...(settings?.model ? [{ label: modelName(settings.model), title: t('模型'), model: true }] : []),
+  ];
+  const how = [settings?.effort && t('思考 {effort}', { effort: settings.effort === 'default' ? t('默认') : settings.effort }),
+    settings?.fast != null && (settings.fast ? t('快速模式') : t('普通模式'))].filter(Boolean).join(' · ');
+  return <section className="activity-card activity-route" aria-label={t('模型路由')}>
+    <h4 className="activity-card-title">{t('模型路由')}</h4>
+    <ol className="activity-route-steps">
+      {steps.map((step, index) => <li key={step.title} className={step.model ? 'is-model' : ''} title={t('{name}：{value}', { name: step.title, value: step.label })}>
+        {index > 0 && <CaretRight size={12} weight="bold" aria-hidden="true" />}<span>{step.label}</span>
+      </li>)}
+    </ol>
+    <p className="activity-note">{settings?.model ? how || t('按默认设置运行') : t('第一次回复后显示模型。')}</p>
+  </section>;
+}
+
+// The context the conversation fills now, out of the model's window.
+function ContextCard({ usage }: { usage: AgentUsage | null | undefined }) {
+  const context = usage?.context;
+  const percent = context ? percentOf(context.used, context.window) : 0;
+  return <section className="activity-card activity-context" aria-label={t('上下文长度')}>
+    <header className="activity-card-head"><h4 className="activity-card-title">{t('上下文长度')}</h4>{context && <b className={`activity-percent ${level(percent)}`}>{percent}%</b>}</header>
+    {context ? <>
+      <p className="activity-figure"><b>{tokenCount(context.used)}</b><span> / {tokenCount(context.window)} tokens</span></p>
+      <Meter percent={percent} label={t('上下文已用 {percent}%', { percent })} />
+      <p className="activity-note">{t('还可容纳 {count} tokens', { count: tokenCount(Math.max(0, context.window - context.used)) })}</p>
+    </> : <p className="activity-note">{t('第一次回复后显示。')}</p>}
+  </section>;
+}
+
+// The plan's allowance used (Codex reports it with every call), then the tokens of this round and this conversation.
+function UsageCard({ usage, claude }: { usage: AgentUsage | null | undefined; claude: boolean }) {
+  const limits = usage?.limits || [], rows = [[t('本轮'), usage?.round], [t('本次对话'), usage?.total]] as const;
+  const known = rows.filter(([, tokens]) => tokens);
+  return <section className="activity-card activity-usage" aria-label={t('用量')}>
+    <h4 className="activity-card-title">{t('用量')}</h4>
+    {!!limits.length && <div className="activity-limits">
+      {limits.map(limit => <div key={limit.minutes ?? 0} className="activity-limit">
+        <span>{limitName(limit.minutes)}</span><b className={level(limit.percent)}>{Math.round(limit.percent)}%</b>
+        <Meter percent={limit.percent} label={t('{name}已用 {percent}%', { name: limitName(limit.minutes), percent: Math.round(limit.percent) })} />
+        {limit.resetsAt && <small>{t('{time} 重置', { time: resetTime(limit.resetsAt) })}</small>}
+      </div>)}
+    </div>}
+    {known.length ? <dl className="activity-tokens">
+      {known.map(([label, tokens]) => <TokenRow key={label} label={label} tokens={tokens!} />)}
+    </dl> : <p className="activity-note">{t('第一次回复后显示。')}</p>}
+    {claude && <p className="activity-note">{t('Claude Code 的记录里没有账号额度；在终端输入 /usage 查看。')}</p>}
+  </section>;
+}
+
+function TokenRow({ label, tokens }: { label: string; tokens: AgentTokens }) {
+  const parts = [t('输入 {count}', { count: tokenCount(tokens.input) }), tokens.input > 0 && tokens.cached > 0 && t('缓存命中 {percent}%', { percent: percentOf(tokens.cached, tokens.input) }), t('输出 {count}', { count: tokenCount(tokens.output) })].filter(Boolean);
+  return <div className="activity-token-row">
+    <dt>{label}</dt><dd><b>{tokenCount(tokens.input + tokens.output)}</b> tokens</dd>
+    <small>{parts.join(' · ')}</small>
+  </div>;
+}
+
+function Meter({ percent, label }: { percent: number; label: string }) {
+  const value = Math.max(0, Math.min(100, percent));
+  return <span className={`activity-meter ${level(value)}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value)} aria-label={label}><i style={{ width: `${value}%` }} /></span>;
+}
+
+// A rate-limit window by its length: 5 hours, a week.
+function limitName(minutes: number | null) {
+  if (minutes === 10080) return t('每周额度');
+  if (minutes === 1440) return t('每日额度');
+  if (minutes && minutes % 60 === 0) return t('{n} 小时额度', { n: minutes / 60 });
+  return minutes ? t('{n} 分钟额度', { n: minutes }) : t('额度');
+}
+// When a window starts over: the time today, else the date and time.
+function resetTime(at: number) {
+  const date = new Date(at), today = new Date().toDateString() === date.toDateString();
+  return date.toLocaleString([], today ? { hour: '2-digit', minute: '2-digit', hour12: false } : { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+}
 
 // The prompts sent and not finished: the one being worked on first, then those waiting their turn. A prompt
 // leaves the list when the round that worked on it ends.

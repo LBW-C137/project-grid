@@ -25,7 +25,7 @@
 .app-shell:not(.focus-mode) .project-panel:is(:hover, :focus-within) .panel-header .icon-button { opacity: 1; }
 
 /* Rows answer the pointer the same way everywhere: a wash of light, a small step to the right, a press. */
-:is(.git-file, .activity-item, .recent-open, .tree-row) { transition: background .16s ease, transform .16s cubic-bezier(.2, .8, .2, 1); }
+:is(.git-file, .recent-open, .tree-row) { transition: background .16s ease, transform .16s cubic-bezier(.2, .8, .2, 1); }
 :is(button.git-file, .recent-open):hover { transform: translateX(2px); }
 :is(button.git-file, .tree-row, .recent-open):active { transform: scale(.985); }
 .git-hunk { transition: border-color .18s ease, box-shadow .18s ease; }
@@ -48,7 +48,6 @@
 @keyframes arrive-up { from { opacity: 0; transform: translateY(10px); } }
 @keyframes backdrop-in { from { opacity: 0; } }
 .activity-pane { animation: arrive-right .24s cubic-bezier(.2, .8, .2, 1); }
-.activity-item { animation: arrive-up .2s cubic-bezier(.2, .8, .2, 1); }
 .git-hunk { animation: arrive-up .22s cubic-bezier(.2, .8, .2, 1) backwards; }
 .error-toast, .workspace-warning { animation: arrive-up .22s cubic-bezier(.2, .8, .2, 1); }
 dialog[open]::backdrop { animation: backdrop-in .2s ease; }
