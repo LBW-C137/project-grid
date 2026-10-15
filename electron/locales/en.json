@@ -1106,6 +1106,17 @@
   "写批语：哪里不对、要改成什么样，比如“错误提示再明确一点”；也可以点麦克风说": "Write your notes: what's wrong and what it should become, like \"make the error message clearer\"; or click the microphone and say them",
   "批语": "Notes",
   "所有会话": "All sessions",
+  "打开文件位置": "Open file location",
+  "查找": "Find",
+  "无结果": "No results",
+  "区分大小写": "Match case",
+  "上一个（Shift+Enter）": "Previous (Shift+Enter)",
+  "上一个": "Previous",
+  "下一个（Enter）": "Next (Enter)",
+  "下一个": "Next",
+  "关闭查找（Esc）": "Close find (Esc)",
+  "关闭查找": "Close find",
+  "远程项目的文件在服务器上，本机没有它的位置。": "A remote project's files are on its server: they have no place on this computer.",
   "决策页右侧一栏列出所有会话在做什么，和任务总览合成一页；顶栏只留“决策”和“工作台”。": "The decision page shows every session and what it is doing in a column beside the decisions, the task overview folded into it; the title bar keeps Decide and Workbench.",
   "文件编辑区支持 VS Code 的编辑快捷键：Ctrl+/ 批量注释、Shift+Alt+A 块注释、Alt+↑/↓ 移动行、Tab 多行缩进等，按文件类型选注释符号。": "The file editor takes VS Code's editing keys: Ctrl+/ comments the selected lines, Shift+Alt+A a block, Alt+↑/↓ moves lines, Tab indents several, and more, with the comment mark of each kind of file.",
   "项目里的终端分屏可以按住标题栏拖到别的位置，顺序会保存。": "A project's terminal splits can be dragged by their title bar to another place, and the order is kept.",
@@ -1294,5 +1305,8 @@
   "用 Ctrl+Shift+方向键切换项目，上下左右对应它们在 grid 里的位置；输入框里有文字时仍按词选择。": "Ctrl+Shift and an arrow move between projects as they sit in the grid; in a box with text they still select by word.",
   "斜杠命令（如 /fast）完成后弹窗不再转圈，显示结果或“已完成，没有输出”，按 Esc 关闭；10 秒仍读不到结果时可以切换到终端查看。": "Once a slash command such as /fast is done, its popup stops spinning and shows the result, or that it finished with no output, until Esc; if no result can be read after 10 seconds, it offers the terminal.",
   "同一台服务器上的 SSH 终端共用一个连接，后面开的终端几乎立刻打开。": "SSH terminals on one server share one connection, so the ones after the first open almost at once.",
-  "阅读视图的文字缩小到原来的 0.85 倍。": "The reading view's text is 0.85 times its former size."
+  "阅读视图的文字缩小到原来的 0.85 倍。": "The reading view's text is 0.85 times its former size.",
+  "文件树的右键菜单新增“打开文件位置”，在本机的文件管理器里直接选中这个文件。": "The file tree's right-click menu has \"Open file location\", which selects the file in your computer's file manager.",
+  "文件编辑区按 Ctrl+F 查找：所有匹配处都会标出，Enter / Shift+Enter 逐个跳转，Esc 回到正文。": "Ctrl+F in the file editor finds text: every match is marked, Enter and Shift+Enter move between them, and Esc returns to the text.",
+  "在阅读视图里连续执行 Codex 的 /status 等命令，弹窗每次都显示结果，不再提示“已完成，没有输出”。": "Running a Codex command such as /status again and again from the reading view shows its result every time, not \"finished with no output\"."
 }

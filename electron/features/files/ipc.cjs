@@ -91,6 +91,14 @@ function registerFilesIpc({ handle, listen, findProject, remoteFor, fileOperatio
     return { kind: 'external' };
   }
   handle('project:reveal', revealProject);
+  // This computer's file manager at an item's place, the item selected; the project root opens as the folder itself.
+  async function revealEntry(id, relativePath) {
+    const project = findProject(id);
+    if (project.kind === 'ssh') throw new Error('远程项目的文件在服务器上，本机没有它的位置。');
+    if (!relativePath) { const error = await shell.openPath(project.path); if (error) throw new Error(error); return; }
+    shell.showItemInFolder(await resolveProjectPath(project, relativePath));
+  }
+  handle('project:reveal-entry', revealEntry);
   function setProgress(value) { fileProgress = value; send('files:progress', value); }
   return { setProgress };
 }

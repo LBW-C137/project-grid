@@ -394,6 +394,18 @@ kbd { border-color: #dbeeff26; color: #8ca3bd; background: #e9f4ff06; }
 .editor-surface > .file-text-editor { position: relative; z-index: 1; }
 .conflict-bands, .conflict-actions { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .conflict-bands { z-index: 0; }
+/* Ctrl+F: the find bar over the editor's top right, and every match marked behind the text, the one shown brighter. */
+.find-bands { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.editor-measure { position: absolute; left: 0; top: 0; visibility: hidden; white-space: pre; pointer-events: none; }
+.find-bands i { position: absolute; border-radius: 2px; background: rgba(255, 196, 70, .2); box-shadow: inset 0 0 0 1px rgba(255, 196, 70, .38); }
+.find-bands i.is-current { background: rgba(255, 168, 40, .5); box-shadow: inset 0 0 0 1px rgba(255, 214, 130, .95); }
+.editor-find { position: absolute; top: 8px; right: 18px; z-index: 3; display: flex; align-items: center; gap: 3px; padding: 4px 5px 4px 6px; border-radius: 10px; background: var(--glass-solid, #102331); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16), 0 10px 28px rgba(0, 0, 0, .38); }
+.editor-find input { width: 230px; padding: 5px 9px; border: 0; border-radius: 7px; outline: none; font: 13px var(--font-ui); color: var(--ink, #f1f7ff); background: rgba(0, 0, 0, .28); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.editor-find input:focus { box-shadow: inset 0 0 0 1px var(--accent-blue, #3b9eff); }
+.editor-find-count { min-width: 60px; padding: 0 4px; font-size: 12px; text-align: center; white-space: nowrap; color: var(--ink-secondary, #b9c8d8); font-variant-numeric: tabular-nums; }
+.editor-find .icon-button { width: 26px; height: 26px; }
+.editor-find-case { font: 600 12px var(--font-ui); }
+.editor-find .icon-button[aria-pressed="true"] { color: #fff; background: rgba(255, 255, 255, .18); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .3); }
 .conflict-bands i { position: absolute; left: 0; right: 0; }
 .conflict-current { background: #3fb9502a; }
 .conflict-incoming { background: #3f8cff2a; }

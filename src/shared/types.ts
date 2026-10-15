@@ -105,6 +105,7 @@ type Bridge = {
   deleteEntries(id: string, paths: string[]): Promise<Result<{ deleted: string[] }>>;
   copyEntries(id: string, paths: string[]): Promise<Result<{ count: number; superseded?: boolean }>>;
   copyPaths(id: string, paths: string[], format: 'absolute' | 'relative'): Promise<Result<{ count: number; superseded?: boolean }>>;
+  revealEntry(id: string, path: string): Promise<Result<void>>;
   pasteEntries(id: string, directory: string): Promise<Result<{ pasted: string[] }>>;
   fileTreeFocus(id: string, focused: boolean): void;
   getFileProgress(): Promise<Result<FileProgress>>;

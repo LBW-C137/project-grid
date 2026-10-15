@@ -104,6 +104,7 @@ SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入
 
 ## 复制与粘贴
 
+- 本地项目的文件或文件夹右键菜单最上面是 **打开文件位置**：在本机的文件资源管理器里打开它所在的文件夹并选中它（在空白处右键则打开项目文件夹）；SSH 项目的文件在服务器上，没有这一项。
 - 文件或文件夹的右键菜单提供 **复制绝对路径** 和 **复制相对路径**，多选时每行一个路径。资源管理器里的 **Ctrl+Shift+C** 复制绝对路径；相对路径以项目根目录为起点。
 - SSH 的绝对路径来自服务器，例如 `/srv/project/src/main.py`，不会混入 Windows 路径。
 
@@ -165,6 +166,7 @@ SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入
 
 编辑区支持与 VS Code 相同的编辑快捷键（macOS 上 Ctrl 换成 Cmd）：
 - **Ctrl+/**：注释或取消注释选中的各行（没有选中时为光标所在行）。注释符号按文件类型选择：JS/TS/JSON 等用 `//`；Python、YAML、TOML、Shell、`.env`、`.conf`、Dockerfile 等配置文件用 `#`；INI 用 `;`；SQL 用 `--`；HTML、XML、Markdown 和 CSS 没有行注释，整段包进 `<!-- -->` 或 `/* */`。选中各行都已注释时取消注释，否则全部注释。
+- **Ctrl+F**：在右上角打开查找栏，文件里所有匹配处都标出来，显示“第几个/共几个”；Enter 下一个、Shift+Enter 上一个（在正文里也可以按 F3 / Shift+F3），Aa 区分大小写；Esc 关闭并回到正文，选中当前匹配。选中一段文字再按 Ctrl+F 会直接查找它。
 - **Shift+Alt+A**：给选中的内容加上或去掉块注释。
 - **Tab** / **Shift+Tab**：选中多行时整体缩进或减少缩进，也可以用 **Ctrl+]** / **Ctrl+[**。缩进单位跟随文件本身（制表符、2 个或 4 个空格）。
 - **Alt+↑/↓** 上下移动所在行；**Shift+Alt+↑/↓** 向上或向下复制所在行；**Ctrl+Shift+K** 删除所在行；**Ctrl+L** 选中整行，连按会继续向下扩展；**Ctrl+Enter** 在下方插入新行。
@@ -238,20 +240,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=1.2.10`：安装指定版本。
+- `AGENTRIX_VERSION=1.2.11`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 1.2.10：
+例如，安装 1.2.11：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.10 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.11 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-1.2.10-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-1.2.11-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：

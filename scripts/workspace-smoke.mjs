@@ -137,6 +137,12 @@ try {
   const renameDialog = page.locator('dialog.file-edit-dialog[open]');
   await renameDialog.getByLabel('文件或文件夹名称', { exact: true }).fill('renamed.txt'); await renameDialog.getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('treeitem', { name: 'renamed.txt', exact: true }).waitFor();
+  // "打开文件位置" shows the item selected in this computer's file manager (stubbed here: no window opens).
+  await application.evaluate(({ shell }) => { globalThis.revealed = []; shell.showItemInFolder = target => globalThis.revealed.push(target); });
+  await page.getByRole('treeitem', { name: 'renamed.txt', exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '打开文件位置', exact: true }).click();
+  await waitFor(async () => (await application.evaluate(() => globalThis.revealed)).length === 1, 'open file location');
+  assert.equal((await application.evaluate(() => globalThis.revealed))[0], await fs.realpath(path.join(project.path, 'renamed.txt')));
   await backupClipboard();
   await page.getByRole('treeitem', { name: 'source.txt', exact: true }).click(); await page.keyboard.press('Control+c');
   const copied = await fs.realpath(path.join(project.path, 'source.txt'));

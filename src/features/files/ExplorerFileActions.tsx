@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Clipboard, FilePlus, FolderPlus, PencilSimple, Trash, X, SpinnerGap } from '@phosphor-icons/react';
+import { Copy, Clipboard, FilePlus, FolderOpen, FolderPlus, PencilSimple, Trash, X, SpinnerGap } from '@phosphor-icons/react';
 import type { FileEntry, FileProgress, Project, Result } from '../../shared/types';
 import { t } from '../../shared/i18n';
 
@@ -68,6 +68,11 @@ export function useExplorerFileActions(project: Project, changed: (directory?: s
     try { const result = await unwrap(window.agentrix.copyPaths(project.id, paths, format)); if (!result.superseded) setMessage(format === 'absolute' ? t('已复制绝对路径') : t('已复制相对路径')); }
     catch (error) { setMessage(String((error as Error).message || error)); }
   };
+  // In the file manager of this computer (a local project's only): the item selected in its folder.
+  const reveal = async (path: string) => {
+    setMenu(null); setMessage('');
+    try { await unwrap(window.agentrix.revealEntry(project.id, path)); } catch (error) { setMessage(String((error as Error).message || error)); }
+  };
   const paste = (directory: string) => run(async () => {
     const result = await unwrap(window.agentrix.pasteEntries(project.id, directory));
     setSelected(result.pasted); anchor.current = result.pasted[0] || directory;
@@ -86,7 +91,7 @@ export function useExplorerFileActions(project: Project, changed: (directory?: s
     event.preventDefault(); event.stopPropagation();
     const paths = targets(entry); if (!selected.includes(entry.path)) setSelected(paths);
     window.agentrix.fileTreeFocus(project.id, true);
-    setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 250)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 365)), entry, targets: paths });
+    setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 250)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - (project.kind === 'ssh' ? 365 : 410))), entry, targets: paths });
   };
   const backgroundEntry = (event: MouseEvent) => entryFor((event.target as Element).closest<HTMLElement>('[data-directory-path]')?.dataset.directoryPath || '');
   const onBackgroundClick = (event: MouseEvent) => {
@@ -113,6 +118,7 @@ export function useExplorerFileActions(project: Project, changed: (directory?: s
     changed(edit.directory);
   };
   const overlays = <>{menu && createPortal(<div ref={menuElement} className="dropdown explorer-context-menu" role="menu" aria-label={t('文件操作')} style={{ left: menu.x, top: menu.y }}>
+    {project.kind !== 'ssh' && <><button role="menuitem" onClick={() => void reveal(menu.entry.path)}><FolderOpen size={16} />{t('打开文件位置')}</button><div className="menu-divider" /></>}
     <button role="menuitem" onClick={() => void copy(menu.targets)}><Copy size={16} />{t('复制')}<span>Ctrl C</span></button>
     <button role="menuitem" onClick={() => void copyPaths(menu.targets, 'absolute')}><Copy size={16} />{t('复制绝对路径')}<span>Ctrl Shift C</span></button>
     <button role="menuitem" onClick={() => void copyPaths(menu.targets, 'relative')}><Copy size={16} />{t('复制相对路径')}</button>

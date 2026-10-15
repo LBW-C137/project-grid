@@ -167,6 +167,22 @@ try {
   await editor.evaluate(node => node.setSelectionRange(19, 19));
   await editor.press('Enter'); await editor.pressSequentially('<li>new</li>');
   assert.equal(await editor.inputValue(), '<ul>\n  <li>two</li>\n  <li>new</li>\n  <li>one</li>\n</ul>', 'Enter keeps the indentation');
+  // Ctrl+F finds in the file: every match marked, Enter goes to the next, Escape returns to the text with it selected.
+  await editor.fill('<p>one</p>\n<p>two</p>\n<p>one more</p>');
+  await editor.evaluate(node => node.setSelectionRange(0, 0));
+  await editor.press('Control+f');
+  const find = page.getByRole('search', { name: '查找', exact: true }), query = find.getByRole('textbox', { name: '查找', exact: true });
+  await query.waitFor();
+  await waitFor(async () => query.evaluate(node => document.activeElement === node), 'the find box takes the keyboard');
+  await query.pressSequentially('one');
+  await waitFor(async () => (await find.locator('.editor-find-count').innerText()) === '1/2', 'two matches, the first shown');
+  assert.equal(await page.locator('.find-bands i').count(), 2, 'both marked');
+  await page.screenshot({ path: path.join(output, 'file-editor-find.png') });
+  await query.press('Enter');
+  await waitFor(async () => (await find.locator('.editor-find-count').innerText()) === '2/2', 'Enter shows the next');
+  await query.press('Escape');
+  await find.waitFor({ state: 'detached' });
+  assert.deepEqual(await editor.evaluate(node => [document.activeElement === node, node.selectionStart, node.selectionEnd]), [true, 25, 28], 'back in the text, the match selected');
   await editor.fill('<h1>Draft</h1>');
   await page.screenshot({ path: path.join(output, 'file-editor.png') });
   await answer(2); const canceled = await page.evaluate(() => window.agentrix.quit()); assert.equal(canceled.value, false);

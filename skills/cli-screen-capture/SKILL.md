@@ -58,6 +58,12 @@ An approval only shows after the model asks for a tool. Never use the real sign-
   when the next command starts. Never anchor on it: rows taken as "the history when the command was sent" must skip
   it, or the anchor vanishes and the whole conversation looks like the command's output. Capture after several
   rounds (a stand-in model with long answers), not only on a fresh screen.
+- Codex 0.162 draws its whole conversation in the terminal's alternate screen: no xterm scrollback and no line markers
+  tell how far it scrolled, only the rows on screen. It pins the current turn's prompt (`› …`) to the top row once the
+  turn scrolled past it. Run the same command several times in a row (`/status` 4×): a repeat prints the same rows
+  again, the history's last rows recur in the new output, and once the screen holds nothing but copies, before and
+  after read the same. Find where the history ends by the whole run of history rows above a place, never by the last
+  one or two rows alone.
 - Codex asks "Would you like to run the following command?", "…make the following edits?" (hotkey `(a)` for "don't ask
   again for these files"), "…grant these permissions?" and "<server> needs your approval."; match the family, not one
   title.

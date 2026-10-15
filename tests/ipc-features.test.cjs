@@ -116,6 +116,24 @@ test('file path copying reserves before remote readiness and shares clipboard su
   ready(); assert.deepEqual(await copy, { count: 0, superseded: true }); assert.equal(text, 'newer');
 });
 
+test('open file location shows a local item selected in its folder, opens the root itself, and refuses SSH and outside paths', async t => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentrix-reveal-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'docs')); fs.writeFileSync(path.join(root, 'docs', 'a.md'), 'a');
+  const h = handlers(), shown = [], opened = [];
+  let project = { id: 'p', kind: 'local', path: root };
+  require('../electron/features/files/ipc.cjs').registerFilesIpc({ ...h, findProject: () => project,
+    shell: { showItemInFolder: target => shown.push(target), openPath: async target => { opened.push(target); return ''; } } });
+  const reveal = h.handles.get('project:reveal-entry');
+  await reveal('p', 'docs/a.md'); await reveal('p', 'docs'); await reveal('p', '');
+  assert.deepEqual(shown, [fs.realpathSync(path.join(root, 'docs', 'a.md')), fs.realpathSync(path.join(root, 'docs'))]);
+  assert.deepEqual(opened, [root]);
+  await assert.rejects(reveal('p', '../outside'), /无效|之外|ENOENT/);
+  project = { id: 'p', kind: 'ssh', path: '/srv' };
+  await assert.rejects(reveal('p', 'a'), /本机没有它的位置/);
+});
+
 test('remote file links validate the root and try line-suffix removal in order', async () => {
   const h = handlers(), paths = [];
   require('../electron/features/files/ipc.cjs').registerFilesIpc({ ...h, findProject: () => ({ kind: 'ssh' }),

@@ -454,6 +454,47 @@ test('the same Codex command twice shows its output again, not nothing', () => {
   assert.deepEqual(extractCliPanelRows('codex', again, inspect('codex', again), '/status', was), ['• Status: ok']);
 });
 
+test('the same Codex command twice on a full screen: the new card lands where the old one was, and is still the output', () => {
+  // Codex 0.162.1 (shortened): /status run again after a conversation. The screen scrolled by one card, the new card
+  // sits on the rows the old one had, and Codex redrew the top row (the prompt above the last answer).
+  const card = ['  >_ OpenAI Codex (v0.162.1)', '', '  Model:               GPT-6-Sol (reasoning medium, summaries auto)', '  Directory:           ~\\work\\demo', '',
+    '  Context window:      100% left (0 used / 258K)', '  Limits:              data not available yet'];
+  const answer = ['• 已创建：Markdown 示例文件。', '', '  > 这是一段引用文字。', '', '  ## 任务清单', '', '  ☑ 创建 Markdown 文件', '', '  第 5 次回答。', '', '  Worked for <1s • 15:16', ''];
+  const sent = ['', '', ...answer, '/status', '', ...card, '', '', ...input('codex', '/status')];
+  const before = cliHistory('codex', sent, inspect('codex', sent));
+  const rows = ['› 创建一个md文件在对话框给我看 3', ...answer.slice(9), '/status', '', ...card, '', '/status', '', ...card, '', '', ...input('codex')];
+  assert.equal(rows.length, sent.length, 'a full screen');
+  const shown = card.filter((row, index) => row || card[index - 1]);
+  assert.deepEqual(extractCliPanelRows('codex', rows, inspect('codex', rows), '/status', before), shown);
+  assert.deepEqual(extractCliOutputRows('codex', rows, inspect('codex', rows), '/status', before), card);
+  // Before the new card comes in, the old one is still the history, not the output.
+  const quiet = [...sent.slice(0, -input('codex', '/status').length), ...input('codex')];
+  assert.deepEqual(extractCliOutputRows('codex', quiet, inspect('codex', quiet), '/status', before), []);
+  // A third time, with two cards in the history and the turn's prompt pinned to the top row: the new card is the
+  // output, not the old two (which match the history's last rows as far back as the screen goes).
+  const pinned = '› 创建一个md文件在对话框给我看 3';
+  const third = [pinned, '', '  ## 任务清单', '', '  第 5 次回答。', '', '  Worked for <1s • 15:16', '', '/status', '', ...card, '', '/status', '', ...card, '', '', ...input('codex', '/status')];
+  const twice = cliHistory('codex', third, inspect('codex', third));
+  const again = [pinned, ...card.slice(1), '', '/status', '', ...card, '', '/status', '', ...card, '', '', ...input('codex')];
+  assert.equal(again.length, third.length, 'a full screen');
+  assert.deepEqual(extractCliOutputRows('codex', again, inspect('codex', again), '/status', twice), card);
+  const still = [...third.slice(0, -input('codex', '/status').length), ...input('codex')];
+  assert.deepEqual(extractCliOutputRows('codex', still, inspect('codex', still), '/status', twice), []);
+  // A fourth time the screen, all /status cards, reads the same before and after (Codex draws in the alternate screen:
+  // no scrollback tells how far it moved). Once the wait for output is over, the latest card is the result, not
+  // "no output".
+  const run = (screen, before) => {
+    let command = { id: 'c', command: '/status', at: 0, observed: true, idleSince: null, output: [], dialog: [], before };
+    const step = now => { const next = advanceCliCommand(command, 'codex', screen, inspect('codex', screen), now, true); command = next.command; return next.done; };
+    return [step(100), step(600), step(8100), command.output];
+  };
+  assert.deepEqual(run(again, cliHistory('codex', again, inspect('codex', again))), [false, false, true, card]);
+  // Not all the screen is that card over again (an answer below an earlier /status): nothing of it is this run's.
+  const later = [...still.slice(0, -input('codex').length - 2), '', '• 已切换。', '', '', ...input('codex')];
+  assert.deepEqual(run(later, cliHistory('codex', later, inspect('codex', later))), [false, false, true, []]);
+  assert.deepEqual(run(still, twice), [false, false, true, []], 'the history above the cards is not a card');
+});
+
 test('a Claude dialog under its edge shows only itself, not an earlier run of the same command above it', () => {
   const rows = ['❯ /usage', '  ⎿  Status dialog dismissed', '', '❯ fix the bug', '', '⏺ Fixed it.', '', '▔'.repeat(40), '  Settings   Status   Usage', '', '  Current session  12% used', '', '  Esc to cancel'];
   const result = extractCliPanelRows('claude', rows, inspect('claude', rows), '/usage');
