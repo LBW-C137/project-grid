@@ -127,7 +127,8 @@ test('open file location shows a local item selected in its folder, opens the ro
     shell: { showItemInFolder: target => shown.push(target), openPath: async target => { opened.push(target); return ''; } } });
   const reveal = h.handles.get('project:reveal-entry');
   await reveal('p', 'docs/a.md'); await reveal('p', 'docs'); await reveal('p', '');
-  assert.deepEqual(shown, [fs.realpathSync(path.join(root, 'docs', 'a.md')), fs.realpathSync(path.join(root, 'docs'))]);
+  // The native realpath, as the handler's: it also spells out a short 8.3 temp folder (C:\Users\RUNNER~1 on CI).
+  assert.deepEqual(shown, [fs.realpathSync.native(path.join(root, 'docs', 'a.md')), fs.realpathSync.native(path.join(root, 'docs'))]);
   assert.deepEqual(opened, [root]);
   await assert.rejects(reveal('p', '../outside'), /无效|之外|ENOENT/);
   project = { id: 'p', kind: 'ssh', path: '/srv' };
