@@ -32,7 +32,9 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
    log (`/actions/jobs/<id>/logs`; search for `Error:` and `Timed out`, since passing test names also contain
    "failed"), and download the run's `desktop-test-screenshots` artifact: each smoke saves `failure.png` when it fails.
    If the same commit passed in the branch run, the failure is a race, not this release: re-running the failed jobs
-   finishes the release. Re-running is a write action, so ask before using the token for it.
+   finishes the release. Re-running is a write action, so ask before using the token for it. A smoke that passed and
+   then timed out in its cleanup ("isolated shell exit") lost the `exit` typed right after Ctrl+C on a slow runner: a
+   cleanup sends `exit` again every few seconds until the shell has gone (as `git-smoke.mjs` does).
 10. **Short temp paths on Windows CI.** The runner's temp folder is an 8.3 name (`<home>\…`). A test
    comparing a path the app resolved with `fs.promises.realpath` (native: it spells the long name out) must expect
    `fs.realpathSync.native`, not `fs.realpathSync` (which keeps `RUNNER~1`). To reproduce locally, set `TEMP` and

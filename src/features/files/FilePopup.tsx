@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { ArrowUp, File, FileText, FilmStrip, Folder, Globe, Image as ImageIcon, SpinnerGap, X } from '@phosphor-icons/react';
 import type { DirectoryListing, FilePreview as Preview } from '../../shared/types';
 import { TextContent } from './FilePreview';
@@ -68,19 +68,63 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
   </div>;
   // Only its web links work: it has no folder of its own here for relative links and pictures to come from.
   else if (shown.kind === 'document') body = <div className="file-popup-document"><Suspense fallback={<div className="file-popup-message">{t('正在渲染 Markdown…')}</div>}><MarkdownPreview content={shown.content} baseUrl="about:blank" onOpenLink={openLink} /></Suspense></div>;
-  else if (shown.kind === 'picture') body = <div className="file-popup-picture"><img src={shown.url} alt={fileName} draggable={false} /></div>;
-  else if (preview?.kind === 'image') body = <div className="file-popup-picture"><img src={preview.url} alt={fileName} draggable={false} /></div>;
+  else if (shown.kind === 'picture') body = <Picture url={shown.url} name={fileName} />;
+  else if (preview?.kind === 'image') body = <Picture url={preview.url} name={fileName} />;
   else if (preview?.kind === 'html') body = <iframe className="html-preview-frame" title={t('HTML 页面预览')} src={preview.url} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" />;
   else if (preview?.kind === 'markdown') body = <div className="file-popup-document"><Suspense fallback={<div className="file-popup-message">{t('正在渲染 Markdown…')}</div>}><MarkdownPreview content={preview.content} baseUrl={preview.url} onOpenLink={openLink} /></Suspense></div>;
   else if (preview?.kind === 'video') body = <div className="file-popup-video"><video src={preview.url} controls autoPlay preload="metadata" playsInline aria-label={t('视频预览')} /></div>;
   else if (preview?.kind === 'text') body = <TextContent content={preview.content} />;
   else body = <div className="file-popup-message"><FileText size={28} /><p>{preview?.kind === 'unsupported' ? t(preview.reason) : t('无法预览此文件。')}</p></div>;
   const wide = preview?.kind === 'html' || preview?.kind === 'text' || preview?.kind === 'markdown' || shown?.kind === 'document';
+  const picture = shown?.kind === 'picture' || preview?.kind === 'image';
   return <div className="file-popup-overlay" onMouseDown={event => { if (event.target === event.currentTarget) closePopup(); }}>
-    <div ref={card} className={`file-popup${wide ? ' is-wide' : ''}`} role="dialog" aria-modal="true" aria-label={name} tabIndex={-1}>
+    <div ref={card} className={`file-popup${wide ? ' is-wide' : ''}${picture ? ' is-picture' : ''}`} role="dialog" aria-modal="true" aria-label={name} tabIndex={-1}>
       <div className="file-popup-head"><Icon size={15} /><strong title={target.path}>{name}</strong><small>{t('Esc 关闭')}</small>
         <button type="button" className="icon-button" title={t('关闭')} aria-label={t('关闭')} onClick={closePopup}><X size={15} /></button></div>
       <div className="file-popup-body">{body}</div>
     </div>
+  </div>;
+}
+
+// A picture fits the window whole. One larger than that shows at its own size on a click, at the spot clicked; there
+// the mouse drags it about, and another click fits it again.
+function Picture({ url, name }: { url: string; name: string }) {
+  const [full, setFull] = useState(false), [larger, setLarger] = useState(false);
+  const box = useRef<HTMLDivElement>(null), image = useRef<HTMLImageElement>(null);
+  const focus = useRef<{ x: number; y: number; at: { x: number; y: number } } | null>(null);
+  const drag = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
+  // Whether the window shows it smaller than it is, measured while it fits.
+  const measure = () => { const img = image.current; if (img && !full) setLarger(img.naturalWidth > img.clientWidth + 1 || img.naturalHeight > img.clientHeight + 1); };
+  useEffect(() => { if (full) return; measure(); window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure); }, [full]);
+  // At its own size, the point clicked stays under the pointer.
+  useLayoutEffect(() => {
+    const spot = focus.current, view = box.current, img = image.current; focus.current = null;
+    if (!full || !spot || !view || !img) return;
+    const frame = view.getBoundingClientRect();
+    view.scrollLeft = spot.x * img.naturalWidth - (spot.at.x - frame.left);
+    view.scrollTop = spot.y * img.naturalHeight - (spot.at.y - frame.top);
+  }, [full]);
+  const press = (event: ReactMouseEvent) => {
+    if (event.button !== 0 || !box.current) return;
+    event.preventDefault();
+    drag.current = { x: event.clientX, y: event.clientY, left: box.current.scrollLeft, top: box.current.scrollTop, moved: false };
+    const move = (moving: MouseEvent) => {
+      const start = drag.current, view = box.current; if (!start || !view) return;
+      if (Math.abs(moving.clientX - start.x) + Math.abs(moving.clientY - start.y) > 4) start.moved = true;
+      if (full && start.moved) { view.scrollLeft = start.left - (moving.clientX - start.x); view.scrollTop = start.top - (moving.clientY - start.y); }
+    };
+    const release = (released: MouseEvent) => {
+      window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', release);
+      const start = drag.current; drag.current = null;
+      if (!start || start.moved || !(full || larger)) return;
+      const img = image.current?.getBoundingClientRect();
+      if (!full && img) focus.current = { x: (released.clientX - img.left) / img.width, y: (released.clientY - img.top) / img.height, at: { x: released.clientX, y: released.clientY } };
+      setFull(!full);
+    };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', release);
+  };
+  const hint = full ? t('拖动查看，单击缩小到窗口大小') : larger ? t('单击查看原始大小') : undefined;
+  return <div ref={box} className={`file-popup-picture${full ? ' is-full' : larger ? ' is-larger' : ''}`} title={hint} onMouseDown={press}>
+    <img ref={image} src={url} alt={name} draggable={false} onLoad={measure} />
   </div>;
 }

@@ -189,7 +189,19 @@ try {
 finally {
   try {
     if (app) {
-      try { if (page && !page.isClosed()) { await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); }); await page.evaluate(id => window.agentrix.writeTerminal(id, '\x03exit\r'), project.id); await waitFor(async () => ['exited', 'stopped'].includes((await state()).projects[0].status), 'isolated shell exit'); } }
+      try {
+        if (page && !page.isClosed()) {
+          await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+          // A slow runner can drop what is typed right after Ctrl+C: exit is sent again until the shell has gone.
+          const write = data => page.evaluate(({ id, data }) => window.agentrix.writeTerminal(id, data), { id: project.id, data }).catch(() => {});
+          await write('\x03'); let sent = 0;
+          await waitFor(async () => {
+            if (['exited', 'stopped'].includes((await state()).projects[0].status)) return true;
+            if (Date.now() - sent > 3000) { sent = Date.now(); await write('exit\r'); }
+            return false;
+          }, 'isolated shell exit');
+        }
+      }
       finally { await app.close(); }
     }
   } finally { await ssh.close(); }
