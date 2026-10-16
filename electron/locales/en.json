@@ -1346,5 +1346,7 @@
   "活动栏新增「重置额度」按钮：点击后先倒数 10 秒，期间随时可以取消，再由 Claude Code（/limit-reset）或 Codex（/usage）自己完成重置。": "The activity pane has a Reset limit button: a click starts a 10-second countdown you can cancel at any time, then Claude Code (/limit-reset) or Codex (/usage) carries out the reset itself.",
   "活动栏显示 Claude Code 的 5 小时和每周额度；任务卡片高度固定，不再把下面的卡片挤动。": "The activity pane shows Claude Code's 5-hour and weekly limits; the tasks card keeps its height, so the cards below no longer move.",
   "Claude Code 干活时发的消息显示为「已送达，排队中」，不再被当成没送达。": "A message sent while Claude Code works shows as delivered and queued, never as undelivered.",
-  "Codex 的 /memories、/plugins 等界面在阅读视图里正常显示；输入斜杠命令后紧接着打字，不会被弹出的选项打断。": "Codex's /memories, /plugins and similar screens show properly in the reading view; typing right after a slash command is no longer interrupted by the choices it opens."
+  "Codex 的 /memories、/plugins 等界面在阅读视图里正常显示；输入斜杠命令后紧接着打字，不会被弹出的选项打断。": "Codex's /memories, /plugins and similar screens show properly in the reading view; typing right after a slash command is no longer interrupted by the choices it opens.",
+  "阅读视图时间轴上的节点改为镂空细圈：壁纸透过节点可见，图标和细圈用各自的颜色（你是蓝色，Claude 是橙色，Codex 是白色，操作步骤是青色）。": "The reading view's timeline nodes are hollow rings: the wallpaper shows through, with the ring and icon in each kind's colour (blue for you, orange for Claude, white for Codex, cyan for steps).",
+  "Claude Code 的节点标志改为清晰的矢量星芒，任何大小都不再模糊。": "Claude Code's node mark is a crisp vector spark that stays sharp at any size."
 }

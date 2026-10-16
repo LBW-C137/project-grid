@@ -53,6 +53,11 @@ Open every image before showing it. Present them all, one line each on what sets
 - **App icons** are a squircle (continuous corners) with a soft top-lit gradient, exported as SVG, then rendered to
   the sizes the platform needs.
 
+- **Small marks over the wallpaper** (timeline nodes, badges) are hollow: a hairline rim and the glyph in the
+  kind's colour, the wallpaper showing through. A dark filled disc reads as a black hole there, and the user
+  rejected it. A line joining them runs from rim to rim, never through a see-through mark. Rays meeting at a centre
+  (an asterisk) start at the centre, or their round caps leave a dark speck.
+
 ## 5. Make it crisp
 
 - Whole-pixel sizes and positions.

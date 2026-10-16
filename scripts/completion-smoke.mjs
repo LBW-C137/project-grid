@@ -90,7 +90,9 @@ try {
   assert.deepEqual(await text('.activity-token-row small'), ['输入 320k · 缓存命中 91% · 输出 4.2k', '输入 320k · 缓存命中 91% · 输出 4.2k']);
   // The overview lists the prompts: the one being worked on, then one sent while it works. The card's size is fixed:
   // more prompts never push the model route and the usage down.
+  // Measured once the panel has finished opening: while it flies in it is still scaled a little, every top a pixel off.
   const routeTop = () => pane.locator('.activity-route').evaluate(node => Math.round(node.getBoundingClientRect().top));
+  await page.waitForFunction(() => !document.querySelector('[data-focus-motion]'));
   const before = await routeTop();
   await input('给登录页加上验证码。然后跑一下测试\r');
   const prompts = () => overview.locator('.activity-prompts li').evaluateAll(items => items.map(item => `${item.classList.contains('is-working') ? 'working' : 'queued'}:${item.querySelector('p').textContent}`));
