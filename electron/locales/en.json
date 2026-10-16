@@ -1348,5 +1348,8 @@
   "Claude Code 干活时发的消息显示为「已送达，排队中」，不再被当成没送达。": "A message sent while Claude Code works shows as delivered and queued, never as undelivered.",
   "Codex 的 /memories、/plugins 等界面在阅读视图里正常显示；输入斜杠命令后紧接着打字，不会被弹出的选项打断。": "Codex's /memories, /plugins and similar screens show properly in the reading view; typing right after a slash command is no longer interrupted by the choices it opens.",
   "阅读视图时间轴上的节点改为镂空细圈：壁纸透过节点可见，图标和细圈用各自的颜色（你是蓝色，Claude 是橙色，Codex 是白色，操作步骤是青色）。": "The reading view's timeline nodes are hollow rings: the wallpaper shows through, with the ring and icon in each kind's colour (blue for you, orange for Claude, white for Codex, cyan for steps).",
-  "Claude Code 的节点标志改为清晰的矢量星芒，任何大小都不再模糊。": "Claude Code's node mark is a crisp vector spark that stays sharp at any size."
+  "Claude Code 的节点标志改为清晰的矢量星芒，任何大小都不再模糊。": "Claude Code's node mark is a crisp vector spark that stays sharp at any size.",
+  "阅读视图左右留白更均衡：左边的时间和节点更紧凑，右边留出更多空间，消息框和卡片左右对齐。": "The reading view is balanced left and right: the times and nodes on the left are tighter, the right has more room, and the message box lines up with the cards.",
+  "运行中的节点不再转圈：Claude 的星芒像 Claude Code 自己的 ✻ 一样绽放、收回，其他步骤向外扩散柔和的光圈。": "Running nodes no longer spin: Claude's spark blooms and draws back like Claude Code's own ✻, and other steps send out soft rings.",
+  "鼠标划过时间轴上的条目时，条目会轻快地跳一下；滚动时不会跳。": "Items on the timeline hop when the pointer passes over them; they stay still while you scroll."
 }

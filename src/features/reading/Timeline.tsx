@@ -19,8 +19,9 @@ export function TimelineStep({ at, kind, mark, quiet = false, state, agent, chil
 }
 
 // Claude Code's ✻ drawn as an icon rather than a font's glyph: eight rounded rays from one hub on a 24-unit grid, the stroke of the
-// icons beside it, so it stays sharp and centred at any size.
+// icons beside it, so it stays sharp and centred at any size. Each ray sits in a group turned to its angle, so the ray
+// itself can grow from the hub and shrink back while Claude works.
 const RAYS = Array.from({ length: 8 }, (_, ray) => ray * 45);
 export const ClaudeSpark = ({ size = 16 }: { size?: number }) => <svg className="reading-spark" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-  {RAYS.map(angle => <line key={angle} x1="12" y1="12" x2="12" y2="3.2" transform={`rotate(${angle} 12 12)`} />)}
+  {RAYS.map(angle => <g key={angle} transform={`rotate(${angle} 12 12)`}><line x1="12" y1="12" x2="12" y2="3.2" /></g>)}
 </svg>;

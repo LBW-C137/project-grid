@@ -58,6 +58,21 @@ Open every image before showing it. Present them all, one line each on what sets
   rejected it. A line joining them runs from rim to rim, never through a see-through mark. Rays meeting at a centre
   (an asterisk) start at the centre, or their round caps leave a dark speck.
 
+- **Motion for "busy" never spins a border** (the user calls it cheap). A running mark sends soft rings out from its
+  rim, fading as they spread (two, half a cycle apart); Claude's spark blooms like Claude Code's own ✻ spinner, all
+  rays bursting from the hub and drawing slowly back. To animate parts of an SVG glyph, wrap each part in a `<g>` that
+  carries its rotation, so the CSS transform on the part does not replace it (`transform-box: view-box`,
+  `transform-origin` at the hub, `vector-effect: non-scaling-stroke`). Check motion with a strip of clip screenshots
+  taken 100ms apart, and stop every loop under `data-motion="off"` and reduced motion.
+- **A hover hop** (the user wanted items to "jump" when the pointer passes, no glow): a one-shot keyframe on the card,
+  up about 12px, down, a small second bounce, landing at 0. Hang the `:hover` on the row that does not move, never on the
+  moving card, or a card hopping out from under the pointer restarts forever. Arm hops on `pointermove` and disarm them
+  on `scroll` (a data attribute on the scroller), or every item sliding under a still pointer hops while scrolling and
+  right after. Check with a probe sampling the card's `translateY` every 50ms.
+- **Balance a column with a gutter.** Measure the room left and right of the cards in CSS pixels in a probe; a timeline's
+  times and nodes read as margin, so take room from them and give the right side more. Everything in the column
+  (conversation, choices, command list, composer) shares one pair of inset variables, so the edges line up.
+
 ## 5. Make it crisp
 
 - Whole-pixel sizes and positions.

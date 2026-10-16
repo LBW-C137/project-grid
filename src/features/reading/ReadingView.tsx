@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { readingMarked } from './markdown-escape';
 import createDOMPurify from 'dompurify';
-import { ArrowDown, CaretDown, CaretUp, CheckCircle, CircleNotch, FileText, Globe, Image as ImageIcon, MagnifyingGlass, PaperPlaneRight, PencilSimple, Plugs, Question, Robot, Sparkle, Stop, TerminalWindow, User as UserIcon, Wrench, X, XCircle, type Icon } from '@phosphor-icons/react';
+import { ArrowDown, CaretDown, CaretUp, CheckCircle, FileText, Globe, Image as ImageIcon, MagnifyingGlass, PaperPlaneRight, PencilSimple, Plugs, Question, Robot, Sparkle, Stop, TerminalWindow, User as UserIcon, Wrench, X, XCircle, type Icon } from '@phosphor-icons/react';
 import type { AgentCommand, ConversationEntry, ProjectTerminal } from '../../shared/types';
 import { actionText, stepVerb } from '../agents/action-text';
 import { dictateInto } from '../voice/voice-input';
@@ -203,9 +203,10 @@ function ToolGroup({ entries, live, projectId, onError }: { entries: Conversatio
     {files.length > 0 && <FileCards projectId={projectId} files={files} renderMarkdown={text => <Markdown text={text} />} onError={onError} />}
   </div>;
 }
-// A step's state: a ring while it runs, a check when it is done, a cross when it failed.
+// A step's state: a dot sending out a soft ring while it runs (as its node on the line does), a check when it is done,
+// a cross when it failed.
 function StepState({ running, failed, filled = false }: { running: boolean; failed: boolean; filled?: boolean }) {
-  if (running) return <CircleNotch size={17} weight="bold" className="reading-step-state is-running loading-spinner" aria-label={t('进行中')} />;
+  if (running) return <span className="reading-step-state is-running" role="img" aria-label={t('进行中')} />;
   return failed ? <XCircle size={17} weight="fill" className="reading-step-state is-failed" aria-label={t('失败')} />
     : <CheckCircle size={17} weight={filled ? 'fill' : 'regular'} className="reading-step-state" aria-label={t('已完成')} />;
 }
@@ -280,6 +281,15 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const inputBlocked = (hasChoice && !commandChoice) || unreadQuestion;
   const conversation = conversationKey(terminal.id, terminal.sessionId);
   const { stuck, unseen, toBottom, ready, holdPosition } = useStickToBottom(scroller, content, visibleEntries, conversation);
+  // A step hops only when the pointer moves onto it: moving arms the hops, any scroll disarms them until it moves again,
+  // so the steps sliding under a still pointer stay put (marked on the element itself, without a render).
+  useEffect(() => {
+    const node = scroller.current; if (!node) return;
+    const onMove = () => { if (!('hover' in node.dataset)) node.dataset.hover = ''; };
+    const onScroll = () => { if ('hover' in node.dataset) delete node.dataset.hover; };
+    node.addEventListener('pointermove', onMove, { passive: true }); node.addEventListener('scroll', onScroll, { passive: true });
+    return () => { node.removeEventListener('pointermove', onMove); node.removeEventListener('scroll', onScroll); };
+  }, [conversation]);
   useLayoutEffect(() => { if (caret.current !== null) { input.current?.setSelectionRange(caret.current, caret.current); caret.current = null; } });
   useEffect(() => { if (draft.startsWith('/') || !entries.length) setRequested(true); }, [draft, entries.length]);
   // Capture composer ownership before disabling it; another card's focus must stay where it is.
