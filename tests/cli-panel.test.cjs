@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
-const { cliCloseKey, isSideConversation, cliHistory, isCliIdle, extractCliPanelRows, extractCliOutputRows, advanceCliCommand, cliPanelKey } = require('../src/features/reading/cli-panel.ts');
+const { cliCloseKey, isSideConversation, cliHistory, isCliIdle, isAtPrompt, extractCliPanelRows, extractCliOutputRows, advanceCliCommand, cliPanelKey } = require('../src/features/reading/cli-panel.ts');
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/screens', name + '.txt'), 'utf8').split('\n');
 const inspect = (agent, rows) => parseAgentScreen(agent, rows);
 const footer = agent => agent === 'claude' ? ['  ⏺ Opus 5.5 · demo · ctx 4%   ● high · /effort', '  ⏸ manual mode on · ← for agents'] : ['  GPT-6.1-Sol high · C:\\work\\demo · 90% left', '? for shortcuts'];
@@ -156,7 +156,7 @@ function rendererHarness(t, agent = 'claude') {
       if (screens.has(id)) fn(screens.get(id));
       return () => { if (watchers.get(id) === fn) watchers.delete(id); };
     },
-  } : name.endsWith('/agent-screen') ? { parseAgentScreen } : name.endsWith('/cli-panel') ? require('../src/features/reading/cli-panel.ts') : originalRequire(name);
+  } : name.endsWith('/agent-screen') ? require('../src/features/agents/agent-screen.ts') : name.endsWith('/cli-panel') ? require('../src/features/reading/cli-panel.ts') : originalRequire(name);
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, filename);
   t.mock.timers.enable({ apis: ['Date', 'setInterval'] });
   const previousWindow = globalThis.window;
@@ -514,4 +514,29 @@ test("Claude Code 2.1.296's effort over its input box and the input box are neve
   assert.ok(output.some(row => /Total cost/.test(row)) && !output.some(row => /\/effort|^\s*❯/.test(row)), JSON.stringify(output));
   assert.ok(panel.some(row => /Total cost/.test(row)) && !panel.some(row => /\/effort/.test(row)), JSON.stringify(panel));
   assert.ok(!cliHistory('claude', rows, screen).some(row => /\/effort/.test(row)));
+});
+
+// Codex 0.162.1's interactive commands: /memories draws its dialog over the conversation with the input still below it,
+// /plugins puts its view in the input's place. Each is the command's popup alone, and the command waits for it.
+test("Codex's dialogs over the conversation and views in its input's place show alone, and keep the command waiting", () => {
+  const dialog = fixture('codex-memories-dialog'), dialogScreen = inspect('codex', dialog);
+  assert.equal(dialogScreen.choice?.title, 'Enable memories?', 'the dialog asks in the reading view');
+  assert.equal(isAtPrompt('codex', dialog, dialogScreen), false);
+  assert.equal(cliCloseKey('codex', dialog, dialogScreen), '\x1b', 'Escape closes it');
+  // A dialog without numbered options (a view of figures) is shown as it is, from its left edge on.
+  const view = dialog.map(row => row.replace(/›\s1\.\s/, '›    ').replace(/(\s)2\.\s/, '$1   ')), viewScreen = inspect('codex', view);
+  assert.equal(viewScreen.choice, null);
+  assert.equal(isAtPrompt('codex', view, viewScreen), false);
+  assert.deepEqual(extractCliPanelRows('codex', view, viewScreen, '/memories', cliHistory('codex', fixture('codex-memories-dialog-before'), inspect('codex', fixture('codex-memories-dialog-before')))), [
+    '  Enable memories?', '  Memories are disabled in this TUI session.', '', '›    Yes, enable  Save on the server for new threads without changing',
+    '                  this thread', '     Not now      Keep memories disabled', '', '  Learn more: https://developers.openai.com/codex/memories', '  enter select · esc back',
+  ]);
+  const before = fixture('codex-plugins-view-before'), plugins = fixture('codex-plugins-view'), screen = inspect('codex', plugins);
+  assert.deepEqual(extractCliPanelRows('codex', plugins, screen, '/plugins', cliHistory('codex', before, inspect('codex', before))), [
+    '  Plugins', '  Browse plugins from available marketplaces.', '  Installed 0 of 0 available plugins.', '',
+    '   All Plugins   Installed (0)   OpenAI Curated   Workspace   Shared with me   Add Marketplace', '', '  Type to search plugins', '',
+    '› No marketplace plugins available  No plugins are available in the discovered marketplaces', '', '  ←/→ tabs · enter details · space toggle · esc close',
+  ], 'the prompt Codex pins to its top row is not taken for its input');
+  assert.equal(isAtPrompt('codex', plugins, screen), false);
+  assert.equal(cliCloseKey('codex', plugins, screen, '/plugins'), '\x1b');
 });

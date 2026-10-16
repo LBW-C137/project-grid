@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { User } from '@phosphor-icons/react';
+import { TimelineStep } from './Timeline';
 import type { PendingPrompt } from './pending-prompts';
 import { withPictures } from './pasted-pictures';
 import { showPopup } from '../files/file-popup';
@@ -8,10 +9,6 @@ import './pending-prompts.css';
 
 // What the user wrote, folded to three lines when it runs longer (a pasted log, a long brief), with a button to read
 // all of it. Whether it runs longer is measured on the laid-out text, so a long line that wraps counts too.
-// Your messages are headed by a person, the agent's by its own mark.
-export function UserAvatar() {
-  return <span className="reading-user-avatar" role="img" aria-label={t('你')}><User size={15} weight="fill" /></span>;
-}
 
 export function UserText({ text }: { text: string }) {
   const node = useRef<HTMLParagraphElement>(null);
@@ -45,18 +42,20 @@ export function UserImages({ images }: { images: readonly string[] }) {
   })}</div>;
 }
 
-// Messages sent from here that no record has shown yet. One the agent never took, even after it was sent again,
-// says so and offers to send it once more or drop it.
-export function PendingPromptEntries({ prompts, undelivered = () => false, onResend, onDiscard }: {
-  prompts: readonly PendingPrompt[]; undelivered?: (prompt: PendingPrompt) => boolean; onResend?: (prompt: PendingPrompt) => void; onDiscard?: (prompt: PendingPrompt) => void;
+// Messages sent from here that no record has shown yet. One the agent holds in its queue says it waits there for the
+// step in hand to finish; one the agent never took, even after it was sent again, says so and offers to send it once
+// more or drop it.
+export function PendingPromptEntries({ prompts, queued = () => false, undelivered = () => false, onResend, onDiscard }: {
+  prompts: readonly PendingPrompt[]; queued?: (prompt: PendingPrompt) => boolean; undelivered?: (prompt: PendingPrompt) => boolean; onResend?: (prompt: PendingPrompt) => void; onDiscard?: (prompt: PendingPrompt) => void;
 }) {
   return prompts.map(prompt => {
-    const lost = undelivered(prompt);
-    return <div key={prompt.id} className={`reading-user reading-pending${prompt.sending ? ' is-sending' : ''}${lost ? ' is-undelivered' : ''}`}>
-      <UserAvatar /><UserMessage text={prompt.text} images={prompt.images} />{prompt.sending && <small role="status">{t('发送中')}</small>}
+    const lost = undelivered(prompt), waiting = queued(prompt);
+    return <TimelineStep key={prompt.id} at={prompt.at} kind="user" mark={<User size={15} weight="fill" />}><div className={`reading-user reading-pending${prompt.sending && !waiting ? ' is-sending' : ''}${waiting ? ' is-queued' : ''}${lost ? ' is-undelivered' : ''}`}>
+      <UserMessage text={prompt.text} images={prompt.images} />
+      {waiting ? <small role="status">{t('已送达，排队中：当前这一步完成后它就会读到')}</small> : prompt.sending && <small role="status">{t('发送中')}</small>}
       {lost && <div className="reading-undelivered" role="alert"><small>{t('未送达：助手没有收到这条消息')}</small>
         <button type="button" className="text-button" onClick={() => onResend?.(prompt)}>{t('重新发送')}</button>
         <button type="button" className="text-button" onClick={() => onDiscard?.(prompt)}>{t('移除')}</button></div>}
-    </div>;
+    </div></TimelineStep>;
   });
 }

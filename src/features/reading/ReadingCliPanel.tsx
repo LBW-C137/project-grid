@@ -3,6 +3,7 @@ import { CheckCircle, CircleNotch } from '@phosphor-icons/react';
 import { cliPanelKey } from './cli-panel';
 import { renderCliRows } from './cli-render';
 import { t } from '../../shared/i18n';
+import { isTyping } from './typing';
 import './reading-cli.css';
 
 // A slash command's screen laid out for reading: tabs, headings, label/value tables, meters, sliders, hints, text. Key
@@ -54,7 +55,7 @@ export function ReadingCliPanel({ command, rows, done, terminalId, onClose, onSh
   // that is done never takes focus from what is being typed, and another card's typing stays where it is.
   useLayoutEffect(() => {
     const active = document.activeElement, view = card.current?.closest('.reading-view');
-    if (!done && (!active || active === document.body || (view && view.contains(active)))) card.current?.focus({ preventScroll: true });
+    if (!done && !isTyping(active) && (!active || active === document.body || (view && view.contains(active)))) card.current?.focus({ preventScroll: true });
   }, []);
   const write = (key: string) => window.agentrix.writeTerminal(terminalId, key);
   // Keys one after another, as typed: a burst of arrows can arrive as one paste.

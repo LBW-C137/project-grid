@@ -88,11 +88,16 @@ try {
   assert.ok((await pane.locator('.activity-limit .activity-meter').nth(1).getAttribute('class')).includes('is-high'), 'a nearly used-up allowance is marked');
   assert.deepEqual(await text('.activity-token-row dt'), ['本轮', '本次对话']);
   assert.deepEqual(await text('.activity-token-row small'), ['输入 320k · 缓存命中 91% · 输出 4.2k', '输入 320k · 缓存命中 91% · 输出 4.2k']);
-  // The overview lists the prompts: the one being worked on, then one sent while it works.
+  // The overview lists the prompts: the one being worked on, then one sent while it works. The card's size is fixed:
+  // more prompts never push the model route and the usage down.
+  const routeTop = () => pane.locator('.activity-route').evaluate(node => Math.round(node.getBoundingClientRect().top));
+  const before = await routeTop();
   await input('给登录页加上验证码。然后跑一下测试\r');
   const prompts = () => overview.locator('.activity-prompts li').evaluateAll(items => items.map(item => `${item.classList.contains('is-working') ? 'working' : 'queued'}:${item.querySelector('p').textContent}`));
   await waitFor(async () => JSON.stringify(await prompts()) === JSON.stringify(['working:first instruction', 'queued:给登录页加上验证码。然后跑一下测试']), 'prompt list shows the working and the waiting prompt');
   assert.equal(await overview.locator('li.is-working .activity-progress').count(), 1, 'the prompt being worked on has its moving bar');
+  assert.equal(await routeTop(), before, 'a second prompt leaves the cards under the task list where they were');
+  assert.deepEqual(await text('.activity-task-count'), ['2'], 'the title counts the prompts');
   await page.waitForFunction(() => !document.querySelector('[data-focus-motion]')); await page.screenshot({ path: path.join(output, 'activity-pane.png') });
   // While Codex runs, its conversation shows as a document by default; the header toggle shows the terminal.
   const reading = page.locator('.project-panel .reading-view');

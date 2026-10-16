@@ -1,32 +1,69 @@
-/* The conversation the way the agents' own apps lay it out: your messages in cards headed by a person, the agent's
-   answers headed by its mark (Claude's orange ✻, Codex's •), and each group of steps as a pill that says what they
-   did; opened, the pill becomes a card with the steps as a tree. */
+/* The conversation as a timeline (the 时间轴 design): a line down the left with a node for each message of yours, each
+   answer and each group of steps, the time beside it; your message and the agent's answer are frosted cards, a group of
+   steps a pill that opens into a card with the steps as a tree. */
 .reading-view {
   --flow-card: var(--card-fill, rgba(255, 255, 255, .07)); --flow-line: var(--card-line, rgba(255, 255, 255, .13));
   --flow-ink: var(--ink, #f2f7fc); --flow-muted: var(--ink-secondary, #b9c8d8); --flow-faint: var(--ink-faint, rgba(255, 255, 255, .5));
   --flow-ok: var(--accent-green, #3ddc97); --flow-fail: #ff7b72; --flow-lead: #6cb4ff; --flow-avatar: #3b82f6;
   --flow-claude: #e8875f; --flow-codex: #d7e6f5;
+  --flow-rail: #4fd3e8; --flow-rail-glow: rgba(79, 211, 232, .45); --flow-node: rgba(10, 22, 33, .86); --flow-node-ink: #effcff;
+  --flow-user: #5ea6ff;
+  --step-time: 42px; --step-node: 30px; --step-gap: 12px;
 }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-view {
   --flow-card: var(--theme-hover); --flow-line: var(--theme-line); --flow-ink: var(--theme-ink); --flow-muted: var(--theme-muted); --flow-faint: var(--theme-muted);
   --flow-ok: var(--theme-ink); --flow-fail: var(--mono-alert-ink); --flow-lead: var(--theme-ink); --flow-avatar: var(--theme-ink); --flow-codex: var(--theme-ink); --flow-claude: var(--mono-orange);
+  --flow-rail: var(--theme-line); --flow-rail-glow: transparent; --flow-node: var(--theme-editor, #f4f5f6); --flow-node-ink: var(--theme-ink); --flow-user: var(--theme-ink);
 }
 
-/* Your message: a card with a person at its head. */
-.reading-user { align-self: stretch; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; padding: 11px 16px;
-  border-radius: var(--card-radius, 12px); background: var(--flow-card); box-shadow: inset 0 0 0 1px var(--flow-line); }
-.reading-user > p { margin: 0; padding-top: 1px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--flow-ink); }
-.reading-user-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: #fff; background: var(--flow-avatar); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-user-avatar { color: var(--glass-solid, #f4f5f6); }
+/* A step: its time, its node on the line, then what it is. The line runs from each node's foot to the next one's head
+   (the steps stand 10px apart), never through the glass. */
+.reading-scroll { container-type: inline-size; }
+.reading-step { position: relative; display: grid; grid-template-columns: var(--step-time) var(--step-node) minmax(0, 1fr); column-gap: var(--step-gap); align-items: start; }
+.reading-step::before { content: ''; position: absolute; left: calc(var(--step-time) + var(--step-gap) + var(--step-node) / 2 - 1px); top: var(--step-node); bottom: -10px; width: 2px;
+  border-radius: 1px; background: var(--flow-rail); box-shadow: 0 0 8px var(--flow-rail-glow); opacity: .75; }
+.reading-step:not(:has(~ .reading-step))::before { display: none; }
+.reading-step > time { align-self: start; padding-top: 6px; text-align: right; font: 600 calc(12.5px * var(--reading-text))/1.5 var(--font-ui); color: var(--flow-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.reading-step > time.is-quiet { font-weight: 500; opacity: .5; }
+/* Each node a small glass disc (the 玻璃圆片 design): dark glass lit from above, a hairline rim and a faint halo in the
+   colour of what it is (blue you, warm orange Claude, cool white Codex, the line's cyan a step), the glyph crisp on it. */
+.reading-node { --node-tint: var(--flow-rail); position: relative; z-index: 1; display: grid; place-items: center; width: var(--step-node); height: var(--step-node); border-radius: 50%;
+  color: var(--flow-node-ink);
+  background: radial-gradient(85% 60% at 50% 0%, rgba(255, 255, 255, .24), rgba(255, 255, 255, 0) 100%), radial-gradient(circle at 50% 120%, color-mix(in srgb, var(--node-tint) 22%, transparent), transparent 70%), var(--flow-node);
+  box-shadow: inset 0 0 0 1.5px var(--node-tint), inset 0 2px 1px -1px rgba(255, 255, 255, .5), 0 0 0 3px color-mix(in srgb, var(--node-tint) 14%, transparent),
+    0 0 12px color-mix(in srgb, var(--node-tint) 40%, transparent), 0 2px 5px rgba(0, 0, 0, .35); }
+.reading-node > svg { display: block; shape-rendering: geometricPrecision; }
+.reading-step.is-user .reading-node { --node-tint: var(--flow-user); }
+.reading-step.is-claude .reading-node { --node-tint: var(--flow-claude); color: var(--flow-claude); }
+.reading-step.is-codex .reading-node { --node-tint: var(--flow-codex); }
+.reading-spark line { stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+/* A node whose steps still run turns an arc around it; one that failed is marked red. */
+.reading-step.is-running .reading-node::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--node-tint); border-right-color: var(--node-tint); animation: reading-node-turn 1s linear infinite; }
+@keyframes reading-node-turn { to { transform: rotate(360deg); } }
+.reading-step.is-failed .reading-node { --node-tint: var(--flow-fail); color: var(--flow-fail); }
+.reading-step-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.reading-step-label { padding-top: 4px; font-size: calc(13.5px * var(--reading-text)); font-weight: 600; color: var(--flow-ink); }
+/* The working line ends the timeline beside its node, without a mark of its own. */
+.reading-step.is-working .reading-status { margin: 5px 0 0; }
+.reading-step .reading-status-mark { display: none; }
+:root[data-motion="off"] .reading-step.is-running .reading-node::after { animation: none; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .reading-step.is-running .reading-node::after { animation: none; } }
+/* A narrow card keeps the line and its nodes, not the times. */
+@container (max-width: 520px) {
+  .reading-step { grid-template-columns: var(--step-node) minmax(0, 1fr); column-gap: 10px; }
+  .reading-step > time { display: none; }
+  .reading-step::before { left: calc(var(--step-node) / 2 - 1px); }
+}
 
-/* The agent's answer: its mark, then the text. Pictures and cards under it line up with the text. */
-.reading-assistant { color: var(--flow-ink); }
-.reading-assistant.has-mark { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; }
-.reading-assistant.has-mark > :not(.reading-agent-mark) { grid-column: 2; min-width: 0; }
-.reading-agent-mark { grid-row: 1; justify-self: center; font-style: normal; font-size: calc(19px * var(--reading-text)); line-height: 1.25; }
-.reading-assistant.is-claude .reading-agent-mark { color: var(--flow-claude); }
-.reading-assistant.is-codex .reading-agent-mark { color: var(--flow-codex); font-size: calc(22px * var(--reading-text)); line-height: 1.05; }
+/* Your message: a frosted card beside its person. */
+.reading-user { align-self: stretch; display: flex; flex-direction: column; gap: 4px; padding: 10px 16px;
+  border-radius: var(--card-radius, 12px); background: var(--flow-card); box-shadow: inset 0 0 0 1px var(--flow-line); }
+.reading-user > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--flow-ink); }
+
+/* The agent's answer: a frosted card. Pictures and cards it names sit inside it. */
+.reading-assistant { padding: 12px 16px 14px; border-radius: var(--card-radius, 12px); color: var(--flow-ink); background: var(--flow-card); box-shadow: inset 0 0 0 1px var(--flow-line); }
 .reading-assistant .reading-markdown > :first-child { margin-top: 0; }
+.reading-assistant > :not(:first-child) { margin-top: 10px; }
 
 /* A group of steps: a pill; opened, a card holding the pill and the steps. */
 .reading-tools { align-self: flex-start; max-width: 100%; display: flex; flex-direction: column; border-radius: 14px; }
@@ -37,6 +74,8 @@
 .reading-tools-head:hover { background: rgba(255, 255, 255, .1); }
 .reading-tools-head > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reading-tools-head em { font-style: normal; font-size: calc(12px * var(--reading-text)); color: var(--flow-fail); }
+.reading-tools-file { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px; border-radius: 999px; font: 400 calc(12px * var(--reading-text))/1.6 var(--font-mono); color: var(--flow-ink); background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 1px var(--flow-line); }
+.reading-tools-more { flex: none; font-size: calc(12px * var(--reading-text)); color: var(--flow-muted); }
 .reading-tools-lead { flex: none; color: var(--flow-lead); }
 .reading-tools-caret { flex: none; color: var(--flow-ok); }
 .reading-step-state { flex: none; color: var(--flow-ok); }
@@ -57,6 +96,4 @@
 .reading-tools.is-open > :is(.file-cards, .reading-generating) { margin: 0 14px 12px; }
 
 /* An answer to the agent's own question: labelled as such, its "question → answer" lines under the label. */
-.reading-user.is-answer > :first-child { grid-row: span 2; }
-.reading-user.is-answer > :not(:first-child) { grid-column: 2; }
 .reading-user-label { font-size: calc(12px * var(--reading-text)); font-weight: 600; color: var(--flow-muted, rgba(255, 255, 255, .72)); }

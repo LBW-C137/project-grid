@@ -165,10 +165,19 @@
 .home-layer .decision-rows button:hover { background: color-mix(in srgb, var(--home-pane), rgba(255, 255, 255, .5) 12%); }
 /* The sessions sit on the column's pane as flat, lighter cards. */
 .home-layer .task-rows button { box-shadow: inset 0 0 0 1px var(--home-line); }
-/* A little more than the title bar's: these lines are longer and lie over the brightest part of the sky. */
-.home-layer :is(.home-head, .home-section > h3, .new-work > h3, .new-work label, .new-work-note) { text-shadow: 0 1px 2px rgba(0, 0, 0, .6), 0 0 14px rgba(0, 0, 0, .35); }
+/* The words with no card under them sit on a frosted pane of their own, as everything on the wallpaper does: over a
+   bright sky (El Capitan's clouds) white headings with only a soft shadow blurred into it. The headline and its counts
+   share one pane that hugs them; a section's title is a small label; the new task's choices a strip under its box. */
+.home-layer .home-head { width: fit-content; max-width: 100%; padding: 14px 20px 13px; border-radius: 16px; }
+.home-layer .new-work > h3 { width: fit-content; padding: 5px 12px 5px 10px; border-radius: 999px; color: var(--home-ink); }
+.home-layer .new-work-options { padding: 8px 12px; border-radius: 12px; }
+.home-layer :is(.home-head, .new-work > h3, .new-work-options) {
+  background: var(--home-pane); backdrop-filter: var(--home-frost);
+  box-shadow: inset 0 0 0 1px var(--home-edge), inset 0 1px 0 rgba(255, 255, 255, .1), 0 8px 24px rgba(0, 0, 0, .18);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .3);
+}
 .home-layer .home-counts { color: var(--home-ink); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-layer :is(.home-head, .home-section > h3, .new-work > h3, .new-work label) { text-shadow: none; }
+:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-layer :is(.home-head, .new-work > h3, .new-work-options) { text-shadow: none; }
 
 /* Pictures pasted into "what next": small, each with its own remove button. */
 .new-work-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

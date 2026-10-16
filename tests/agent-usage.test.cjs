@@ -21,7 +21,7 @@ test("Codex's route, context, round, conversation and plan limits come from its 
   assert.deepEqual(first, {
     provider: 'OpenAI', context: { used: 18804, window: 828400 },
     round: { input: 18562, cached: 13056, output: 242 }, total: { input: 18562, cached: 13056, output: 242 },
-    limits: [{ minutes: 300, percent: 34, resetsAt: 1792000000000 }, { minutes: 10080, percent: 18, resetsAt: 1792472784000 }],
+    limits: [{ minutes: 300, percent: 34, resetsAt: 1792000000000 }, { minutes: 10080, percent: 18, resetsAt: 1792472784000 }], limitsAt: null, limitsFrom: null, resets: null,
   });
   // The next round counts from where the conversation stood; the context is the last call's size.
   const second = replay(meter, [event({ type: 'task_started', turn_id: '2' }), tokenCount(usage(60000, 50000, 1000), usage(40000, 36000, 700))]);
@@ -34,7 +34,7 @@ test("Codex's route, context, round, conversation and plan limits come from its 
   assert.deepEqual(meter.snapshot().limits, [{ minutes: 300, percent: 40, resetsAt: null }]);
   // Another conversation starts over but keeps the provider until its own record names one, and the plan's limits.
   meter.apply({ type: 'session_meta', payload: { id: 'b' } });
-  assert.deepEqual(meter.snapshot(), { provider: 'OpenAI', context: null, round: null, total: null, limits: [{ minutes: 300, percent: 40, resetsAt: null }] });
+  assert.deepEqual(meter.snapshot(), { provider: 'OpenAI', context: null, round: null, total: null, limits: [{ minutes: 300, percent: 40, resetsAt: null }], limitsAt: null, limitsFrom: null, resets: null });
   // Records that say nothing about usage change nothing.
   assert.equal(meter.apply({ type: 'response_item', payload: { type: 'message' } }), false);
   assert.equal(meter.apply(event({ type: 'agent_message', message: 'hi' })), false);
@@ -51,7 +51,7 @@ test("Claude's replies count once each, however many pieces they are written in"
   const reply = (id, model, input, written, read, output, extra = {}) => ({ type: 'assistant', ...extra, message: { id, model, usage: { input_tokens: input, cache_creation_input_tokens: written, cache_read_input_tokens: read, output_tokens: output, service_tier: 'standard' } } });
   // Before any prompt is read, the round is unknown but the context is not.
   meter.apply(reply('m0', 'claude-opus-5-5', 5, 100, 1000, 20));
-  assert.deepEqual(meter.snapshot(), { provider: 'Anthropic', context: { used: 1125, window: 1000000 }, round: null, total: null, limits: [] });
+  assert.deepEqual(meter.snapshot(), { provider: 'Anthropic', context: { used: 1125, window: 1000000 }, round: null, total: null, limits: [], limitsAt: null, limitsFrom: null, resets: null });
   const snapshot = replay(meter, [
     { type: 'user', message: { content: 'fix the login page' } },
     reply('m1', 'claude-opus-5-5', 10, 2000, 30000, 4),
@@ -136,4 +136,49 @@ test("Claude's settings files set its environment: the project's local file over
   assert.equal(await claudeProvider(project, config, {}), 'project.example', 'a broken file is skipped');
   fs.writeFileSync(path.join(project, '.claude', 'settings.local.json'), JSON.stringify({ env: { CLAUDE_CODE_USE_VERTEX: '1' } }));
   assert.equal(await claudeProvider(project, config, {}), 'Google Vertex AI');
+});
+
+test("Claude's plan limits and limit resets come from what Claude Code last fetched for its own /usage", () => {
+  const { claudeAccountFrom } = require('../electron/features/agents/agent-usage.cjs');
+  const state = (utilization, fetchedAtMs = 1792133696288) => ({ cachedUsageUtilization: { fetchedAtMs, utilization } });
+  const windows = { five_hour: { utilization: 9, resets_at: '2026-10-16T11:19:59.818281+00:00' }, seven_day: { utilization: 84, resets_at: '2026-10-19T13:59:59.818302+00:00' } };
+  const grant = (left, total, paused = false) => ({ id: 'g', resets_left: left, resets_total: total, paused });
+  assert.deepEqual(claudeAccountFrom(state({ ...windows, cedar_ember: { eligible: true, grants: [grant(2, 3), grant(1, 1, true)] } })), {
+    limits: [{ minutes: 300, percent: 9, resetsAt: Date.parse('2026-10-16T11:19:59.818281+00:00') }, { minutes: 10080, percent: 84, resetsAt: Date.parse('2026-10-19T13:59:59.818302+00:00') }],
+    resets: { kind: 'grants', left: 2, total: 3 }, at: 1792133696288, source: 'Claude Code',
+  }, 'a paused grant gives none');
+  // cedar_ember: null is "not fetched yet" (Claude Code asks only at the limit), never "none left".
+  assert.equal(claudeAccountFrom(state({ ...windows, cedar_ember: null })).resets, null, 'no word on grants');
+  assert.equal(claudeAccountFrom(state(windows)).resets, null, 'no word on resets');
+  // The weekly session reset (/limit-reset) is offered by a flag Claude Code caches; whether this week's is used it says
+  // only on screen.
+  const flags = features => ({ ...state({ ...windows, cedar_ember: null }), cachedGrowthBookFeatures: features });
+  assert.deepEqual(claudeAccountFrom(flags({ tengu_nifty_lemur: { enabled: true, label: 'Reset your session limit now' } })).resets, { kind: 'session', left: null, total: 1 });
+  assert.deepEqual(claudeAccountFrom(flags({ tengu_cedar_ember: { enabled: true } })).resets, { kind: 'grants', left: null, total: null });
+  assert.equal(claudeAccountFrom(flags({ tengu_nifty_lemur: { enabled: false } })).resets, null, 'an unoffered reset is no word, so the button stays usable');
+  assert.deepEqual(claudeAccountFrom({ cachedGrowthBookFeatures: { tengu_nifty_lemur: { enabled: true } } }), { limits: [], resets: { kind: 'session', left: null, total: 1 }, at: null, source: 'Claude Code' }, 'before any /usage');
+  assert.equal(claudeAccountFrom({}), null);
+  assert.equal(claudeAccountFrom(null), null);
+  const meter = new UsageMeter('claude'), account = claudeAccountFrom(state({ ...windows, cedar_ember: { grants: [grant(2, 2)] } }));
+  assert.equal(meter.account(account), true);
+  assert.equal(meter.account(account), false, 'the same fetch changes nothing');
+  assert.deepEqual([meter.snapshot().limits.length, meter.snapshot().resets, meter.snapshot().limitsAt], [2, { kind: 'grants', left: 2, total: 2 }, 1792133696288]);
+  assert.equal(new UsageMeter('codex').account(account), false, "Codex's limits come from its own records");
+});
+
+test("Claude's limits come from the fresher of Claude Code's own cache and CodePulse's status line record; resets only from the cache", async t => {
+  const { claudeAccount, codePulseLimits } = require('../electron/features/agents/agent-usage.cjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-usage-pulse-')); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const state = path.join(root, '.claude.json'), pulse = path.join(root, 'claude-quota.json');
+  const own = at => ({ cachedUsageUtilization: { fetchedAtMs: at, utilization: { five_hour: { utilization: 9, resets_at: '2026-10-16T11:20:00Z' }, seven_day: { utilization: 84, resets_at: '2026-10-19T14:00:00Z' }, cedar_ember: { grants: [{ resets_left: 1, resets_total: 2 }] } } } });
+  const quota = at => ({ updatedAt: at, rate_limits: { five_hour: { used_percent: 12, resets_at: 1792149600 }, seven_day: { used_percent: 85, resets_at: 1792418400 } }, source: 'statusline' });
+  assert.deepEqual(codePulseLimits(quota(2000)), { limits: [{ minutes: 300, percent: 12, resetsAt: 1792149600000 }, { minutes: 10080, percent: 85, resetsAt: 1792418400000 }], at: 2000, source: 'CodePulse' });
+  assert.equal(codePulseLimits({ rate_limits: {} }), null);
+  fs.writeFileSync(state, JSON.stringify(own(1000))); fs.writeFileSync(pulse, JSON.stringify(quota(2000)));
+  const fresher = await claudeAccount(state, pulse);
+  assert.deepEqual([fresher.source, fresher.limits[0].percent, fresher.resets], ['CodePulse', 12, { kind: 'grants', left: 1, total: 2 }]);
+  fs.writeFileSync(state, JSON.stringify(own(3000)));
+  assert.deepEqual([(await claudeAccount(state, pulse)).source, (await claudeAccount(state, pulse)).limits[0].percent], ['Claude Code', 9]);
+  assert.equal((await claudeAccount(state, null)).source, 'Claude Code', 'without CodePulse');
+  assert.equal(await claudeAccount(path.join(root, 'none.json'), path.join(root, 'none-either.json')), null);
 });

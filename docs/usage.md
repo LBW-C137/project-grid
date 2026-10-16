@@ -121,13 +121,14 @@ SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入
   - **正在处理的任务**：正在处理和排队中的提示。
   - **模型路由**：代理 › 接口 › 模型，下面是思考强度和快速/普通模式。接口取自 Codex 记录里的 `model_provider`（自定义的服务显示 `config.toml` 里它的 `base_url` 主机名），Claude Code 则看它设置里的 `ANTHROPIC_BASE_URL`、Bedrock、Vertex 等开关；远程项目的 Claude Code 不显示接口。
   - **上下文长度**：当前对话占用的 token / 模型的上下文窗口，70% 起变黄，90% 起变红。
-  - **用量**：本轮和本次对话用掉的 token（输入、缓存命中比例、输出）。Codex 另有 5 小时和每周额度的已用比例及重置时间；Claude Code 的记录里没有账号额度，在终端输入 `/usage` 查看；它的「本次对话」从对话的第一条提示算起，很长的对话只读取最近一段记录、看不到开头时只显示本轮。
+  - **用量**：本轮和本次对话用掉的 token（输入、缓存命中比例、输出）。两个助手都显示 5 小时和每周额度的已用比例及重置时间：Codex 的取自它的记录，Claude Code 的取自它自己为 `/usage` 获取并缓存的数据（卡片下方写着更新时间）。Claude Code 的「本次对话」从对话的第一条提示算起，很长的对话只读取最近一段记录、看不到开头时只显示本轮。
+  - **重置额度**：用量卡片底部的按钮和剩余重置次数（Claude Code 的重置是每周 1 次、把 5 小时额度清零并占用每周额度，账号是否有这项来自它缓存的设置，本周是否已用以它在屏幕上说过的为准，例如「Weekly reset used · available again …」时显示哪天后可再用；按套餐发放的重置次数来自它缓存的数据。Codex 的次数来自它在屏幕上说过的话，比如额度用完时的提示或 `/usage`，之前没说过时写「剩余次数在 /usage 里显示」）。点击后不会立刻重置，而是先倒数 10 秒，期间随时可以点「取消」或按 Esc；倒数结束才把助手自己的命令发给它（Claude Code 用 `/limit-reset`，Codex 打开 `/usage`，在里面选择要用的重置并确认），重置由助手自己完成。没有可用重置时按钮不可点。
 - **来源**：Claude Code 的步骤读自它的会话记录（`~/.claude/projects/…/会话.jsonl`），Codex 的读自 rollout 记录（`~/.codex/sessions`）；应用只读取，不注入逐个工具的 hook，因此不影响它们的速度。新的一轮开始时列表清空，只保留最近 200 步。
 - **范围与限制**：目前支持本地项目；SSH 项目不显示活动。Codex 把所有调用包在脚本里执行，用 shell 脚本改文件时只能显示「通过命令修改文件」而没有文件名；MCP 工具本身的说明文字无法从记录中得到。
 
 ## 文档排版（阅读视图）
 
-终端里运行 Codex 或 Claude Code 时，对话默认按文档排版显示：你的提示、按 Markdown 排好的回答（代码块带「复制」按钮）和折叠成一行的工具调用。真实终端一直在下面运行，底部输入框的内容直接发给它，Enter 发送，Shift+Enter 换行，工作中可点停止按钮中断。
+终端里运行 Codex 或 Claude Code 时，对话默认按时间轴排版显示：左侧一条竖线，你的每条提示、助手的每段回答和每组工具调用各是线上的一个节点，旁边写着时间（同一分钟内重复的时间颜色更淡）。你的提示和按 Markdown 排好的回答（代码块带「复制」按钮）放在磨砂卡片里，每轮第一段回答上方写明是 Codex 还是 Claude Code；一组工具调用折叠成一个胶囊，写明做了什么，改过的文件以小标签列在上面。还在运行的节点外面有一圈转动的光环，失败的节点标红。卡片较窄时省去时间，只留竖线和节点。真实终端一直在下面运行，底部输入框的内容直接发给它，Enter 发送，Shift+Enter 换行，工作中可点停止按钮中断。
 
 - 点击标题栏的终端图标切换到原始终端，再点一次回到文档排版。这个选择保持到该终端里的程序退出，下次启动 Codex 或 Claude Code 时又默认显示文档排版。
 - 在输入框里粘贴图片（Ctrl+V）：图片交给 Codex 或 Claude Code 本身，附在下一条消息上，输入框上方显示已附加几张，点 × 移除；只有图片也可以直接发送。
@@ -243,20 +244,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=1.2.12`：安装指定版本。
+- `AGENTRIX_VERSION=1.2.13`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 1.2.12：
+例如，安装 1.2.13：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.12 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.2.13 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-1.2.12-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-1.2.13-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：

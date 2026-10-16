@@ -163,6 +163,11 @@ def compact_claude_record(record):
     """The messages, tool calls, results and settings the other computer needs, with the model route, context and token
     usage kept for the activity pane. Pictures and outputs stay here."""
     if not isinstance(record, dict) or record.get("isSidechain"): return None
+    # A message Claude queued while it worked, and when it took it up: the reading view marks the message as waiting.
+    if record.get("type") == "queue-operation":
+        kept = {key: record.get(key) for key in ("type", "operation", "timestamp") if isinstance(record.get(key), str)}
+        if isinstance(record.get("content"), str): kept["content"] = clip(record["content"])
+        return kept
     if record.get("type") == "attachment":
         attachment = record.get("attachment") or {}
         if not isinstance(attachment, dict) or attachment.get("type") != "queued_command" or attachment.get("commandMode") == "bash": return None
@@ -224,6 +229,7 @@ def history_records(root, codex_home, claude_home, per_agent=4, budget=1200 * 10
                 kept = compact(record)
                 if kept is None: continue
                 if agent == "codex" and kept.get("type") == "event_msg" and kept["payload"].get("type") == "token_count": continue
+                if kept.get("type") == "queue-operation": continue
                 records.append(kept)
         except (OSError, ValueError): return
         while records and size + len(json.dumps(records, ensure_ascii=True)) > budget: records = records[len(records) // 4 + 1:]

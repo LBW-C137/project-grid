@@ -157,6 +157,24 @@ test("a session's first prompt, which Claude Code writes after its reply, still 
   assert.deepEqual(actions.list, []);
 });
 
+test("Claude Code's queue marks a message sent while it works until it takes it up, mid-turn or as the next turn", () => {
+  const changes = [], log = new ConversationLog(change => changes.push(change));
+  const queue = (operation, content, at) => claudeConversation(log, { type: 'queue-operation', operation, timestamp: at, sessionId: 's', ...(content === undefined ? {} : { content }) });
+  queue('enqueue', '[Image #27]很多时候信息会显示发送中', '2026-10-16T06:22:32.210Z');
+  queue('enqueue', 'second message', '2026-10-16T06:22:40.000Z');
+  queue('enqueue', '/usage', '2026-10-16T06:22:41.000Z');
+  assert.deepEqual(log.list.map(entry => [entry.role, entry.text, entry.queued]), [['user', '很多时候信息会显示发送中', true], ['user', 'second message', true]], 'a slash command is no message');
+  // Taken up within the turn: the remove names it, and the record that follows is the message itself.
+  changes.length = 0;
+  queue('remove', '[Image #27]很多时候信息会显示发送中', '2026-10-16T06:22:45.424Z');
+  assert.deepEqual(log.list.map(entry => entry.text), ['second message']);
+  assert.ok(changes.some(change => change.reset), 'the window gets the list without it');
+  claudeConversation(log, { type: 'attachment', uuid: 'a1', timestamp: '2026-10-16T06:22:32.000Z', attachment: { type: 'queued_command', commandMode: 'prompt', prompt: '[Image #27]很多时候信息会显示发送中' } });
+  // Taken up as the next turn: dequeue names nothing and takes the oldest.
+  queue('dequeue', undefined, '2026-10-16T06:23:00.000Z');
+  assert.deepEqual(log.list.map(entry => [entry.text, !!entry.queued]), [['很多时候信息会显示发送中', false]]);
+});
+
 test('Codex script commands and workdirs stay with their own calls across literal quote styles', () => {
   const input = [
     "tools.exec_command({cmd: 'npm test', workdir: 'tests'});",

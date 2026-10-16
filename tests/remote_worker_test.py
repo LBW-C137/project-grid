@@ -134,6 +134,11 @@ class RemoteFilesTest(unittest.TestCase):
             kept = remote.compact_claude_record({"type": "assistant", "message": {"content": "Reply", "usage": usage}})
             self.assertEqual(kept["message"]["usage"], usage)
 
+    def test_claude_compaction_keeps_the_queue_of_messages_sent_while_it_works(self):
+        kept = remote.compact_claude_record({"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-10-16T06:21:51.207Z", "sessionId": "s", "content": "hi"})
+        self.assertEqual(kept, {"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-10-16T06:21:51.207Z", "content": "hi"})
+        self.assertEqual(remote.compact_claude_record({"type": "queue-operation", "operation": "dequeue", "timestamp": "t"}), {"type": "queue-operation", "operation": "dequeue", "timestamp": "t"})
+
     def test_claude_compaction_keeps_whether_a_prompt_starts_the_conversation(self):
         first = remote.compact_claude_record({"type": "user", "parentUuid": None, "uuid": "a", "message": {"role": "user", "content": "hi"}})
         later = remote.compact_claude_record({"type": "user", "parentUuid": "a", "uuid": "b", "message": {"role": "user", "content": "more"}})

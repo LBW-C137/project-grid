@@ -24,6 +24,9 @@ const resumeScreen = (sessions, escape, context = []) => ({ ...emptyScreen, choi
   hint: `enter resume · esc ${escape === 'new' ? 'start new' : 'exit'}`, escape,
 } });
 const claudeScreen = fields => ({ ...emptyScreen, banner: claudeBanner, ...fields });
+// Codex 0.162.1 in a conversation of the reading view's own probes (GPT-6-Sol, its default effort, one warning).
+const freshBanner = { ...codexBanner, version: '0.162.1', model: 'GPT-6-Sol', effort: 'default' };
+const freshStatus = { ...emptyStatus, model: 'GPT-6-Sol', effort: 'default', notes: ['⚠ 1 warning · f2 to view'] };
 const codexScreen = fields => ({ ...emptyScreen, banner: codexBanner, ...fields });
 const codexFooterScreen = (context, fields) => codexScreen({
   banner: { ...codexBanner, model: 'GPT-6.1-Sol', effort: 'high' }, status: codexStatus(context), ...fields,
@@ -117,6 +120,17 @@ const expected = {
   'codex-resume-start': resumeScreen([['整理发布说明', '2s ago'], ['修复阅读视图的滚动', '2s ago'], ['合并远端主分支', '2s ago']], 'new'),
   'codex-resume-inside': resumeScreen([['整理发布说明', '13s ago'], ['修复阅读视图的滚动', '13s ago'], ['合并远端主分支', '13s ago']], 'back'),
   'codex-resume-empty': resumeScreen([], 'new', ['No sessions yet']),
+  // Codex 0.162.1 draws /memories' dialog over its conversation, input and footer still below it; the dialog asks.
+  'codex-memories-dialog': codexScreen({ banner: freshBanner, status: freshStatus, choice: {
+    kind: 'menu', title: 'Enable memories?', context: ['Memories are disabled in this TUI session.'], options: [
+      option(1, 'Yes, enable', true, 'Save on the server for new threads without changing this thread'),
+      option(2, 'Not now', false, 'Keep memories disabled'),
+    ], hint: 'enter select · esc back',
+  } }),
+  'codex-memories-dialog-before': codexScreen({ banner: freshBanner, status: freshStatus }),
+  // /plugins takes the input's place: its list's cursor row is no input, and its key hints are no footer.
+  'codex-plugins-view': emptyScreen,
+  'codex-plugins-view-before': codexScreen({ banner: freshBanner, status: freshStatus }),
   'codex-resume-linux': resumeScreen([['合并远端主分支', '3h ago'], ['修复阅读视图', '10h ago'], ['整理发布说明', '11h ago'], ['继承 Claude 日志', '2d ago'], ['查找 resume 记忆', '20d ago'],
     ['合并主分支', '26d ago'], ['删除显示和系统监控功能', '28d ago'], ['删除所有 mcp、plugin 和 skill', '35d ago']], 'new'),
 };

@@ -6,7 +6,49 @@ const optionRow = (row: string) => /^(\s*)([❯›>↓↑]?\s*)(\d+)\.\s+(.+)$/.
 const inputRow = (agent: ScreenAgent, row: string) =>
   (agent === 'claude' ? /^\s*❯(?:\s|$)/ : /^\s*›(?:\s|$)/).test(row) && !optionRow(row);
 const hintRow = (row: string) => /^(?:press\s+)?(?:enter|esc)\b.*(?:cancel|confirm|select|back|default|continue|skip|exit|close)/i.test(row.trim());
-const menuExtra = (row: string) => /^(?:…\s*\+\d+ models|●\s+\S+ effort\b.*to adjust)$/.test(row.trim());
+const menuExtra = (row: string) => /^(?:…\s*\+\d+ models|●\s+\S+ effort\b.*to adjust|Learn more:\s+\S+)$/.test(row.trim());
+
+// A terminal gives CJK and other wide characters two cells: a row's columns are counted in cells, not characters.
+const WIDE = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{1F300}-\u{1F64F}\u{1F900}-\u{1F9FF}\u{20000}-\u{3FFFD}]/u;
+const cells = (text: string) => { let width = 0; for (const char of text) width += WIDE.test(char) ? 2 : 1; return width; };
+// What a row shows from a column on.
+function fromColumn(row: string, column: number) {
+  const chars = [...row];
+  let at = 0, width = 0;
+  while (at < chars.length && width < column) width += WIDE.test(chars[at++]) ? 2 : 1;
+  return chars.slice(at).join('');
+}
+// The part of a row set off to the right, beside or instead of the conversation's own text (which starts at its left
+// edge): its column and text, or null.
+function rightPart(row: string, from: number) {
+  for (const gap of row.matchAll(/\s{2,}(?=\S)/g)) {
+    const end = gap.index + gap[0].length, column = cells(row.slice(0, end));
+    if (column >= from) return { column, text: row.slice(end) };
+  }
+  return null;
+}
+
+// Codex 0.162 draws some commands' dialogs over its conversation (/memories' "Enable memories?"): a box set in from the
+// left beside or over the conversation's lines, closed by its key hints ("enter select · esc back"), while its input and
+// footer stay below. Its rows are what the screen shows from the dialog's left edge on; null when none is open.
+const DIALOG_LEFT = 12;
+export function codexDialog(rows: string[]): string[] | null {
+  let hint = rows.length - 1, left = Infinity;
+  for (; hint >= 0; hint--) {
+    const part = rightPart(rows[hint], DIALOG_LEFT);
+    if (part && hintRow(part.text)) { left = part.column; break; }
+  }
+  if (hint < 0) return null;
+  // Up from the hints, the rows with a part in the dialog's columns; three rows in a row without one end it.
+  let top = hint;
+  for (let index = hint - 1, empty = 0; index >= 0 && empty < 3; index--) {
+    const part = rightPart(rows[index], DIALOG_LEFT);
+    if (part && part.column >= left - 8) { top = index; empty = 0; left = Math.min(left, part.column); }
+    else empty++;
+  }
+  if (top === hint) return null;
+  return rows.slice(top, hint + 1).map(row => fromColumn(row, left).trimEnd());
+}
 // Codex asks "Would you like to run the following command?", "…make the following edits?", "…grant these permissions?"
 // and "<server> needs your approval."; Claude "Do you want to create hello.txt?".
 const permissionTitle = (row: string) => /^(?:Do you want\b|Would you like to\b|Allow\b)|\bneeds your approval\.?$/i.test(row);
@@ -58,7 +100,9 @@ function parseStatus(agent: ScreenAgent, rows: string[], start: number): ScreenS
     const footer = rows.slice(start).map(row => row.trim()).filter(Boolean);
     // "model effort · folder · context left". A conversation with nothing in it yet has no context part
     // ("GPT-6-Sol default · ~\work", Codex 0.162.1): its first part is then told by the effort that ends it.
-    const parts = /^(.+?)\s+·\s+([^·]+?)(?:\s+·\s+(.+))?$/.exec(footer[0] ?? '');
+    // A view's key hints under its list ("←/→ tabs · enter details · esc close", /plugins) are no footer.
+    const keys = /[←→↑↓]|(?:^|·)\s*(?:esc|enter|tab|space)\s+\w/i.test(footer[0] ?? '');
+    const parts = keys ? null : /^(.+?)\s+·\s+([^·]+?)(?:\s+·\s+(.+))?$/.exec(footer[0] ?? '');
     const model = parts && (parts[3] !== undefined || /\s(?:none|minimal|low|medium|high|xhigh|max|ultra|default)(?:\s+fast)?$/.test(parts[1])) ? parts : null;
     if (model) {
       // "default": the model's own effort ("GPT-6.1-Sol default · ~\work"); "fast": fast mode on ("GPT-6.1-Sol high fast").
@@ -331,7 +375,10 @@ export function parseAgentScreen(agent: ScreenAgent, rows: string[]): AgentScree
   const status = parseStatus(agent, normalized, start);
   const overlay = parseOverlay(agent, normalized, start);
   const picker = agent === 'codex' ? parseResumePicker(normalized) : null;
+  // A dialog Codex draws over its conversation asks on its own rows.
+  const dialog = agent === 'codex' && !picker && overlay === 'none' ? codexDialog(normalized) : null;
   return { banner: parseBanner(agent, normalized, status), status,
-    choice: picker ?? (overlay === 'none' ? parseQuestion(agent, normalized) ?? parseChoice(agent, normalized) ?? (agent === 'claude' ? looseMenu(normalized) : null) : null),
+    choice: picker ?? (overlay !== 'none' ? null : dialog ? parseChoice(agent, dialog)
+      : parseQuestion(agent, normalized) ?? parseChoice(agent, normalized) ?? (agent === 'claude' ? looseMenu(normalized) : null)),
     overlay: picker ? 'none' : overlay };
 }

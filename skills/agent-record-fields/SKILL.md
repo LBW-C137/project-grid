@@ -38,6 +38,19 @@ APIs or read their credentials.
   - `cost-state` records (cumulative `modelUsage` and cost) belong to the Claude **process**, not the conversation:
     they restart with a new `startTime`. They are written only now and then, such as on exit, so they can't be a live
     figure.
+  - A message sent while Claude works is queued: `queue-operation` `enqueue` (with its `content`) at once, then
+    `remove` (`absorbed_mid_turn`, delivered within the turn) or `dequeue` (taken up as the next turn, oldest first).
+    Only then does the message itself get written. The reading view shows such a message as queued, never as
+    failed.
+- **Claude Code account** (`<config>/.claude.json`, or `<home>/.claude.json` without `CLAUDE_CONFIG_DIR`):
+  - `cachedUsageUtilization.utilization`: `five_hour` / `seven_day` with `utilization` (percent) and `resets_at`
+    (ISO), from its last `/usage`.
+  - Limit resets come in two kinds, each behind a flag in `cachedGrowthBookFeatures`: `tengu_nifty_lemur` is the
+    hidden `/limit-reset` that clears the 5-hour limit once a week; `tengu_cedar_ember` is a plan's grants, counted in
+    `utilization.cedar_ember.grants`.
+  - Claude Code fetches whether the reset is still there only at the limit, so `cedar_ember: null` and a missing flag
+    mean "no word", never "none left". Never grey out the button on a guess; what Claude says on screen ("Weekly reset
+    used · available again <date>") is the only "used".
 
 ## The three places to change
 

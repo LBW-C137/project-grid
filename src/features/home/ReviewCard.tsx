@@ -24,7 +24,7 @@ type Round = { goal: string; reply: string; written: string[] };
 // files its steps wrote.
 function lastRound(entries: readonly ConversationEntry[]): Round {
   let start = -1;
-  for (let index = entries.length - 1; index >= 0; index--) if (entries[index].role === 'user' && !entries[index].answer) { start = index; break; }
+  for (let index = entries.length - 1; index >= 0; index--) if (entries[index].role === 'user' && !entries[index].answer && !entries[index].queued) { start = index; break; }
   const round = entries.slice(start + 1);
   const reply = [...round].reverse().find(entry => entry.role === 'assistant' && entry.text)?.text ?? '';
   const written = [...new Set(round.flatMap(entry => entry.tool?.done && !entry.tool.failed ? entry.tool.written ?? [] : []))];

@@ -44,6 +44,8 @@ function loadUI(name, overrides = {}) {
     if (key === './ReadingSignIn') return { ReadingSignIn: () => null };
     if (key === './AgentCommandRun') return { AgentCommandRun: () => null };
     if (key === './AgentSettingsTag') return { AgentSettingsTag: () => null };
+    if (key === './Timeline') return loadUI('features/reading/Timeline.tsx');
+    if (key === './typing') return require('../src/features/reading/typing.ts');
     if (key === './composer-prefill') return require('../src/features/reading/composer-prefill.ts');
     if (key === './image-thumbnail') return require('../src/features/reading/image-thumbnail.ts');
     if (key === './markdown-escape') return require('../src/features/reading/markdown-escape.ts');
@@ -391,7 +393,7 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
   const { ReadingView } = loadUI('features/reading/ReadingView.tsx', {
     './markdown-escape': { readingMarked: { parse: text => { parsed.push(text); return text; } } },
     dompurify: { default: () => ({ sanitize: html => html }) },
-    '@phosphor-icons/react': Object.fromEntries(['ArrowDown', 'CaretDown', 'CaretRight', 'CircleNotch', 'Image', 'PaperPlaneRight', 'Stop'].map(name => [name, icon])),
+    '@phosphor-icons/react': new Proxy({}, { get: () => icon }),
     './action-text': {}, './voice-input': {}, './terminal-screen': { useScreen: () => null },
     './agent-screen': { parseAgentScreen: () => fakeScreen() },
     './ReadingWelcome': { ReadingWelcome: () => React.createElement('p', null, 'welcome preserved') },

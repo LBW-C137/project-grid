@@ -170,6 +170,17 @@ try {
   assert.equal(await palette.getByRole('option').filter({ hasText: '/fix-issue' }).count(), 0, 'agent change reloads commands');
   assert.equal(await palette.getByRole('option').filter({ hasText: '/security-review' }).count(), 0);
   checks.push('command list reloads when the terminal agent changes');
+  // A card that comes while someone writes in the box never takes the keyboard: the Enter meant for the message must not
+  // answer it (here, approve a command). The fixture prints Codex's approval prompt and keeps its own prompt away.
+  await composer.fill(''); await composer.click(); await page.keyboard.type('先别批准', { delay: 40 });
+  await write("Clear-Host; Write-Host '  Would you like to run the following command?'; Write-Host ''; Write-Host '  $ npm test'; Write-Host ''; Write-Host '› 1. Yes, proceed (y)'; Write-Host '  2. No, and tell Codex what to do differently (esc)'; Write-Host ''; Write-Host '  Press enter to confirm or esc to cancel'; Start-Sleep -Seconds 30\r");
+  const asked = page.locator('.reading-choice'); await asked.waitFor({ timeout: 10000 });
+  assert.equal(await page.evaluate(() => !!document.activeElement?.closest('.reading-choice-host')), false, 'the card does not take the keyboard from someone writing');
+  await resetWrites(); await page.keyboard.press('Enter'); await page.waitForTimeout(800);
+  assert.ok(!(await writes()).some(item => item.data.includes('\r') || item.data === 'y'), 'the Enter meant for the message answers nothing');
+  assert.equal(await asked.count(), 1, 'the card still waits for an answer');
+  await write('\x03'); await asked.waitFor({ state: 'detached', timeout: 10000 });
+  checks.push('a card that comes while someone writes never takes the keyboard');
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(output, 'results.json'), JSON.stringify({ packaged, checks, errors }, null, 2));
   console.log(`PASS: reading palette, typed slash/shell commands, CLI keys, history and permission handoff. Evidence: ${output}`);

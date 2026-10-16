@@ -1,4 +1,5 @@
 import type { AgentScreen, ScreenAgent } from '../agents/agent-screen-types.ts';
+import { codexDialog } from '../agents/agent-screen.ts';
 
 const rule = (row: string) => /^[─╌]{2,}$/.test(row.trim());
 // Claude draws a dialog that takes the input's place under an overline (▔▔▔), with its effort indicator
@@ -26,8 +27,9 @@ const prompt = (agent: ScreenAgent, row: string) => {
   return (match[1] ?? '').trim();
 };
 
-// A historical prompt is not an input area. Claude needs both surrounding rules;
-// Codex needs the footer that parseAgentScreen found below its last composer.
+// A historical prompt is not an input area. Claude needs both surrounding rules; Codex needs its footer right under it
+// (a long draft wraps over a few rows first): the prompt Codex pins to its top row, over a view that took the input's
+// place (/plugins), has none.
 function cliInputArea(agent: ScreenAgent, rows: string[], screen: AgentScreen) {
   const status = screen.status;
   const hasFooter = !!(status.model || status.mode || status.context || status.effort || status.notes.length);
@@ -40,7 +42,7 @@ function cliInputArea(agent: ScreenAgent, rows: string[], screen: AgentScreen) {
       const start = /^\s*[●◉]\s+\S+\s+·\s+\/effort\b/.test(rows[index - 2] ?? '') ? index - 2 : index - 1;
       return { row: index, start, footer: index + 2, text, hasFooter };
     }
-    if (hasFooter) return { row: index, start: index, footer: index + 1, text, hasFooter };
+    if (hasFooter && rows.slice(index + 1, index + 14).some(codexFooterRow)) return { row: index, start: index, footer: index + 1, text, hasFooter };
   }
   return null;
 }
@@ -61,6 +63,8 @@ export function cliInputDraft(agent: ScreenAgent, rows: string[], screen: AgentS
 // The agent waits at its own input: no question or popup, no working line, and its input box with the footer drawn.
 export function isAtPrompt(agent: ScreenAgent, rows: string[], screen: AgentScreen): boolean {
   if (screen.choice || screen.overlay !== 'none' || (agent === 'claude' && claudeWorking(rows))) return false;
+  // A dialog Codex drew over its conversation (/usage, /memories) still waits, its input showing below it.
+  if (agent === 'codex' && codexDialog(rows)) return false;
   const input = cliInputArea(agent, rows, screen);
   // A Codex picker open under the input (/copy) is still waiting for a choice.
   return !!input?.hasFooter && !(agent === 'codex' && codexPopupBelow(rows, input).length);
@@ -76,6 +80,7 @@ export function hasCliInput(agent: ScreenAgent, rows: string[], screen: AgentScr
 // "Esc to cancel" hint tells it apart.
 const dialogHint = (row: string) => /\besc to (?:cancel|close|exit|go back|dismiss)\b/i.test(row);
 function cliDialogOpen(agent: ScreenAgent, rows: string[], screen: AgentScreen): boolean {
+  if (agent === 'codex' && codexDialog(rows)) return true;
   const input = cliInputArea(agent, rows, screen);
   if (agent === 'codex' && input && codexPopupBelow(rows, input).length) return true;
   if (input || !rows.some(row => row.trim())) return false;
@@ -109,7 +114,7 @@ export function isCliIdle(agent: ScreenAgent, rows: string[], screen: AgentScree
 
 // Codex draws some commands' pickers under its input and footer (/copy's "Copy user message", with its own key
 // hints): what is under the footer, other than the footer itself, is that picker.
-const codexFooterRow = (row: string) => /^\s*(?:GPT|gpt|o\d|codex)[^·]*\s+·\s+.+$/.test(row) || /^\s*(?:\? for shortcuts|⚠)/.test(row);
+const codexFooterRow = (row: string) => /^\s*(?:GPT|gpt|o\d|codex)[^·]*\s+·\s+.+$/.test(row.replace(/\r$/, '')) || /^\s*(?:\? for shortcuts|⚠)/.test(row);
 function codexPopupBelow(rows: string[], input: { row: number }): string[] {
   const below = rows.slice(input.row + 1).filter(row => row.trim() && !codexFooterRow(row));
   return below.some(row => /\besc\b|\benter\b/i.test(row)) ? below : [];
@@ -178,6 +183,9 @@ function echoRow(agent: ScreenAgent, rows: string[], command: string, end: numbe
 }
 
 export function extractCliPanelRows(agent: ScreenAgent, rows: string[], screen: AgentScreen, command: string, before?: readonly string[]): string[] {
+  // A dialog Codex drew over its conversation is all the command shows; the conversation beside it is not.
+  const dialog = agent === 'codex' ? codexDialog(rows) : null;
+  if (dialog) return squeeze(trimRows(dialog));
   const input = cliInputArea(agent, rows, screen);
   // A panel can replace the entire input area. Only recognizable status rows are
   // cut in that case; keyboard hints belong to the panel and must remain visible.

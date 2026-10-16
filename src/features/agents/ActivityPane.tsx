@@ -1,7 +1,11 @@
-import { CaretRight, CircleNotch } from '@phosphor-icons/react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowCounterClockwise, CaretRight, CircleNotch } from '@phosphor-icons/react';
 import type { AgentTokens, AgentUsage, ProjectTerminal } from '../../shared/types';
 import { t } from '../../shared/i18n';
 import { modelName } from '../reading/model-name';
+import { readScreen, subscribeScreen } from '../terminal/terminal-screen';
+import { sendToAgent } from '../home/send-to-agent';
+import { claudeResetsSaid, codexResetsSaid } from './reset-count';
 import './activity-pane.css';
 
 // 1234 → "1.2k", 828400 → "828k", 23898406 → "23.9M": token counts the way a person reads them at a glance.
@@ -18,14 +22,15 @@ const percentOf = (part: number, whole: number) => whole > 0 ? Math.min(100, Mat
 // route its model is reached through, how full the context window is and the tokens and plan allowance used.
 export function ActivityPane({ terminal }: { terminal: ProjectTerminal }) {
   return <aside className="activity-pane" aria-label={t('活动')}>
+    {/* A card of fixed size: prompts piling up scroll inside it and never push the cards under it down. */}
     <section className="activity-card activity-tasks" aria-label={t('正在处理的任务')}>
-      <h4 className="activity-card-title">{t('正在处理的任务')}</h4>
+      <h4 className="activity-card-title">{t('正在处理的任务')}{(terminal.prompts?.length ?? 0) > 1 && <span className="activity-task-count">{terminal.prompts.length}</span>}</h4>
       <PromptList terminal={terminal} />
     </section>
     {terminal.codexActive ? <>
       <RouteCard terminal={terminal} />
       <ContextCard usage={terminal.agentUsage} />
-      <UsageCard usage={terminal.agentUsage} claude={terminal.agent === 'claude'} />
+      <UsageCard usage={terminal.agentUsage} terminal={terminal} />
     </> : <section className="activity-card">
       <p className="activity-empty">{t('在终端里启动 Codex 或 Claude Code 后，这里显示它的模型路由、上下文长度和用量。')}</p>
     </section>}
@@ -68,7 +73,8 @@ function ContextCard({ usage }: { usage: AgentUsage | null | undefined }) {
 }
 
 // The plan's allowance used (Codex reports it with every call), then the tokens of this round and this conversation.
-function UsageCard({ usage, claude }: { usage: AgentUsage | null | undefined; claude: boolean }) {
+function UsageCard({ usage, terminal }: { usage: AgentUsage | null | undefined; terminal: ProjectTerminal }) {
+  const claude = terminal.agent === 'claude';
   const limits = usage?.limits || [], rows = [[t('本轮'), usage?.round], [t('本次对话'), usage?.total]] as const;
   const known = rows.filter(([, tokens]) => tokens);
   return <section className="activity-card activity-usage" aria-label={t('用量')}>
@@ -83,8 +89,83 @@ function UsageCard({ usage, claude }: { usage: AgentUsage | null | undefined; cl
     {known.length ? <dl className="activity-tokens">
       {known.map(([label, tokens]) => <TokenRow key={label} label={label} tokens={tokens!} />)}
     </dl> : <p className="activity-note">{t('第一次回复后显示。')}</p>}
-    {claude && <p className="activity-note">{t('Claude Code 的记录里没有账号额度；在终端输入 /usage 查看。')}</p>}
+    <ResetQuota key={terminal.id} terminal={terminal} resets={claude ? usage?.resets ?? null : null} />
+    {claude && <p className="activity-note">{usage?.limitsAt ? t('额度来自 {source}，{time} 更新', { source: usage.limitsFrom || 'Claude Code', time: resetTime(usage.limitsAt) }) : t('Claude Code 还没有获取账号额度；在终端输入 /usage 查看。')}</p>}
   </section>;
+}
+
+// What the agent last said on its screen of the resets left (Codex keeps the number nowhere else; Claude says whether its
+// weekly reset is still there only when offered it or after using it), per terminal.
+type Said = { left: number; again: string | null };
+const resetsSaid = new Map<string, Said>();
+function useResetsSaid(terminal: ProjectTerminal) {
+  const key = `${terminal.agent}:${terminal.id}`;
+  const [said, setSaid] = useState(() => resetsSaid.get(key) ?? null);
+  useEffect(() => {
+    setSaid(resetsSaid.get(key) ?? null);
+    const read = (rows: readonly string[]) => {
+      const now = terminal.agent === 'claude' ? claudeResetsSaid(rows) : (left => left === null ? null : { left, again: null })(codexResetsSaid(rows));
+      const known = resetsSaid.get(key);
+      if (now && (now.left !== known?.left || now.again !== known?.again)) { resetsSaid.set(key, now); setSaid(now); }
+    };
+    const current = readScreen(terminal.id); if (current) read(current.rows);
+    return subscribeScreen(terminal.id, screen => read(screen.rows));
+  }, [key]);
+  return said;
+}
+
+// Using one of the plan's limit resets is costly and never happens at once: a click starts a ten-second countdown that
+// the reader can cancel at any moment, and only then does the agent get its own command for it, sent as a typed one
+// (Claude Code's /limit-reset; Codex's /usage, where Codex asks which reset to use and to confirm). Agentrix itself never
+// calls a reset. Closing the pane or switching terminals cancels the countdown.
+const COUNTDOWN = 10;
+function ResetQuota({ terminal, resets }: { terminal: ProjectTerminal; resets: AgentUsage['resets'] }) {
+  const claude = terminal.agent === 'claude', said = useResetsSaid(terminal);
+  const left = said?.left ?? (claude ? resets?.left ?? null : null), weekly = claude && resets?.kind === 'session';
+  const [count, setCount] = useState<number | null>(null), [note, setNote] = useState<string | null>(null);
+  const cancelButton = useRef<HTMLButtonElement>(null), fired = useRef(false);
+  const command = claude ? '/limit-reset' : '/usage';
+  useEffect(() => {
+    if (count === null) return;
+    // Once per countdown, whatever renders again meanwhile.
+    if (count === 0) { setCount(null); if (!fired.current) { fired.current = true; void run(); } return; }
+    const timer = window.setTimeout(() => setCount(count - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [count]);
+  useEffect(() => { if (count === COUNTDOWN) cancelButton.current?.focus(); }, [count]);
+  useEffect(() => { if (!note) return; const timer = window.setTimeout(() => setNote(null), 8000); return () => clearTimeout(timer); }, [note]);
+  const run = async () => {
+    // A reading view of this terminal takes it as its own composer would (its popup shows what the agent answers);
+    // otherwise it goes into the agent's input as typed.
+    const event = new CustomEvent('agentrix:command', { detail: { terminalId: terminal.id, text: command }, cancelable: true });
+    const failed = window.dispatchEvent(event) && terminal.sessionId ? await sendToAgent(terminal.id, terminal.sessionId, claude ? 'claude' : 'codex', command) : null;
+    setNote(failed ?? (claude ? t('已向 Claude Code 发送 /limit-reset，由它完成重置。') : t('已打开 Codex 的 /usage，在那里选择要用的重置并确认。')));
+  };
+  // An emergency stop: a red dome in a metal bezel ringed with hazard stripes. Counting down, the seconds take the
+  // dome, a red ring runs out around it and the way out sits beside it.
+  const counting = count !== null, none = left === 0;
+  const start = () => { fired.current = false; setNote(null); setCount(COUNTDOWN); };
+  return <div className={`activity-reset${counting ? ' is-counting' : ''}`} role={counting ? 'timer' : undefined} aria-live={counting ? 'polite' : undefined}
+    onKeyDown={event => { if (counting && event.key === 'Escape') { event.stopPropagation(); setCount(null); } }}>
+    <div className="activity-estop-wrap">
+      <button type="button" className="activity-estop" disabled={!counting && (none || !terminal.codexActive)} aria-disabled={counting || undefined}
+        aria-label={counting ? t('{seconds} 秒后重置额度', { seconds: count }) : t('重置额度')}
+        title={counting ? undefined : weekly ? t('重置 5 小时额度：每周 1 次，会占用每周额度。点击后有 10 秒可以取消，然后由 Claude Code 自己完成重置')
+          : t('点击后有 10 秒可以取消，然后由 {agent} 自己完成重置', { agent: claude ? 'Claude Code' : 'Codex' })}
+        onClick={counting ? undefined : start}>
+        <span className="activity-estop-hazard" aria-hidden="true" />
+        <span className="activity-estop-bezel" aria-hidden="true" />
+        <span className="activity-estop-dome">{counting ? <b>{count}</b> : <ArrowCounterClockwise size={24} weight="bold" aria-hidden="true" />}</span>
+        {counting && <svg className="activity-estop-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47" pathLength={100} style={{ animationDuration: `${COUNTDOWN}s` }} /></svg>}
+      </button>
+      <span className="activity-estop-label">{counting ? t('{seconds} 秒后重置', { seconds: count }) : t('重置额度')}</span>
+    </div>
+    {counting ? <button ref={cancelButton} type="button" className="activity-reset-cancel" onClick={() => setCount(null)}>{t('取消')}</button>
+      : <small>{left === null ? weekly ? t('每周可重置 1 次 5 小时额度') : claude ? t('剩余次数未知') : t('剩余次数在 /usage 里显示')
+        : none ? said?.again ? t('本周已用，{date} 后可再用', { date: said.again }) : t('没有可用的重置')
+        : weekly ? t('本周还可重置 1 次') : t('剩余 {count} 次', { count: left })}</small>}
+    {note && <p className="activity-reset-note" role="status">{note}</p>}
+  </div>;
 }
 
 function TokenRow({ label, tokens }: { label: string; tokens: AgentTokens }) {

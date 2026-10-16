@@ -16,17 +16,28 @@ const user = (id, text) => ({ id, role: 'user', text });
 const add = (state, id, text, at = 1000) => addPendingPrompt(state, id, text, at);
 const sync = (state, entries, now = 1001, session = 'session') => reconcilePendingPrompts(state, session, entries, now);
 
-function pendingMarkup(prompts) {
+// A TSX module of the reading view, compiled for the test; its own requires go through resolve first.
+function compileTsx(filename, resolve) {
+  const mod = new Module(filename, module);
+  mod.filename = filename; mod.paths = Module._nodeModulePaths(path.dirname(filename));
+  const originalRequire = mod.require.bind(mod);
+  mod.require = name => resolve(name) ?? originalRequire(name);
+  mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, filename);
+  return mod.exports;
+}
+const timeline = () => compileTsx(path.join(__dirname, '../src/features/reading/Timeline.tsx'), () => null);
+
+function pendingMarkup(prompts, props = {}) {
   const filename = path.join(__dirname, '../src/features/reading/PendingPromptEntries.tsx');
   const mod = new Module(filename, module);
   mod.filename = filename; mod.paths = Module._nodeModulePaths(path.dirname(filename));
   const originalRequire = mod.require.bind(mod);
   const icon = props => React.createElement('svg', { className: props.className });
-  mod.require = name => name.endsWith('/i18n') ? { t: text => en[text] ?? text } : name.endsWith('.css') ? {} : name === '@phosphor-icons/react' ? new Proxy({}, { get: () => icon }) : name === './pasted-pictures' ? require('../src/features/reading/pasted-pictures.ts') : name === '../files/file-popup' ? { showPopup() {} } : originalRequire(name);
+  mod.require = name => name === './Timeline' ? timeline() : name.endsWith('/i18n') ? { t: text => en[text] ?? text } : name.endsWith('.css') ? {} : name === '@phosphor-icons/react' ? new Proxy({}, { get: () => icon }) : name === './pasted-pictures' ? require('../src/features/reading/pasted-pictures.ts') : name === '../files/file-popup' ? { showPopup() {} } : originalRequire(name);
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText, filename);
-  return renderToStaticMarkup(React.createElement(mod.exports.PendingPromptEntries, { prompts }));
+  return renderToStaticMarkup(React.createElement(mod.exports.PendingPromptEntries, { prompts, ...props }));
 }
 
 test('pending messages use the user style and translated sending note, and escape pasted markup', () => {
@@ -36,6 +47,14 @@ test('pending messages use the user style and translated sending note, and escap
   assert.match(html, /role="status">Sending/);
   assert.match(html, /&lt;script&gt;hello&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test("a message in the agent's queue says it arrived and waits, and is never offered for sending again", () => {
+  const state = add(createPendingPrompts('session'), 'p', 'queued message');
+  const html = pendingMarkup(state.prompts, { queued: () => true, undelivered: () => false });
+  assert.match(html, /reading-user reading-pending is-queued/);
+  assert.doesNotMatch(html, /is-sending|Sending/);
+  assert.match(html, /role="status">Delivered and queued/);
 });
 
 test('an expired echo still renders its text without a sending note', () => {

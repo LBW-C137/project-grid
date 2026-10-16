@@ -79,6 +79,12 @@ class ConversationLog {
     if (this.list.length > this.limit) this.list.shift();
     this.changed(at < this.list.length - 1 ? { reset: true, entry } : { entry });
   }
+  // An entry gone (a queued message taken up): the window gets the whole list again.
+  drop(id) {
+    const index = this.list.findIndex(item => item.id === id);
+    if (index < 0) return;
+    this.list.splice(index, 1); this.changed({ reset: true });
+  }
   // A tool whose result arrived. prefix: a Codex call id covers every step its script made.
   finish(id, failed = false, prefix = false) {
     for (let index = 0; index < this.list.length; index++) {
@@ -99,7 +105,25 @@ class ConversationLog {
   }
 }
 
+// Claude Code queues a message sent while it works (a queue-operation "enqueue" naming it) and writes it into the
+// conversation only when it takes it up: within the turn ("remove", absorbed_mid_turn) or as the next one ("dequeue",
+// the oldest). Until then it stands in the list marked queued, which the reading view shows on the message it sent and
+// is never shown as a message itself.
+function claudeQueue(log, record) {
+  const queued = log.list.filter(entry => entry.queued), text = typeof record.content === 'string' ? clean(record.content) : '';
+  if (record.operation === 'enqueue') {
+    // A slash command or shell line sent while it works is not a message (the reading view's isTypedCommand).
+    const command = (/^\/[^\s/]+(?:\s|$)/.test(text) || text.startsWith('!')) && !/[\r\n]/.test(text);
+    if (text && !command) log.put({ id: `q:${record.timestamp}:${log.list.length}`, at: Date.parse(record.timestamp) || Date.now(), role: 'user', text: bounded(text), queued: true });
+    return;
+  }
+  if (record.operation !== 'remove' && record.operation !== 'dequeue') return;
+  const entry = (text && queued.find(item => item.text === bounded(text))) || (record.operation === 'dequeue' || !text ? queued[0] : null);
+  if (entry) log.drop(entry.id);
+}
+
 function claudeConversation(log, record, cwd) {
+  if (record?.type === 'queue-operation') { if (!record.isSidechain) claudeQueue(log, record); return; }
   if (claudeOwnRecord(record)) return;
   const queued = record?.type === 'attachment' && record.attachment?.type === 'queued_command' && record.attachment.commandMode !== 'bash' ? record.attachment : null;
   if (queued && !record.isSidechain) {

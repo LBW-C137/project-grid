@@ -15,7 +15,7 @@ const { READING_NOTE } = require('./features/agents/reading-note.cjs');
 const { writeHandoff, handoffText, startupNote } = require('./features/agents/handoff.cjs');
 const { remember, roundsOf } = require('./features/agents/project-memory.cjs');
 const { agentSettings } = require('./features/agents/agent-settings.cjs');
-const { UsageMeter, claudeProvider, codexProvider } = require('./features/agents/agent-usage.cjs');
+const { UsageMeter, claudeProvider, codexProvider, claudeAccount } = require('./features/agents/agent-usage.cjs');
 const { agentCommand } = require('./features/agents/agent-command.cjs');
 const { scrubSkills } = require('./features/agents/skill-privacy.cjs');
 const { setThumbnailer, isGeneratedImage } = require('./conversation.cjs');
@@ -369,8 +369,20 @@ function startUsage(project, s, event) {
   const usage = s.usage = new UsageMeter(s.agent);
   if (project.kind === 'ssh') return;
   const named = update => { if (s.usage === usage) { update(); scheduleState(); } };
-  if (s.agent === 'claude') void claudeProvider(event.cwd || project.path, claudeConfigDir()).then(provider => named(() => { usage.provider = provider; })).catch(() => {});
-  else void codexProvider(event.codexHome || s.codexHome).then(names => named(() => { usage.names = names; })).catch(() => {});
+  if (s.agent === 'claude') {
+    void claudeProvider(event.cwd || project.path, claudeConfigDir()).then(provider => named(() => { usage.provider = provider; })).catch(() => {});
+    void refreshClaudeAccounts();
+  } else void codexProvider(event.codexHome || s.codexHome).then(names => named(() => { usage.names = names; })).catch(() => {});
+}
+// Claude's plan limits and resets, from Claude Code's own state file, for every local Claude terminal: read when one
+// starts and then twice a minute while any runs (Claude Code refreshes them itself every few minutes).
+let claudeAccountTimer = null;
+async function refreshClaudeAccounts() {
+  const meters = [...sessions.values()].filter(s => s.codexActive && s.usage?.agent === 'claude' && store.projects.find(p => p.id === s.projectId)?.kind !== 'ssh');
+  if (!meters.length) { clearInterval(claudeAccountTimer); claudeAccountTimer = null; return; }
+  claudeAccountTimer ??= setInterval(() => void refreshClaudeAccounts(), 30000);
+  const account = await claudeAccount();
+  if (meters.some(s => s.usage.account(account))) scheduleState();
 }
 
 // Restores and the reading-view picker know the id before Claude emits its next prompt hook.
@@ -732,7 +744,7 @@ function startTerminal(id) {
     publishConversation(s, change);
     const entry = change.entry;
     // An answer to the agent's own question is not a prompt: it goes on with the round it answered.
-    if (entry?.role === 'user' && !entry.answer && s.codexActive && entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
+    if (entry?.role === 'user' && !entry.answer && !entry.queued && s.codexActive && entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
   });
   sessions.set(id, s);
   store.setRestore(id, { terminal: true, ...(restorePlans.has(id) ? {} : { codex: false }) });

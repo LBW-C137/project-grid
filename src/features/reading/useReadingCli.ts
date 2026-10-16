@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore, type RefObject } from 'react';
 import type { ScreenAgent } from '../agents/agent-screen-types';
-import { parseAgentScreen } from '../agents/agent-screen';
+import { codexDialog, parseAgentScreen } from '../agents/agent-screen';
 import { readScreen, subscribeScreen } from '../terminal/terminal-screen';
 import { advanceCliCommand, cliHistory, cliResultRows, extractCliPanelRows, hasCliInput, isSideConversation, isCliIdle, type CliCommand } from './cli-panel';
 
@@ -65,7 +65,7 @@ function begin(session: Session, terminalId: string, agent: ScreenAgent, command
         : next.command.observed ? { command, rows: extractCliPanelRows(agent, latest.rows, screen, command, next.command.before) } : null;
       // A dialog the CLI is still redrawing (or just closed) leaves nothing for a moment: keep showing it.
       const shown = panel && !panel.rows.length && session.snapshot.panel?.rows.length ? session.snapshot.panel : panel;
-      if (panel?.rows.length && (side || !hasCliInput(agent, latest.rows, screen))) next.command.dialog = panel.rows;
+      if (panel?.rows.length && (side || !hasCliInput(agent, latest.rows, screen) || (agent === 'codex' && codexDialog(latest.rows)))) next.command.dialog = panel.rows;
       publish(session, { pending: next.command, panel: shown });
     }
   };

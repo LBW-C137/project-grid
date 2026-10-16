@@ -71,3 +71,20 @@ An approval only shows after the model asks for a tool. Never use the real sign-
   literal before reading file names out of a patch.
 - A dialog may draw its own search field like the input box (Claude's `/config`): never drop input-looking rows from a
   dialog, only rows known to be chrome.
+- Codex 0.162.1 has two more shapes for interactive commands:
+  - Some dialogs are drawn over the conversation (`/memories`' "Enable memories?", and probably `/usage`): a box set
+    in from the left, beside or over the conversation's own lines, closed by its key hints (`enter select · esc back`),
+    with the input and footer still below it. Cut it out by screen column, counting CJK as two cells
+    (`codexDialog` in `agent-screen.ts`). It is no idle input.
+  - `/plugins` puts its view in the input's place: its list's cursor row (`› No marketplace plugins…`) looks like the
+    input, and its hints (`←/→ tabs · enter details · esc close`) look like a footer. Codex's real input has its
+    footer right under it, and the prompt Codex pins to its top row has none.
+- Sweep every interactive command, not just the one reported: send each from the reading view, watch it for five
+  seconds, close it with Esc and classify it as picker card / popup content / still spinning. The spinning ones and
+  any popup showing old conversation are the bugs.
+- `/usage` needs a ChatGPT sign-in. A made-up sign-in pointed at a local stand-in got as far as Codex's workspace
+  routing:
+  - `/wham/accounts/check` needs `accounts` (a list), `account_ordering`, `default_account_id` and an HTTPS
+    `workspace_backend_origin`.
+  - A throwaway CA given through `CODEX_CA_CERTIFICATE` makes the HTTPS part work.
+  - It then stops at "invalid account routing override", so capture `/usage` from someone's real screen instead.
