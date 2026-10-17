@@ -71,3 +71,8 @@ Unknown or unsupported counters are not zero; do not substitute the local accoun
 Replay a real record file through the reader in a scratch script, read-only, and compare with what the CLI itself shows.
 The desktop smoke `scripts/completion-smoke.mjs` appends `turn_context` and `token_count` records to a fake rollout and
 checks the activity pane.
+
+For transcript rotation, read handle metadata with `file.stat({ bigint: true })` and retain exact `dev`/`ino` values
+in the identity. NTFS file IDs above the safe integer limit can round to the same Number for two different files,
+silently reusing the old read offset. Convert only `size` for byte offsets. Keep the rotation regression using two
+distinct bigint IDs that become the same Number; verify both Claude and Codex restart their bounded history window.

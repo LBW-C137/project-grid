@@ -60,18 +60,19 @@ class CodexActivityReader {
     if (!this.filename) return null;
     const file = await fs.open(this.filename, 'r');
     try {
-      const stat = await file.stat();
+      // NTFS file IDs can exceed Number's exact range; keep their identity as bigint.
+      const stat = await file.stat({ bigint: true }), size = Number(stat.size);
       const identity = `${stat.dev}:${stat.ino}`;
-      if (this.fileIdentity !== identity || stat.size < this.fileSize) {
+      if (this.fileIdentity !== identity || size < this.fileSize) {
         const rebinding = this.fileIdentity != null;
-        Object.assign(this, transcriptWindow(stat.size)); this.buffer = Buffer.alloc(0);
+        Object.assign(this, transcriptWindow(size)); this.buffer = Buffer.alloc(0);
         this.snapshot = { threadId: this.snapshot.threadId, turnId: null, state: 'unknown', updatedAt: 0 };
         this.historyPending = true;
         if (rebinding) this.options.onHistory?.(false);
       }
-      this.fileIdentity = identity; this.fileSize = stat.size;
+      this.fileIdentity = identity; this.fileSize = size;
       // Catch up the bounded history in one poll; live growth keeps its smaller budget.
-      const end = this.historyPending ? stat.size : Math.min(stat.size, this.offset + LIVE_READ_LIMIT);
+      const end = this.historyPending ? size : Math.min(size, this.offset + LIVE_READ_LIMIT);
       while (this.offset < end) {
         const chunk = Buffer.alloc(Math.min(65536, end - this.offset));
         const { bytesRead } = await file.read(chunk, 0, chunk.length, this.offset);
@@ -92,8 +93,8 @@ class CodexActivityReader {
           this.buffer = Buffer.alloc(0); this.skipping = true;
         }
       }
-      if (this.historyPending && this.offset >= stat.size) { this.historyPending = false; this.options.onHistory?.(true); }
-      return this.offset >= stat.size ? { ...this.snapshot } : null;
+      if (this.historyPending && this.offset >= size) { this.historyPending = false; this.options.onHistory?.(true); }
+      return this.offset >= size ? { ...this.snapshot } : null;
     } finally { await file.close(); }
   }
 }

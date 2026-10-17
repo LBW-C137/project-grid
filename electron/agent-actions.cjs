@@ -235,16 +235,17 @@ class TranscriptTail {
   async read(onRecord) {
     let file; try { file = await fs.open(this.filename, 'r'); } catch { return; }
     try {
-      const stat = await file.stat();
+      // NTFS file IDs can exceed Number's exact range; keep their identity as bigint.
+      const stat = await file.stat({ bigint: true }), size = Number(stat.size);
       const identity = `${stat.dev}:${stat.ino}`;
-      if (this.fileIdentity !== identity || stat.size < this.fileSize) {
+      if (this.fileIdentity !== identity || size < this.fileSize) {
         const rebinding = this.fileIdentity != null;
-        Object.assign(this, transcriptWindow(stat.size)); this.buffer = Buffer.alloc(0); this.oversized = null;
+        Object.assign(this, transcriptWindow(size)); this.buffer = Buffer.alloc(0); this.oversized = null;
         this.historyPending = true;
         if (rebinding) this.onHistory(false);
       }
-      this.fileIdentity = identity; this.fileSize = stat.size;
-      const end = this.historyPending ? stat.size : Math.min(stat.size, this.offset + LIVE_READ_LIMIT);
+      this.fileIdentity = identity; this.fileSize = size;
+      const end = this.historyPending ? size : Math.min(size, this.offset + LIVE_READ_LIMIT);
       while (this.offset < end) {
         const chunk = Buffer.alloc(Math.min(65536, end - this.offset));
         const { bytesRead } = await file.read(chunk, 0, chunk.length, this.offset);
@@ -264,7 +265,7 @@ class TranscriptTail {
           this.buffer = Buffer.alloc(0); this.skipping = true;
         }
       }
-      if (this.historyPending && this.offset >= stat.size) { this.historyPending = false; this.onHistory(true); }
+      if (this.historyPending && this.offset >= size) { this.historyPending = false; this.onHistory(true); }
     } finally { await file.close(); }
   }
 }

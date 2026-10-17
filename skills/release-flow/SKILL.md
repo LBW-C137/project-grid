@@ -31,8 +31,10 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
 9. **A failed job.** The tag's release is published only if every build passes. Read the failed step from the job
    log (`/actions/jobs/<id>/logs`; search for `Error:` and `Timed out`, since passing test names also contain
    "failed"), and download the run's `desktop-test-screenshots` artifact: each smoke saves `failure.png` when it fails.
-   If the same commit passed in the branch run, the failure is a race, not this release: re-running the failed jobs
-   finishes the release. Re-running is a write action, so ask before using the token for it. A smoke that passed and
+   A passing branch run alone does not prove a tag failure is environmental: allocator-dependent transcript loss can
+   appear only on one runner. Reproduce the exact assertion before deciding. Rerun unchanged jobs only for a diagnosed
+   environment or timing failure, within the session's publication authorization; ask only if that authorization is
+   absent. A demonstrated code defect needs a new commit and patch version, preserving the old tag. A smoke that passed and
    then timed out in its cleanup ("isolated shell exit") lost the `exit` typed right after Ctrl+C on a slow runner: a
    cleanup sends `exit` again every few seconds until the shell has gone (as `git-smoke.mjs` does).
 10. **Short temp paths on Windows CI.** The runner's temp folder is an 8.3 name (`<home>\…`). A test
@@ -50,7 +52,7 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
    by 1px between runs. Before measuring positions, `await page.waitForFunction(() => !document.querySelector('[data-focus-motion]'))`.
 13. **A network error before any test.** `npm ci` failing with `ECONNRESET` ("network read") in "Install locked
    dependencies" is the runner's connection, not the release: no smoke ran and none left a picture. The install steps
-   retry once by themselves; if it still fails, re-run the failed jobs (with the user's OK) and the release publishes
+   retry once by themselves; if it still fails, re-run the failed jobs under the session's publication authorization and the release publishes
    when they pass. Hand the diagnosis to Codex (read-only, the token only inside its scripts) per `model-routing`.
 14. **Offline completion fixtures need received input.** A fresh task fixture includes a `user_message`, not only
    `task_started` and `task_complete`. Those callbacks must never rearm notifications themselves. Keep historical
@@ -61,3 +63,6 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
 16. **Injected provider transcripts.** A smoke that intercepts the conversation endpoint must model a provider switch
    explicitly: set the fixture snapshot to empty, publish an empty conversation packet, await the reader clearing,
    then publish the new provider's entries. The real main log may already be empty, so its no-op reset emits no packet.
+17. **Slow PowerShell unit subprocesses.** Use `10000 * timeoutScale` from `scripts/wait.mjs` for the PATH-check child,
+   matching the workflow's existing scale. Keep every case and assertion; validate with an injected startup delay above
+   the original ten-second cap. A killed child with empty output is not a failed PATH assertion.

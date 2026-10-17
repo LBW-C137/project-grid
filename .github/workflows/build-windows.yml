@@ -531,7 +531,7 @@ jobs:
           - Slash commands show immediate feedback, confirm terminal input before submission, and offer terminal recovery for slow responses. Queued terminal messages remain visible.
           - The backend refreshes remaining reset credits for supported local Codex accounts. Task cards retain their processing status without the animated progress bar.
           - Autosave preserves edits made while a save is running, paged edits retain line endings, and file popups support loading subsequent pages.
-          - Fix remote Claude resume, copying same-named files from different folders, and completion notifications being rearmed by background callbacks.
+          - Fix remote Claude resume, missing records after session log replacement, copying same-named files from different folders, and completion notifications being rearmed by background callbacks.
 
           Commit: $GITHUB_SHA
           Build: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID

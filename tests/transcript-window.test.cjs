@@ -78,6 +78,19 @@ for (const kind of ['Claude', 'Codex']) {
   });
 
   test(`${kind} starts a fresh window on truncation and on same-path rotation to a larger file`, async t => {
+    // Real NTFS file IDs can differ while rounding to the same JavaScript number.
+    let ino = 9007199255251444n;
+    assert.equal(Number(ino), Number(ino + 1n));
+    const open = fs.open;
+    t.mock.method(fs, 'open', async (...args) => {
+      const file = await open(...args), stat = file.stat.bind(file);
+      t.mock.method(file, 'stat', async options => {
+        const info = await stat(options);
+        info.ino = options?.bigint ? ino : Number(ino);
+        return info;
+      });
+      return file;
+    });
     const f = await fixture(t), initial = largeFile(f.meta + sizedLine('old', 3 * 1024 * 1024), 'initial');
     await fs.writeFile(f.filename, initial.text); await f.read();
     const truncated = largeFile(f.meta, 'truncated');
@@ -85,6 +98,7 @@ for (const kind of ['Claude', 'Codex']) {
     assert.deepEqual(f.seen.map(record => record.n), truncated.ids);
     assert.deepEqual(f.history, [false, true, false, true]);
     await fs.rename(f.filename, `${f.filename}.old`);
+    ino += 1n;
     const rotated = largeFile(f.meta + sizedLine('excluded', 4 * 1024 * 1024), 'rotated');
     await fs.writeFile(f.filename, rotated.text); f.seen.length = 0; await f.read();
     assert.deepEqual(f.seen.map(record => record.n), rotated.ids);

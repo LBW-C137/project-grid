@@ -7,6 +7,7 @@ const { promisify } = require('node:util');
 const exec = promisify(require('node:child_process').execFile);
 
 test('new Windows terminals supplement stale PATH without replacing inherited toolchains', { skip: process.platform !== 'win32' }, async t => {
+  const { timeoutScale } = await import('../scripts/wait.mjs');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentrix-path-'));
   t.after(async () => {
     assert.equal(path.dirname(path.resolve(dir)).toLowerCase(), path.resolve(os.tmpdir()).toLowerCase());
@@ -24,8 +25,9 @@ test('new Windows terminals supplement stale PATH without replacing inherited to
     { name: 'path reference is bounded', inherited: 'C:\\keep', Machine: '', User: '%PATH%;C:\\new', expected: 'C:\\keep;C:\\new' },
   ];
   const file = path.join(dir, 'cases.json'); await fs.writeFile(file, JSON.stringify(cases));
-  const { stdout } = await exec(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'fixtures/path-refresh-check.ps1'), '-Script', path.join(__dirname, '../integration/refresh-path.ps1'), '-Cases', file], { windowsHide: true, timeout: 10000 });
+  const { stdout } = await exec(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'fixtures/path-refresh-check.ps1'), '-Script', path.join(__dirname, '../integration/refresh-path.ps1'), '-Cases', file], { windowsHide: true, timeout: 10000 * timeoutScale });
   const results = JSON.parse(stdout);
+  assert.equal(results.length, cases.length, 'PowerShell returns every PATH case');
   for (const [index, result] of results.entries()) {
     assert.equal(result.first, cases[index].expected, result.name);
     assert.equal(result.second, cases[index].second || cases[index].expected, `${result.name}: repeated refresh`);
