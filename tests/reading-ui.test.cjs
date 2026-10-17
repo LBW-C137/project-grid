@@ -39,6 +39,7 @@ function loadUI(name, overrides = {}) {
     if (name === '@phosphor-icons/react') return new Proxy({}, { get: () => props => React.createElement('svg', { className: props.className }) });
     if (key === './i18n') return { currentLanguage: () => 'en', t: (text, values = {}) => (en[text] ?? text).replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match) };
     if (key === './choice-keys') return require('../src/features/reading/choice-keys.ts');
+    if (key === './dictation-send') return require('../src/features/reading/dictation-send.ts');
     if (key === './reading-sessions') return require('../src/features/reading/reading-sessions.ts');
     if (key === './reply-files') return require('../src/features/reading/reply-files.ts');
     if (key === './ReadingSignIn') return { ReadingSignIn: () => null };
@@ -59,6 +60,28 @@ function loadUI(name, overrides = {}) {
   }).outputText, filename);
   return mod.exports;
 }
+
+test('named timeline heads show their time even in the same minute as the previous step', () => {
+  const { TimelineStep, stepTime } = loadUI('features/reading/Timeline.tsx');
+  const at = new Date(2026, 9, 17, 16, 16, 20).getTime();
+  for (const who of ['你', 'Claude Code', 'Codex']) {
+    const html = renderToStaticMarkup(React.createElement(TimelineStep, {
+      at, kind: who === '你' ? 'user' : 'agent', who, showTime: false, mark: null,
+    }, 'message'));
+    assert.ok(html.includes(`<b class="reading-step-label">${who}</b><time dateTime="${new Date(at).toISOString()}">${stepTime(at)}</time>`), who);
+  }
+});
+
+test('unnamed timeline steps and tool pills show time only when the minute changes', () => {
+  const { TimelineStep } = loadUI('features/reading/Timeline.tsx');
+  const at = new Date(2026, 9, 17, 16, 16, 40).getTime();
+  for (const kind of ['agent', 'tools']) {
+    const render = showTime => renderToStaticMarkup(React.createElement(TimelineStep, { at, kind, showTime, mark: null }, 'step'));
+    assert.doesNotMatch(render(false), /<time|reading-step-head/);
+    assert.match(render(true), /<time dateTime=/);
+    if (kind === 'tools') assert.match(render(true), /step<time/);
+  }
+});
 
 test('choice keys move up, down or confirm in place using option positions', () => {
   assert.deepEqual(choiceKeys(1, 3), ['\x1b[B', '\x1b[B', '\r']);
@@ -216,6 +239,162 @@ function elements(node) {
   if (!React.isValidElement(node)) return [];
   return [node, ...elements(node.props.children)];
 }
+
+// Run ReadingView's composer handlers and effect cleanup without starting a browser or Electron.
+function dictationHarness(t) {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const slots = [], effects = [], written = [], pasted = [], echoed = [];
+  let cursor = 0, root, insert, closed = 0;
+  const hooks = {
+    useState(initial) {
+      const index = cursor++;
+      if (!Object.hasOwn(slots, index)) slots[index] = typeof initial === 'function' ? initial() : initial;
+      return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }];
+    },
+    useRef(initial) {
+      const index = cursor++;
+      if (!Object.hasOwn(slots, index)) slots[index] = { current: initial };
+      return slots[index];
+    },
+    useMemo(make) { cursor++; return make(); },
+    useEffect(effect, deps) {
+      const index = cursor++, previous = slots[index];
+      if (previous && deps && deps.length === previous.deps?.length && deps.every((value, i) => Object.is(value, previous.deps[i]))) return;
+      const slot = slots[index] = { deps, cleanup: previous?.cleanup };
+      effects.push(() => { slot.cleanup?.(); slot.cleanup = effect(); });
+    },
+  };
+  hooks.useLayoutEffect = hooks.useEffect;
+  const previousWindow = globalThis.window, previousDocument = globalThis.document;
+  const node = { value: '', selectionStart: 0, selectionEnd: 0, dataset: {},
+    focus() { document.activeElement = node; },
+    setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
+  };
+  globalThis.document = { activeElement: node, body: {}, getElementById: () => null, createElement: () => ({ innerHTML: '', querySelectorAll: () => [] }) };
+  globalThis.window = { addEventListener() {}, removeEventListener() {}, agentrix: {
+    terminalCommands: async () => ({ ok: true, value: [] }),
+    writeTerminal: (id, text) => written.push({ id, text }),
+    pasteTerminal: async (id, text) => { pasted.push({ id, text }); return { ok: true }; },
+  } };
+  const cli = { busy: false, panel: null, close() { closed++; }, begin() {} };
+  const props = { projectId: 'project', terminal: { id: 'dictation', sessionId: 'session', agent: 'codex', codexActive: true, needsInput: null },
+    autoFocus: false, onShowTerminal() {}, onError: message => assert.fail(message), onOpenLink() {},
+  };
+  const screen = fakeScreen();
+  const { ReadingView } = loadUI('features/reading/ReadingView.tsx', {
+    react: hooks, dompurify: { default: () => ({ sanitize: html => html }) },
+    './action-text': {}, './cli-panel': require('../src/features/reading/cli-panel.ts'),
+    './pending-prompts': require('../src/features/reading/pending-prompts.ts'),
+    './voice-input': { dictateInto: (id, take) => { insert = take; return () => { insert = null; }; } },
+    './terminal-screen': { useScreen: () => null, readScreen: () => null },
+    './agent-screen': { parseAgentScreen: () => screen },
+    './ReadingWelcome': {}, './ReadingChoice': {}, './ReadingQuestion': {}, './ReadingSessions': {},
+    './reading-mode': { setChoiceVisible() {} }, './typing': { markTyping() {}, isTyping: () => false },
+    './useStickToBottom': { useStickToBottom: () => ({ stuck: true, unseen: 0, ready: true, holdPosition() {}, toBottom() {} }) },
+    './useReadingConversation': { conversationKey: () => 'session', useReadingConversation: () => [] },
+    './useVisibleTail': { blocks: () => [], useVisibleTail: () => ({ earlier: 0, visible: [] }) },
+    './useMentions': { useMentions: () => ({ open: false, keys: () => false }) }, './MentionPalette': {},
+    './usePendingPrompts': { usePendingPrompts: () => ({ pending: [], echo: (text, images) => { echoed.push({ text, images }); return null; }, cancelEcho() {} }) },
+    './PendingPromptEntries': {}, './markdown-parse': {}, './FileCards': {},
+    './reading-welcome': { useWelcomeStarting: () => false }, './ReadingCliPanel': {},
+    './useReadingCli': { useReadingCli: () => ({ ...cli, entries: [] }) },
+    './image-thumbnail': { thumbnail: async () => 'data:image/png;base64,picture' },
+  });
+  const render = () => {
+    cursor = 0; root = ReadingView(props);
+    const box = elements(root).find(element => element.type === 'textarea');
+    box.props.ref.current = node; node.value = box.props.value;
+    while (effects.length) effects.shift()();
+    return box;
+  };
+  const unmount = () => { for (const slot of slots) if (slot?.cleanup) { slot.cleanup(); slot.cleanup = undefined; } };
+  t.after(() => { unmount(); globalThis.window = previousWindow; globalThis.document = previousDocument; });
+  render(); render();
+  return { props, screen, cli, node, written, pasted, echoed, render, unmount, closed: () => closed,
+    dictate: (text, submit = true) => { insert(text, submit); render(); },
+    edit: text => { render().props.onChange({ target: { value: text } }); render(); },
+    pending: () => elements(root).some(element => /\bis-sending-soon\b/.test(element.props.className)),
+    press(key) {
+      const event = { key, currentTarget: node, nativeEvent: {}, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; } };
+      render().props.onKeyDown(event); render(); return event;
+    },
+    async tick(ms) { t.mock.timers.tick(ms); for (let i = 0; i < 12; i++) await Promise.resolve(); render(); },
+  };
+}
+
+test('submitted dictation appears at the caret for half a second, then uses the composer send with pictures', async t => {
+  const h = dictationHarness(t);
+  h.edit('before replace after'); h.node.setSelectionRange(7, 14);
+  h.render().props.onPaste({ preventDefault() {}, clipboardData: { getData: () => '', items: [{ kind: 'file', type: 'image/png', getAsFile: () => ({ size: 1 }) }] } });
+  await h.tick(0);
+  h.dictate('spoken');
+  assert.equal(h.node.value, 'before spoken after');
+  assert.equal(document.activeElement, h.node);
+  assert.equal(h.node.selectionStart, 13); assert.equal(h.node.selectionEnd, 13);
+  assert.equal(h.pending(), true);
+  await h.tick(499); assert.deepEqual(h.pasted, []);
+  await h.tick(1);
+  assert.deepEqual(h.pasted, [{ id: 'dictation', text: 'before spoken after' }]);
+  assert.deepEqual(h.echoed, [{ text: 'before spoken after', images: ['data:image/png;base64,picture'] }]);
+  assert.equal(h.pending(), false); assert.equal(h.node.value, '');
+  await h.tick(2000); assert.equal(h.pasted.length, 1);
+});
+
+test('Enter sends pending dictation at once and disarms its timer', async t => {
+  const h = dictationHarness(t);
+  h.dictate('send now'); h.press('Enter'); await h.tick(0);
+  assert.deepEqual(h.pasted, [{ id: 'dictation', text: 'send now' }]);
+  assert.equal(h.pending(), false);
+  await h.tick(2000); assert.equal(h.pasted.length, 1);
+});
+
+test('Escape only cancels pending dictation, leaving text and an open command alone', async t => {
+  const h = dictationHarness(t);
+  h.props.terminal.codexActivity = 'working'; h.cli.panel = { command: '/usage', rows: [] };
+  h.dictate('keep for editing');
+  const event = h.press('Escape');
+  assert.equal(event.prevented, true); assert.equal(event.stopped, true);
+  assert.equal(h.closed(), 0); assert.deepEqual(h.written, []);
+  assert.equal(h.node.value, 'keep for editing'); assert.equal(h.pending(), false);
+  await h.tick(1000); assert.deepEqual(h.pasted, []);
+});
+
+test('editing, clearing and starting IME input cancel dictation without sending', async t => {
+  for (const action of ['edit', 'clear', 'compose']) await t.test(action, async t => {
+    const h = dictationHarness(t); h.dictate('keep');
+    if (action === 'compose') h.render().props.onCompositionStart();
+    else h.edit(action === 'clear' ? '' : 'keep editing');
+    await h.tick(1000);
+    assert.deepEqual(h.pasted, []); assert.equal(h.pending(), false);
+    assert.equal(h.node.value, action === 'clear' ? '' : action === 'edit' ? 'keep editing' : 'keep');
+  });
+});
+
+test('terminal changes, split selection and unmount cancel pending dictation', async t => {
+  for (const action of ['terminal', 'session', 'selection', 'unmount']) await t.test(action, async t => {
+    const h = dictationHarness(t); h.props.autoFocus = true; h.render(); h.dictate('cancel on leaving');
+    if (action === 'terminal') h.props.terminal = { ...h.props.terminal, id: 'other' };
+    if (action === 'session') h.props.terminal = { ...h.props.terminal, sessionId: 'other' };
+    if (action === 'selection') h.props.autoFocus = false;
+    if (action === 'unmount') h.unmount(); else h.render();
+    await h.tick(1000); assert.deepEqual(h.pasted, []);
+  });
+});
+
+test('the delayed send respects a newly blocked composer', async t => {
+  const h = dictationHarness(t); h.dictate('wait');
+  h.screen.choice = fakeChoice(); h.render();
+  await h.tick(1000);
+  assert.deepEqual(h.pasted, []); assert.equal(h.node.value, 'wait'); assert.equal(h.pending(), false);
+});
+
+test('dictation without submit inserts and focuses without scheduling a send', async t => {
+  const h = dictationHarness(t); document.activeElement = null;
+  h.dictate('insert only', false);
+  assert.equal(h.node.value, 'insert only'); assert.equal(document.activeElement, h.node);
+  assert.equal(h.node.selectionStart, 11); assert.equal(h.pending(), false);
+  await h.tick(2000); assert.deepEqual(h.pasted, []);
+});
 
 // Exercise the component's handlers with persistent hook slots, without a DOM or native GUI.
 function choiceHarness(t, choice = fakeChoice()) {

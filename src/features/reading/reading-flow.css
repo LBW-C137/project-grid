@@ -8,7 +8,7 @@
   --flow-claude: #e8875f; --flow-codex: #d7e6f5;
   --flow-rail: #4fd3e8; --flow-step: #5fd8ec;
   --flow-user: #5ea6ff;
-  --step-time: calc(36px * var(--reading-text)); --step-node: 28px; --step-gap: 10px;
+  --step-node: 28px; --step-gap: 10px; --step-lead: calc(var(--step-node) + var(--step-gap));
 }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-view {
   --flow-card: var(--theme-hover); --flow-line: var(--theme-line); --flow-ink: var(--theme-ink); --flow-muted: var(--theme-muted); --flow-faint: var(--theme-muted);
@@ -16,15 +16,22 @@
   --flow-rail: var(--theme-line); --flow-step: var(--theme-ink); --flow-user: var(--theme-ink);
 }
 
-/* A step: its time, its node on the line, then what it is. The line runs from each node's foot to the next one's head
+/* A step: its node on the line, then what it is, under a head line with the speaker and the time. The line runs from each node's foot to the next one's head
    (the steps stand 10px apart), never through the glass. */
 .reading-scroll { container-type: inline-size; }
-.reading-step { position: relative; display: grid; grid-template-columns: var(--step-time) var(--step-node) minmax(0, 1fr); column-gap: var(--step-gap); align-items: start; }
-.reading-step::before { content: ''; position: absolute; left: calc(var(--step-time) + var(--step-gap) + var(--step-node) / 2 - 1px); top: var(--step-node); bottom: -10px; width: 2px;
+.reading-step { position: relative; display: grid; grid-template-columns: var(--step-node) minmax(0, 1fr); column-gap: var(--step-gap); align-items: start; }
+.reading-step::before { content: ''; position: absolute; left: calc(var(--step-node) / 2 - 1px); top: var(--step-node); bottom: -10px; width: 2px;
   border-radius: 1px; background: var(--flow-rail); opacity: .85; }
 .reading-step:not(:has(~ .reading-step))::before { display: none; }
-.reading-step > time { align-self: start; padding-top: 6px; text-align: right; font: 600 calc(12.5px * var(--reading-text))/1.5 var(--font-ui); color: var(--flow-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.reading-step > time.is-quiet { font-weight: 500; opacity: .5; }
+/* The head line stands level with the node (28px): the speaker in the label style, the time small and muted beside it. */
+.reading-step-head { display: flex; align-items: center; gap: 8px; min-height: var(--step-node); }
+.reading-step-body > time, .reading-step-head > time { font: 500 calc(11.5px * var(--reading-text))/1.4 var(--font-ui); color: var(--flow-muted); opacity: .8; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* A group of steps has its time after the pill on the same row; opened, it moves to the card's top right corner. */
+.reading-step.is-tools .reading-step-body { position: relative; flex-direction: row; align-items: flex-start; gap: 10px; }
+.reading-step.is-tools .reading-step-body > time { align-self: flex-start; padding-top: 7px; }
+.reading-step.is-tools .reading-step-body > .reading-tools { flex: 0 1 auto; }
+.reading-step.is-tools .reading-step-body:has(.reading-tools.is-open) > .reading-tools { flex: 1 1 auto; }
+.reading-step.is-tools .reading-step-body:has(.reading-tools.is-open) > time { position: absolute; top: 8px; right: 14px; padding: 0; }
 /* Each node a hollow ring: the wallpaper shows through it (no dark fill), a hairline rim and the glyph in the colour of
    what it is (blue you, warm orange Claude, cool white Codex, cyan a step). No glow anywhere on the line: every edge is
    hard, so nothing looks hazy over the wallpaper. */
@@ -51,19 +58,15 @@
   30% { transform: scale(1); animation-timing-function: cubic-bezier(.5, 0, .5, 1); }
   100% { transform: scale(.22); } }
 .reading-step.is-failed .reading-node { --node-tint: var(--flow-fail); }
+/* The cards start at the node's right edge, 14px from the rail and nearer to it than the name label, which stays beside the node. */
+.reading-step-body > :is(.reading-user, .reading-assistant, .reading-tools) { margin-left: calc(var(--step-node) - var(--step-lead)); }
 .reading-step-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.reading-step-label { padding-top: 4px; font-size: calc(13.5px * var(--reading-text)); font-weight: 600; color: var(--flow-ink); }
+.reading-step-label { font-size: calc(13.5px * var(--reading-text)); font-weight: 600; color: var(--flow-ink); }
 /* The working line ends the timeline beside its node, without a mark of its own. */
 .reading-step.is-working .reading-status { margin: 5px 0 0; }
 .reading-step .reading-status-mark { display: none; }
 :root[data-motion="off"] .reading-step.is-running :is(.reading-node::before, .reading-node::after, .reading-spark line) { animation: none; }
 @media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .reading-step.is-running :is(.reading-node::before, .reading-node::after, .reading-spark line) { animation: none; } }
-/* A narrow card keeps the line and its nodes, not the times. */
-@container (max-width: 520px) {
-  .reading-step { grid-template-columns: var(--step-node) minmax(0, 1fr); column-gap: 10px; }
-  .reading-step > time { display: none; }
-  .reading-step::before { left: calc(var(--step-node) / 2 - 1px); }
-}
 
 /* The pointer passing over a step makes its card hop: up 12px, down, a small second bounce, then it lands where it was.
    The hover is the step's row, which never moves, so a card hopping out from under the pointer does not restart it.

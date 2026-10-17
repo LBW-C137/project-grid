@@ -1,7 +1,8 @@
 // What the usage guide's last page lists for this release. Update it with every version: the guide opens on
 // first use and after each update, on this page for people who are updating.
 export const WHATS_NEW: string[] = [
-  '决策页改为左右两栏：左边是标题、待你决定的事和输入框，右边是所有会话，上下对齐、铺满窗口。',
-  '模型路由列出会话调用的所有模型，例如 Sonnet 5.5 子代理和 Codex 的 GPT-6.1-Sol 子任务，显示次数和正在运行的数量。',
-  '修复：Claude 工作时在阅读视图里打开 /usage、/config 等命令，按 Esc 后终端里的对话框也会关闭，不会打断 Claude。',
+  '阅读视图和输入框排成一列：头像和输入框左边对齐，卡片和输入框右边对齐，左右留白一样宽；时间放在名字后面（如「你 18:39」）。',
+  '活动栏固定在窗口里，不再上下滚动：任务卡片自动让出空间，窗口较矮时其余卡片排得更紧凑。',
+  '语音输入完成后，文字先在输入框里显示半秒再发送；这半秒内打字或按 Esc 可以取消发送。',
+  'Claude 的每周重置在 5 小时额度用完前标明「用完后可用」，不再显得随时可用。',
 ];

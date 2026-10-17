@@ -5,6 +5,7 @@ import { ArrowDown, CaretDown, CaretUp, CheckCircle, FileText, Globe, Image as I
 import type { AgentCommand, ConversationEntry, ProjectTerminal } from '../../shared/types';
 import { actionText, stepVerb } from '../agents/action-text';
 import { dictateInto } from '../voice/voice-input';
+import { createDictationSend } from './dictation-send';
 import { readScreen, useScreen } from '../terminal/terminal-screen';
 import { parseAgentScreen } from '../agents/agent-screen';
 import { cliCloseKey, cliDialogShown, cliEscapeSafe, cliFooter, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
@@ -128,13 +129,12 @@ function GeneratedImage({ src, path, prompt }: { src: string; path: string; prom
 
 // A reply, a card on the timeline beside the agent's own mark (Claude's ✻, Codex's), with the local pictures, pages and
 // videos it names shown under it (the agents are told they can show one this way: reading-note.cjs). The first reply
-// after your message names the agent above it.
-function AssistantReply({ entry, agent, named: label, projectId, onError }: { entry: ConversationEntry; agent: 'claude' | 'codex'; named: boolean; projectId: string; onError: (message: string) => void }) {
+// after your message names the agent in the step's head line.
+function AssistantReply({ entry, agent, projectId, onError }: { entry: ConversationEntry; agent: 'claude' | 'codex'; projectId: string; onError: (message: string) => void }) {
   const named = useMemo(() => entry.text ? replyFiles(entry.text) : [], [entry.text]);
-  return <>{label && <b className="reading-step-label">{agent === 'claude' ? 'Claude Code' : 'Codex'}</b>}
-    <div className={`reading-assistant is-${agent}`}>{entry.text ? <Markdown text={entry.text} /> : null}
+  return <div className={`reading-assistant is-${agent}`}>{entry.text ? <Markdown text={entry.text} /> : null}
       {named.length > 0 && <FileCards projectId={projectId} files={named} renderMarkdown={text => <Markdown text={text} />} onError={onError} quiet />}
-      {entry.generated && entry.images?.[0] && <GeneratedImage src={entry.images[0]} {...entry.generated} />}</div></>;
+      {entry.generated && entry.images?.[0] && <GeneratedImage src={entry.images[0]} {...entry.generated} />}</div>;
 }
 // The agent's mark on its replies' nodes.
 const AgentMark = ({ agent }: { agent: 'claude' | 'codex' }) => agent === 'claude' ? <ClaudeSpark /> : <Robot size={16} weight="bold" />;
@@ -258,6 +258,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const mounted = useRef(true);
   const choiceHost = useRef<HTMLDivElement>(null), restoreComposer = useRef(false), wasChoice = useRef(false), typingAtChoice = useRef(false);
   const [draft, setDraft] = useState('');
+  const [sendingSoon, setSendingSoon] = useState(false);
   const [commands, setCommands] = useState<AgentCommand[]>([]), [requested, setRequested] = useState(false);
   const [dismissed, setDismissed] = useState(false), [selection, setSelection] = useState(0);
   const historyAt = useRef<number | null>(null), unsent = useRef(''), caret = useRef<number | null>(null), sending = useRef(false);
@@ -334,9 +335,9 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const listId = `reading-commands-${terminal.id}`, optionId = (index: number) => `${listId}-${index}`;
   useEffect(() => { setSelection(0); }, [draft, commands]);
   useEffect(() => { if (palette) document.getElementById(optionId(selection))?.scrollIntoView({ block: 'nearest' }); }, [palette, selection]);
-  const edit = (value: string) => { setDraft(value); setDismissed(false); historyAt.current = null; };
+  const edit = (value: string) => { dictationSend.cancel(); setDraft(value); setDismissed(false); historyAt.current = null; };
   // Text written for this terminal on the home page waits here for the reader to send it.
-  useEffect(() => onComposerPrefill(terminal.id, text => { setDraft(text); setDismissed(true); requestAnimationFrame(() => input.current?.focus()); }), [terminal.id]);
+  useEffect(() => onComposerPrefill(terminal.id, text => { dictationSend.cancel(); setDraft(text); setDismissed(true); requestAnimationFrame(() => input.current?.focus()); }), [terminal.id]);
   const complete = (command: AgentCommand) => {
     caret.current = command.name.length + 1; edit(command.name + ' '); input.current?.focus();
   };
@@ -356,6 +357,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const tail = useVisibleTail(grouped, conversation, scroller, stuck, holdPosition);
   // One message at a time: a second Enter while the first is still being pasted waits for nothing and sends nothing.
   const send = async (text = draft.trim(), own = true) => {
+    if (own) dictationSend.cancel();
     if (sending.current) return;
     sending.current = true;
     try { await deliver(text, own); } catch (error) { if (mounted.current) onError(String(error)); } finally { sending.current = false; }
@@ -529,6 +531,9 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     onError(t('{command} 没有发出去，还留在它的输入框里。', { command: text.split(/\s/)[0] }));
   };
   const sendRef = useRef(send); sendRef.current = send;
+  const [dictationSend] = useState(() => createDictationSend(() => { void sendRef.current(); }, setSendingSoon));
+  // A terminal can stay mounted when another split is selected. Cancel before it loses composer ownership.
+  useLayoutEffect(() => () => { dictationSend.cancel(); }, [dictationSend, terminal.id, terminal.sessionId, autoFocus]);
   // A command another part of the window sends this agent (the activity pane's limit reset) goes as one typed here
   // would, its popup showing what the agent answers.
   useEffect(() => {
@@ -563,14 +568,14 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const undelivered = (prompt: PendingPrompt) => idle && !prompt.sending && !queued(prompt) && (resent.current.get(prompt.text) ?? 0) >= 2;
   const resend = (prompt: PendingPrompt) => { cancelEcho(prompt.id); void send(prompt.text, false); };
   // Dictation into this terminal lands here while the reading view shows: the words appear at the cursor as
-  // soon as they are recognised, and Enter (or the shortcut again) sends the whole message.
+  // soon as they are recognised. Enter (or the shortcut again) allows a second to edit before sending normally.
   useEffect(() => dictateInto(terminal.id, (text, submit) => {
     if (choiceVisible.current) return;
     const node = input.current, value = node?.value ?? '', here = !!node && document.activeElement === node;
     const at = here ? node.selectionStart : value.length, end = here ? node.selectionEnd : value.length;
     const next = value.slice(0, at) + text + value.slice(end);
-    if (submit) { void sendRef.current(next.trim()); return; }
     caret.current = at + text.length; edit(next); node?.focus();
+    if (submit) dictationSend.start();
   }), [terminal.id]);
   // An image pasted here goes to the agent the way it takes one in its own input: it reads the clipboard on its
   // paste key (Ctrl+V in Codex, Alt+V in Claude Code on Windows) and attaches the image to the next message.
@@ -624,7 +629,9 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   };
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     markTyping(event.currentTarget);
-    if (event.nativeEvent.isComposing) return;
+    if (event.key === 'Escape' && dictationSend.cancel()) { event.preventDefault(); event.stopPropagation(); return; }
+    if (event.nativeEvent.isComposing) { dictationSend.cancel(); return; }
+    if (event.key === 'Enter') dictationSend.cancel();
     if (event.key === 'Tab' && event.shiftKey) { event.preventDefault(); window.agentrix.writeTerminal(terminal.id, '\x1b[Z'); return; }
     // A picker open beside an empty box: up and down move into it.
     if (screen.choice && !draft.trim() && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
@@ -642,10 +649,10 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       const node = event.currentTarget, sent = history.get(terminal.id) || [];
       if (!event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && node.selectionStart === node.selectionEnd && ((event.key === 'ArrowUp' && node.selectionStart === 0) || (event.key === 'ArrowDown' && node.selectionEnd === draft.length))) {
         if (event.key === 'ArrowUp' && sent.length) {
-          event.preventDefault(); if (historyAt.current === null) { unsent.current = draft; historyAt.current = sent.length; }
+          event.preventDefault(); dictationSend.cancel(); if (historyAt.current === null) { unsent.current = draft; historyAt.current = sent.length; }
           historyAt.current = Math.max(0, historyAt.current - 1); caret.current = 0; setDraft(sent[historyAt.current]);
         } else if (event.key === 'ArrowDown' && historyAt.current !== null) {
-          event.preventDefault(); historyAt.current++;
+          event.preventDefault(); dictationSend.cancel(); historyAt.current++;
           const next = historyAt.current >= sent.length ? unsent.current : sent[historyAt.current];
           if (historyAt.current >= sent.length) historyAt.current = null;
           caret.current = next.length; setDraft(next);
@@ -670,30 +677,31 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     screen={screen} starting={welcomeIsStarting} />;
   else {
     const kind = terminal.agent === 'claude' ? 'claude' : 'codex';
-    // A time the step before showed is set quiet; the first reply after your message names the agent.
+    // Unnamed steps leave out a time the step before showed; the first reply after your message names the agent.
     let shownTime = '', afterUser = true;
+    const agentName = kind === 'claude' ? 'Claude Code' : 'Codex';
     body = <>
       {tail.earlier > 0 && <button type="button" className="text-button reading-earlier" onClick={tail.showEarlier}>{t('显示更早的对话（{count}）', { count: tail.earlier })}</button>}
       {tail.visible.map((block, index) => {
-        const at = block.kind === 'tools' ? block.entries[0]?.at : block.entry.at, time = stepTime(at), quiet = time === shownTime;
+        const at = block.kind === 'tools' ? block.entries[0]?.at : block.entry.at, time = stepTime(at), showTime = time !== shownTime;
         shownTime = time;
         if (block.kind === 'tools') {
           const Lead = STEP_ICONS[block.entries[0]?.tool?.kind ?? 'other'];
           const state = block.entries.some(entry => !entry.tool?.done) ? 'running' : block.entries.some(entry => entry.tool?.failed) ? 'failed' : null;
-          return <TimelineStep key={block.id} at={at} quiet={quiet} kind="tools" state={state} mark={<Lead size={15} weight="bold" />}>
+          return <TimelineStep key={block.id} at={at} showTime={showTime} kind="tools" state={state} mark={<Lead size={15} weight="bold" />}>
             <ToolGroup entries={block.entries} live={index === tail.visible.length - 1} projectId={projectId} onError={onError} />
           </TimelineStep>;
         }
         if (block.entry.role === 'user') {
           afterUser = true;
-          return <TimelineStep key={block.entry.id} at={at} quiet={quiet} kind="user" mark={<UserIcon size={15} weight="fill" />}>
+          return <TimelineStep key={block.entry.id} at={at} showTime={showTime} kind="user" who={t('你')} mark={<UserIcon size={15} weight="fill" />}>
             <div className={`reading-user${block.entry.answer ? ' is-answer' : ''}`}>
               {block.entry.answer && <span className="reading-user-label">{t('你回答了它的问题')}</span>}<UserMessage text={block.entry.text || ''} images={block.entry.images} /></div>
           </TimelineStep>;
         }
         const named = afterUser; afterUser = false;
-        return <TimelineStep key={block.entry.id} at={at} quiet={quiet} kind="agent" agent={kind} mark={<AgentMark agent={kind} />}>
-          <AssistantReply entry={block.entry} agent={kind} named={named} projectId={projectId} onError={onError} />
+        return <TimelineStep key={block.entry.id} at={at} showTime={showTime} kind="agent" agent={kind} who={named ? agentName : undefined} mark={<AgentMark agent={kind} />}>
+          <AssistantReply entry={block.entry} agent={kind} projectId={projectId} onError={onError} />
         </TimelineStep>;
       })}
     </>;
@@ -732,11 +740,11 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     {palette && <div className="reading-commands is-inline" id={listId} role="listbox" aria-label={t('命令')}>{matches.map((command, index) => <div key={command.name} id={optionId(index)} role="option" aria-selected={selection === index} className="reading-command" onMouseDown={event => event.preventDefault()} onClick={() => complete(command)}>
         <code>{command.name}</code><span>{command.source === 'builtin' ? t(command.description) : command.description}</span>{command.source !== 'builtin' && <small>{command.source === 'project' ? t('项目') : command.source === 'user' ? t('用户') : t('技能')}</small>}
     </div>)}</div>}
-    <div className="reading-composer" style={terminal.agentCommand ? { display: 'none' } : undefined}>
+    <div className={`reading-composer${sendingSoon ? ' is-sending-soon' : ''}`} style={terminal.agentCommand ? { display: 'none' } : undefined}>
       {terminal.codexActive && <AgentSettingsTag settings={terminal.agentSettings} status={screen.status} />}
       <MentionPalette mentions={mentions} />
       <textarea ref={input} rows={1} disabled={inputBlocked} onPaste={pasteImage} onSelect={mentions.trackCaret} aria-label={t('给 {agent} 的消息', { agent })} aria-expanded={palette || mentions.open} aria-controls={palette ? listId : mentions.open ? mentions.listId : undefined} aria-activedescendant={palette && selected ? optionId(selection) : mentions.open && mentions.files[mentions.selection] ? mentions.optionId(mentions.selection) : undefined} placeholder={terminal.codexActive ? t('给 {agent} 发消息，/ 查看命令，@ 提及文件，Enter 发送，Shift+Enter 换行', { agent }) : t('输入命令，Enter 发送')} value={draft} onChange={event => edit(event.target.value)} onKeyDown={keys}
-        onFocus={() => window.agentrix.terminalFocus(terminal.id, false)} />
+        onCompositionStart={() => dictationSend.cancel()} onFocus={() => window.agentrix.terminalFocus(terminal.id, false)} />
       {working && <button type="button" className="icon-button" disabled={inputBlocked} title={t('中断（Esc）')} aria-label={t('中断（Esc）')} onClick={interrupt}><Stop size={15} weight="fill" /></button>}
       <button type="button" className="icon-button reading-send" title={t('发送')} aria-label={t('发送')} disabled={inputBlocked || (!draft.trim() && !attachedCount) || !terminal.sessionId} onClick={() => void send()}><PaperPlaneRight size={15} weight="fill" /></button>
     </div>

@@ -138,6 +138,8 @@ const COUNTDOWN = 10;
 function ResetQuota({ terminal, resets }: { terminal: ProjectTerminal; resets: AgentUsage['resets'] }) {
   const claude = terminal.agent === 'claude', said = useResetsSaid(terminal);
   const left = said?.left ?? (claude ? resets?.left ?? null : null), weekly = claude && resets?.kind === 'session';
+  const sessionPercent = terminal.agentUsage?.limits.find(limit => limit.minutes === 300)?.percent;
+  const afterLimit = weekly && left !== 0 && sessionPercent != null && sessionPercent < 100;
   const [count, setCount] = useState<number | null>(null), [note, setNote] = useState<string | null>(null);
   const cancelButton = useRef<HTMLButtonElement>(null), fired = useRef(false);
   const command = claude ? '/limit-reset' : '/usage';
@@ -166,7 +168,8 @@ function ResetQuota({ terminal, resets }: { terminal: ProjectTerminal; resets: A
     <div className="activity-estop-wrap">
       <button type="button" className="activity-estop" disabled={!counting && (none || !terminal.codexActive)} aria-disabled={counting || undefined}
         aria-label={counting ? t('{seconds} 秒后重置额度', { seconds: count }) : t('重置额度')}
-        title={counting ? undefined : weekly ? t('重置 5 小时额度：每周 1 次，会占用每周额度。点击后有 10 秒可以取消，然后由 Claude Code 自己完成重置')
+        title={counting ? undefined : afterLimit ? t('5 小时额度用完后可用 · 每周 1 次。会占用每周额度。点击后有 10 秒可以取消，然后由 Claude Code 自己完成重置')
+          : weekly ? t('重置 5 小时额度：每周 1 次，会占用每周额度。点击后有 10 秒可以取消，然后由 Claude Code 自己完成重置')
           : t('点击后有 10 秒可以取消，然后由 {agent} 自己完成重置', { agent: claude ? 'Claude Code' : 'Codex' })}
         onClick={counting ? undefined : start}>
         <span className="activity-estop-hazard" aria-hidden="true" />
@@ -177,7 +180,8 @@ function ResetQuota({ terminal, resets }: { terminal: ProjectTerminal; resets: A
       <span className="activity-estop-label">{counting ? t('{seconds} 秒后重置', { seconds: count }) : t('重置额度')}</span>
     </div>
     {counting ? <button ref={cancelButton} type="button" className="activity-reset-cancel" onClick={() => setCount(null)}>{t('取消')}</button>
-      : <small>{left === null ? weekly ? t('每周可重置 1 次 5 小时额度') : claude ? t('剩余次数未知') : t('剩余次数在 /usage 里显示')
+      : <small>{afterLimit ? t('5 小时额度用完后可用 · 每周 1 次')
+        : left === null ? weekly ? t('每周可重置 1 次 5 小时额度') : claude ? t('剩余次数未知') : t('剩余次数在 /usage 里显示')
         : none ? said?.again ? t('本周已用，{date} 后可再用', { date: said.again }) : t('没有可用的重置')
         : weekly ? t('本周还可重置 1 次') : t('剩余 {count} 次', { count: left })}</small>}
     {note && <p className="activity-reset-note" role="status">{note}</p>}

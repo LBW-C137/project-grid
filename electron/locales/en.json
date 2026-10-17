@@ -1342,6 +1342,8 @@
   "剩余次数未知": "Resets left unknown",
   "重置 5 小时额度：每周 1 次，会占用每周额度。点击后有 10 秒可以取消，然后由 Claude Code 自己完成重置": "Resets the 5-hour limit: once a week, drawing on the weekly limit. After a click you have 10 seconds to cancel; then Claude Code carries out the reset itself",
   "每周可重置 1 次 5 小时额度": "The 5-hour limit can be reset once a week",
+  "5 小时额度用完后可用 · 每周 1 次": "Available once the 5-hour limit is used up · once a week",
+  "5 小时额度用完后可用 · 每周 1 次。会占用每周额度。点击后有 10 秒可以取消，然后由 Claude Code 自己完成重置": "Available once the 5-hour limit is used up · once a week. Draws on the weekly limit. After a click you have 10 seconds to cancel; then Claude Code carries out the reset itself",
   "本周已用，{date} 后可再用": "Used this week; available again {date}",
   "本周还可重置 1 次": "1 reset left this week",
   "剩余次数在 /usage 里显示": "Resets left show in /usage",
@@ -1364,5 +1366,11 @@
   "时间轴更清晰：节点、竖线和运行中的标记去掉了光晕，边缘都是实线。": "A crisper timeline: the nodes, the line and the running marks have no glow, every edge is hard.",
   "决策页改为左右两栏：左边是标题、待你决定的事和输入框，右边是所有会话，上下对齐、铺满窗口。": "The decision page is two aligned columns: the headline, what waits for you and the input on the left, every session on the right, filling the window.",
   "模型路由列出会话调用的所有模型，例如 Sonnet 5.5 子代理和 Codex 的 GPT-6.1-Sol 子任务，显示次数和正在运行的数量。": "The model route lists every model the session calls, such as Sonnet 5.5 subagents and Codex GPT-6.1-Sol runs, with how many and how many are running.",
-  "修复：Claude 工作时在阅读视图里打开 /usage、/config 等命令，按 Esc 后终端里的对话框也会关闭，不会打断 Claude。": "Fixed: with Claude at work, Esc on a command such as /usage or /config in the reading view now closes its dialog in the terminal too, without interrupting Claude."
+  "修复：Claude 工作时在阅读视图里打开 /usage、/config 等命令，按 Esc 后终端里的对话框也会关闭，不会打断 Claude。": "Fixed: with Claude at work, Esc on a command such as /usage or /config in the reading view now closes its dialog in the terminal too, without interrupting Claude.",
+  "阅读视图左右边距一样宽：去掉左边的时间列，时间放在名字后面（如「你 18:39」），卡片和输入框左右对齐。": "The reading view has equal margins left and right: the time column is gone, each time follows the name (as in \"You 18:39\"), and the cards line up with the message box.",
+  "同一分钟内的连续步骤不再重复显示时间，一组操作的时间写在它的胶囊后面。": "Steps within the same minute no longer repeat the time; a group of tool calls shows its time after its pill.",
+  "活动栏固定在窗口里，不再上下滚动：任务卡片自动让出空间，窗口较矮时其余卡片排得更紧凑。": "The activity pane stays fixed in the window and never scrolls: the tasks card makes room, and in a shorter window the other cards sit tighter.",
+  "阅读视图和输入框排成一列：头像和输入框左边对齐，卡片和输入框右边对齐，左右留白一样宽；时间放在名字后面（如「你 18:39」）。": "The reading view and the message box form one column: the avatars line up with its left edge, the cards with its right, equal margins on both sides; each time follows the name (as in \"You 18:39\").",
+  "语音输入完成后，文字先在输入框里显示半秒再发送；这半秒内打字或按 Esc 可以取消发送。": "After dictation, the words show in the message box for half a second before they are sent; typing or Esc in that half second cancels the send.",
+  "Claude 的每周重置在 5 小时额度用完前标明「用完后可用」，不再显得随时可用。": "Claude's weekly reset says it is available once the 5-hour limit is used up, instead of looking available any time."
 }

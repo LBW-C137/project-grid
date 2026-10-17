@@ -95,8 +95,9 @@
 
 /* 3. The reading view: body text at 15px (13.5px in a small card), cards 14px apart and 24px from the pane's edge. */
 :root[data-theme] .reading-scroll { font: 400 calc(14px * var(--reading-text))/1.65 var(--font-ui); color: var(--ink); }
-/* Less room on the left, where the times and nodes stand, more on the right, so the cards sit balanced. */
-:root[data-theme] .focus-mode .reading-view { --reading-left: 16px; --reading-right: 46px; }
+/* One column with the message box: nodes and composer share the left edge, cards and composer the right, 30px from the
+   pane on both sides (the owner asked for one character's width more than 44px gave). */
+:root[data-theme] .focus-mode .reading-view { --reading-left: 30px; --reading-right: 30px; }
 :root[data-theme] .focus-mode .reading-scroll { font-size: calc(15px * var(--reading-text)); padding-top: 18px; padding-bottom: 12px; }
 :root[data-theme] .reading-content { gap: 14px; }
 /* Only the reader's own messages sit on a card, so they are easy to find when scrolling back; tool calls and

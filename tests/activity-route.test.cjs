@@ -8,7 +8,7 @@ const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const en = require('../electron/locales/en.json');
 
-function activityMarkup(calls, language = 'zh') {
+function activityMarkup(calls, language = 'zh', terminal = {}) {
   const filename = path.join(__dirname, '../src/features/agents/ActivityPane.tsx');
   const mod = new Module(filename, module);
   mod.filename = filename; mod.paths = Module._nodeModulePaths(path.dirname(filename));
@@ -27,6 +27,7 @@ function activityMarkup(calls, language = 'zh') {
   return renderToStaticMarkup(React.createElement(mod.exports.ActivityPane, { terminal: {
     id: 'placeholder', agent: 'claude', codexActive: true, prompts: [], agentSettings: { model: 'claude-opus-5-5', effort: 'xhigh', fast: false },
     agentUsage: { provider: 'Anthropic', limits: [], calls },
+    ...terminal,
   } }));
 }
 
@@ -44,4 +45,35 @@ test('the activity route hides empty calls, formats model names, counts and task
   assert.equal((html.match(/class="activity-call-running"/g) || []).length, 1);
   const english = activityMarkup(calls, 'en');
   for (const text of ['Models called', 'Subagents ×2 · 1 running', 'Codex subtasks ×5 · effort high · Fast']) assert.ok(english.includes(text), text);
+});
+
+test("Claude's weekly session reset explains it requires an exhausted 5-hour limit without disabling the button", () => {
+  const render = (percent, left = null, language = 'zh', kind = 'session', agent = 'claude') => activityMarkup([], language, {
+    agent, agentUsage: { limits: [{ minutes: 10080, percent: 100 }, ...(percent === undefined ? [] : [{ minutes: 300, percent }])], resets: { kind, left } },
+  });
+  const caption = '5 小时额度用完后可用 · 每周 1 次';
+  for (const percent of [0, 6, 99.9]) {
+    for (const left of [null, 1]) {
+      const html = render(percent, left);
+      assert.ok(html.includes(`<small>${caption}</small>`));
+      assert.ok(html.includes(`title="${caption}。`));
+      assert.doesNotMatch(html, /<button[^>]*disabled/);
+      assert.match(html, /点击后有 10 秒可以取消/);
+    }
+  }
+  const english = render(6, null, 'en');
+  const translated = 'Available once the 5-hour limit is used up · once a week';
+  assert.ok(english.includes(`<small>${translated}</small>`));
+  assert.ok(english.includes(`title="${translated}.`));
+  for (const percent of [100, undefined]) {
+    assert.match(render(percent), /<small>每周可重置 1 次 5 小时额度<\/small>/);
+    assert.match(render(percent, 1), /<small>本周还可重置 1 次<\/small>/);
+    assert.match(render(percent), /title="重置 5 小时额度：每周 1 次/);
+  }
+  const used = render(6, 0);
+  assert.match(used, /<small>没有可用的重置<\/small>/);
+  assert.match(used, /<button[^>]*disabled/);
+  assert.doesNotMatch(used, /5 小时额度用完后可用/);
+  assert.doesNotMatch(render(6, null, 'zh', 'grants'), /5 小时额度用完后可用/);
+  assert.doesNotMatch(render(6, null, 'zh', 'session', 'codex'), /5 小时额度用完后可用/);
 });

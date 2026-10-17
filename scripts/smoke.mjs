@@ -232,12 +232,23 @@ try {
   const beginProjectDrag = async (sourceId, targetId) => {
     const source = page.locator(`[data-project-id="${sourceId}"] .panel-name`);
     const target = page.locator(`[data-project-id="${targetId}"] .panel-header`);
-    const from = await source.boundingBox(), to = await target.boundingBox();
-    await page.mouse.move(from.x + 20, from.y + from.height / 2);
-    await page.mouse.down();
-    await page.locator(`[data-project-id="${sourceId}"].drag-source`).waitFor();
-    await page.mouse.move(to.x + 40, to.y + to.height / 2, { steps: 10 });
-    await page.locator(`[data-project-slot="${sourceId}"].drag-placeholder`).waitFor();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const from = await source.boundingBox(), to = await target.boundingBox();
+        await page.mouse.move(from.x + 20, from.y + from.height / 2);
+        await page.mouse.down();
+        await page.locator(`[data-project-id="${sourceId}"].drag-source`).waitFor({ timeout: attempt ? 30000 : 3000 });
+        await page.mouse.move(to.x + 40, to.y + to.height / 2, { steps: 10 });
+        await page.locator(`[data-project-slot="${sourceId}"].drag-placeholder`).waitFor({ timeout: attempt ? 30000 : 3000 });
+        return;
+      } catch (error) {
+        if (attempt || error.name !== 'TimeoutError') throw error;
+        // A transient blur/capture loss can cancel pickup during movement. Cancel before releasing so a partial drag cannot commit.
+        console.warn('Retrying project drag after a gesture timeout:', error.message);
+        await page.keyboard.press('Escape'); await page.mouse.up();
+        await page.locator('.is-reordering').waitFor({ state: 'hidden' });
+      }
+    }
   };
   const originalOrder = projects.map(project => project.id);
   const sessionIds = Object.fromEntries((await page.evaluate(() => window.agentrix.getState())).value.projects.map(project => [project.id, project.sessionId]));

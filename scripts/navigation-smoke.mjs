@@ -160,7 +160,19 @@ try {
     const link = second.locator('.xterm-rows').getByText('REMOTE_DOCS_LINK', { exact: true });
     await link.waitFor();
     await terminalsSettled(page);
-    const box = await link.boundingBox(), screen = second.locator('.xterm-screen'), screenBox = await screen.boundingBox();
+    const screen = second.locator('.xterm-screen');
+    // Fitting can clear the DOM rows before xterm's next render; even a resolved locator can lose its span.
+    // Re-resolve both boxes until two polls agree, rather than measuring a transient row just once.
+    let measured, previous;
+    await waitFor(async () => {
+      const box = await link.boundingBox(), screenBox = await screen.boundingBox();
+      if (!box || !screenBox) { previous = null; return false; }
+      const geometry = JSON.stringify({ box, screenBox });
+      if (geometry !== previous) { previous = geometry; return false; }
+      measured = { box, screenBox };
+      return true;
+    }, 'SSH terminal link geometry stable', 5000);
+    const { box, screenBox } = measured;
     const position = { x: box.x - screenBox.x + 20, y: box.y - screenBox.y + box.height / 2 };
     await screen.hover({ position: { x: position.x + 30, y: position.y + 25 } });
     await screen.hover({ position });
