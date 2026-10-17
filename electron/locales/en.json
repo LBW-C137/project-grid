@@ -1,4 +1,9 @@
 {
+  "调用的模型": "Models called",
+  "子代理 ×{count}": "Subagents ×{count}",
+  "Codex 子任务 ×{count}": "Codex subtasks ×{count}",
+  "{count} 个运行中": "{count} running",
+  "快速": "Fast",
   "无效的文件搜索。": "Invalid file search.",
   "提及文件": "Mention a file",
   "正在搜索文件…": "Searching files…",
@@ -1172,6 +1177,8 @@
   "打开": "Open",
   "新任务": "New work",
   "告诉 Agentrix 接下来要做什么": "Tell Agentrix what to do next",
+  "所有待办已处理": "Everything is handled",
+  "你可以开始一项新任务，或让会话继续工作": "Start a new task, or let your sessions keep working",
   "描述要做的事，比如“给登录页加上验证码”": "Describe the work, like \"add a captcha to the login page\"",
   "助手": "Agent",
   "放进它的消息框，看一眼再发送": "Goes into its message box for you to send after a look",
@@ -1354,5 +1361,8 @@
   "鼠标划过时间轴上的条目时，条目会轻快地跳一下；滚动时不会跳。": "Items on the timeline hop when the pointer passes over them; they stay still while you scroll.",
   "修复：在阅读视图里发消息（尤其是带截图或用语音说的长消息）时，可能误按 Esc 打断正在工作的 Claude Code，并提示「命令的对话框没有关闭」。": "Fixed: sending a message in the reading view (especially one with a screenshot or a long dictated one) could press Esc, interrupting a working Claude Code, and say a command's dialog was still open.",
   "在 HTML 页面里「复制图片」后，可以粘贴到微信、Word 等其他程序里。": "Copy image in an HTML page now pastes into other programs, such as a chat app or Word.",
-  "时间轴更清晰：节点、竖线和运行中的标记去掉了光晕，边缘都是实线。": "A crisper timeline: the nodes, the line and the running marks have no glow, every edge is hard."
+  "时间轴更清晰：节点、竖线和运行中的标记去掉了光晕，边缘都是实线。": "A crisper timeline: the nodes, the line and the running marks have no glow, every edge is hard.",
+  "决策页改为左右两栏：左边是标题、待你决定的事和输入框，右边是所有会话，上下对齐、铺满窗口。": "The decision page is two aligned columns: the headline, what waits for you and the input on the left, every session on the right, filling the window.",
+  "模型路由列出会话调用的所有模型，例如 Sonnet 5.5 子代理和 Codex 的 GPT-6.1-Sol 子任务，显示次数和正在运行的数量。": "The model route lists every model the session calls, such as Sonnet 5.5 subagents and Codex GPT-6.1-Sol runs, with how many and how many are running.",
+  "修复：Claude 工作时在阅读视图里打开 /usage、/config 等命令，按 Esc 后终端里的对话框也会关闭，不会打断 Claude。": "Fixed: with Claude at work, Esc on a command such as /usage or /config in the reading view now closes its dialog in the terminal too, without interrupting Claude."
 }

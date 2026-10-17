@@ -16,15 +16,14 @@
   --home-pane: var(--theme-hover); --home-frost: none; --home-edge: var(--theme-line);
   background: var(--theme-editor);
 }
-.home-page { width: min(920px, 100%); margin: 0 auto; padding: 34px 32px 48px; color: var(--home-ink); }
-.home-head h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.01em; }
-.home-counts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 0; font-size: 13.5px; color: var(--home-muted); }
+.home-page { width: min(1440px, 100%); margin: 0 auto; padding: 24px; color: var(--home-ink); }
+.home-head h1 { margin: 0; font-size: 30px; font-weight: 700; line-height: 40px; letter-spacing: -.01em; }
+.home-counts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 8px 0 0; font-size: 15px; line-height: 22px; color: var(--home-ink); }
 .home-counts > span { display: inline-flex; align-items: center; gap: 6px; }
+.home-counts > span + span::before { content: '\00b7'; margin: 0 12px; color: var(--home-faint); }
 .home-counts .is-unread { color: var(--home-pink); }
-.home-notice { display: flex; align-items: center; gap: 8px; margin: 18px 0 0; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); }
+.home-notice { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); }
 .home-notice svg { color: var(--home-ok); }
-.home-section { margin-top: 26px; }
-.home-section h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--home-muted); }
 
 /* A decision in full. */
 .decision-card { margin-top: 22px; padding: 20px 22px; border-radius: 16px; background: var(--home-card); box-shadow: inset 0 0 0 1px var(--home-line), 0 18px 48px -26px rgba(0, 0, 0, .7); }
@@ -68,49 +67,71 @@
 .decision-row-icon.is-signin { color: var(--home-ok); }
 .decision-row-icon.is-attention { color: var(--home-pink); }
 
-/* What next. */
-.new-work-input { position: relative; }
-.new-work-input .voice-button { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 9px; }
-.new-work textarea { display: block; width: 100%; min-height: 46px; padding: 12px 46px 12px 14px; border: 0; border-radius: 12px; resize: vertical; font: 14.5px/1.55 var(--font-ui); color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); outline: none; }
+/* What next: a pane with its heading, a box of three lines with the microphone in it, and a footer of choices and the
+   start button. */
+.new-work { display: flex; flex-direction: column; flex: none; }
+.new-work > h3, .session-overview > h3 { margin: 0; font-size: 20px; font-weight: 700; line-height: 28px; color: var(--home-ink); }
+.new-work-input { position: relative; margin-top: 16px; }
+.new-work-input .voice-button { position: absolute; right: 10px; bottom: 10px; width: 32px; height: 32px; border-radius: 10px; }
+.new-work textarea { display: block; width: 100%; min-height: 96px; padding: 12px 52px 12px 14px; border: 0; border-radius: 12px; resize: none; font: 14.5px/24px var(--font-ui); color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); outline: none; }
 .new-work textarea:focus { box-shadow: inset 0 0 0 2px var(--home-blue); }
 /* Their own border is their focus mark: the app's focus outline would draw a second ring around it. */
 :is(.new-work, .review-feedback) textarea:focus-visible { outline: none; }
 .new-work textarea::placeholder { color: var(--home-faint); }
-.new-work-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 10px; font-size: 13px; color: var(--home-muted); }
-.new-work-options label { display: inline-flex; align-items: center; gap: 8px; }
-.new-work-options select { padding: 5px 8px; border-radius: 7px; border: 1px solid var(--home-line); font: inherit; color: var(--home-ink); background: var(--home-card); }
-.new-work-note { flex: 1; min-width: 160px; }
-.new-work-options .button { display: inline-flex; align-items: center; gap: 7px; }
+.new-work-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 12px; font-size: 13px; color: var(--home-muted); }
+.new-work-select { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 12px; color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); }
+.new-work-select select { max-width: 200px; padding: 0 2px; border: 0; appearance: none; font: 500 14px var(--font-ui); color: var(--home-ink); background: transparent; outline: none; cursor: pointer; }
+.new-work-select select option { color: #101820; background: #fff; }
+.new-work-select svg { flex: none; color: var(--home-muted); pointer-events: none; }
+.new-work-select:focus-within { box-shadow: inset 0 0 0 2px var(--home-blue); }
+.new-work-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-work-start { display: inline-flex; align-items: center; gap: 8px; height: 40px; margin-left: auto; padding: 0 20px; border-radius: 12px; font-size: 14.5px; font-weight: 600; }
 
-/* The decision page in two columns: what needs you and what comes next, and every session beside them, in view
-   while the left column scrolls. One column when the window is narrow. */
-.decision-home { width: min(1360px, 100%); }
-.home-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 28px; align-items: start; }
-.home-main { min-width: 0; }
-.home-side { position: sticky; top: 16px; max-height: calc(100vh - 150px); margin-top: 24px; padding: 14px; border-radius: 16px; overflow: auto; }
-.home-side > h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--home-muted); }
-.session-counts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 10px; font-size: 12.5px; color: var(--home-muted); }
+/* The decision page: two columns that start and end on the same lines. The left one is the overview pane (the headline
+   and the deck, or the empty state) over the new-work pane; the right one is the sessions pane, as tall as both. One
+   column when the window is narrow. */
+.decision-home { box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) clamp(460px, 34vw, 520px); gap: 18px; min-height: 100%; }
+.home-main { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.home-pane { box-sizing: border-box; padding: 24px 28px; border-radius: 20px; }
+.home-overview { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+/* The deck sits right under the counts; what is left over lies below it. */
+.home-overview .decision-deck-wrap { margin: 24px 0 0; }
+.home-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 200px; padding: 16px 0; text-align: center; }
+.home-empty svg { margin-bottom: 8px; color: var(--home-ok); }
+.home-empty b { font-size: 20px; font-weight: 600; line-height: 28px; }
+.home-empty span { font-size: 14.5px; line-height: 22px; color: var(--home-muted); }
+/* The sessions take the height of the row and scroll inside it; their own length never stretches the left column. */
+.session-overview { display: flex; flex-direction: column; min-height: 0; contain: size; overflow: hidden; }
+.session-counts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; font-size: 14px; line-height: 22px; color: var(--home-muted); }
 .session-counts .is-deciding { color: var(--home-amber); }
 .session-counts .is-working { color: var(--home-blue); }
 .session-counts .is-unread { color: var(--home-pink); }
-.task-rows button { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; width: 100%; padding: 10px 12px; border: 0; border-radius: 12px; text-align: left; font: inherit; color: var(--home-ink); background: var(--home-row); cursor: pointer; }
-.task-rows button:hover { background: rgba(255, 255, 255, .1); }
-.task-state { justify-self: start; min-width: 5.6em; margin-top: 1px; padding: 2px 8px; text-align: center; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; background: rgba(255, 255, 255, .08); color: var(--home-muted); }
+.task-rows { flex: 1; min-height: 0; margin: 16px -12px 0; padding: 0 12px; overflow: auto; list-style: none; scrollbar-width: thin; }
+.task-rows li + li { border-top: 1px solid var(--home-line); }
+.task-rows button { display: grid; grid-template-columns: 44px minmax(0, 1fr) 16px; align-items: center; gap: 14px; width: 100%; padding: 14px 8px; border: 0; border-radius: 12px; text-align: left; font: inherit; color: var(--home-ink); background: none; cursor: pointer; }
+.task-rows button:hover { background: rgba(255, 255, 255, .08); }
+.task-tile { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; color: var(--home-ink); background: var(--home-row); box-shadow: inset 0 0 0 1px var(--home-line); }
+.task-tile.is-claude { color: #e8855f; }
+.task-chevron { justify-self: end; color: var(--home-muted); }
+.task-state { flex: none; min-width: 5.6em; padding: 2px 10px; text-align: center; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 18px; white-space: nowrap; background: rgba(255, 255, 255, .12); color: var(--home-ink); }
 .task-state.is-deciding { color: #1b1206; background: var(--home-amber); }
 .task-state.is-working { color: #fff; background: var(--home-blue); }
 .task-state.is-unread { color: #fff; background: var(--home-pink); }
 .task-state.is-done { color: #06231a; background: var(--home-ok); }
-.task-main { display: grid; gap: 2px; min-width: 0; }
-.task-main b { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 14px; font-weight: 600; }
-.task-main b > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-main b em { flex: none; font-style: normal; font-size: 11.5px; font-weight: 500; color: var(--home-faint); }
-.task-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--home-muted); }
-.task-main > .task-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11.5px; color: var(--home-faint); }
+.task-main { display: grid; gap: 4px; min-width: 0; }
+.task-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.task-top b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
+.task-top em { flex: none; padding-left: 12px; border-left: 1px solid var(--home-line); font-style: normal; font-size: 13.5px; color: var(--home-muted); }
+.task-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; color: var(--home-muted); }
+.task-main > .task-top { overflow: visible; }
+.task-main > .task-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--home-faint); }
 .task-meta .is-deciding { color: var(--home-amber); }
-.task-empty { margin: 0; font-size: 13px; color: var(--home-muted); }
+.task-empty { margin: 16px 0 0; font-size: 13.5px; color: var(--home-muted); }
 @media (max-width: 1100px) {
-  .home-columns { grid-template-columns: minmax(0, 1fr); }
-  .home-side { position: static; max-height: none; }
+  .decision-home { grid-template-columns: minmax(0, 1fr); align-content: start; }
+  .home-overview { flex: none; }
+  .session-overview { contain: none; overflow: visible; }
+  .task-rows { overflow: visible; }
 }
 
 /* The home pages lie over the workbench inside its layout. */
@@ -125,7 +146,7 @@
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-nav { background: var(--theme-hover); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-nav button { color: var(--theme-muted); }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-nav button[aria-current="page"] { color: var(--theme-ink); background: var(--theme-control); }
-@media (max-width: 900px) { .home-page { padding: 22px 16px 36px; } }
+@media (max-width: 900px) { .home-page { padding: 16px; } .home-pane { padding: 20px; } }
 
 /* Work handed in, graded like homework: what was asked, the agent's account, what it made, how it was checked, what
    changed, your notes from last time, and the call. */
@@ -158,26 +179,15 @@
 
 /* On the wallpaper: every card, row, notice and input is a frosted pane with a thin light edge (the content inside it
    sits on flat, lighter cards); the headings with no pane under them keep a soft shadow, like the title bar. */
-.home-layer :is(.decision-card, .home-notice, .decision-rows button, .home-side, .new-work textarea, .decision-later-menu) {
+.home-layer :is(.decision-card, .home-notice, .decision-rows button, .home-pane, .decision-later-menu) {
   background: var(--home-pane); backdrop-filter: var(--home-frost);
   box-shadow: inset 0 0 0 1px var(--home-edge), inset 0 1px 0 rgba(255, 255, 255, .1), 0 8px 24px rgba(0, 0, 0, .18);
 }
+/* A frosted pane inside a pane (the notice) is flatter, or the blur is blurred twice. */
+.home-layer .home-pane .home-notice { backdrop-filter: none; box-shadow: inset 0 0 0 1px var(--home-line); }
 .home-layer .decision-rows button:hover { background: color-mix(in srgb, var(--home-pane), rgba(255, 255, 255, .5) 12%); }
-/* The sessions sit on the column's pane as flat, lighter cards. */
-.home-layer .task-rows button { box-shadow: inset 0 0 0 1px var(--home-line); }
-/* The words with no card under them sit on a frosted pane of their own, as everything on the wallpaper does: over a
-   bright sky (El Capitan's clouds) white headings with only a soft shadow blurred into it. The headline and its counts
-   share one pane that hugs them; a section's title is a small label; the new task's choices a strip under its box. */
-.home-layer .home-head { width: fit-content; max-width: 100%; padding: 14px 20px 13px; border-radius: 16px; }
-.home-layer .new-work > h3 { width: fit-content; padding: 5px 12px 5px 10px; border-radius: 999px; color: var(--home-ink); }
-.home-layer .new-work-options { padding: 8px 12px; border-radius: 12px; }
-.home-layer :is(.home-head, .new-work > h3, .new-work-options) {
-  background: var(--home-pane); backdrop-filter: var(--home-frost);
-  box-shadow: inset 0 0 0 1px var(--home-edge), inset 0 1px 0 rgba(255, 255, 255, .1), 0 8px 24px rgba(0, 0, 0, .18);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, .3);
-}
-.home-layer .home-counts { color: var(--home-ink); }
-:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-layer :is(.home-head, .new-work > h3, .new-work-options) { text-shadow: none; }
+.home-layer :is(.home-head, .new-work > h3, .session-overview > h3) { text-shadow: 0 1px 1px rgba(0, 0, 0, .3); }
+:root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .home-layer :is(.home-head, .new-work > h3, .session-overview > h3) { text-shadow: none; }
 
 /* Pictures pasted into "what next": small, each with its own remove button. */
 .new-work-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

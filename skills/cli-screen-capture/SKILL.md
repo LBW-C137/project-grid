@@ -95,3 +95,8 @@ An approval only shows after the model asks for a tool. Never use the real sign-
   recognised, the parser must not conclude "dialog". Reproduce with the real CLI: a stand-in API with a slow first
   answer, a long message sent meanwhile, a picture attached by its path (pasted as text, so no clipboard is used),
   and record every key written to the terminal.
+- `window.agentrix` is a contextBridge object: a probe cannot patch its methods (the assignment is silently
+  ignored), so a counter wrapped around `writeTerminal` always reads zero. Count keys in the main process instead
+  (`app.evaluate`, wrapping the pty write or listening on `ipcMain`), or judge by the terminal's screen. Escape while
+  Claude works is safe only when its dialog shows its own hint in the bottom rows (`Esc to cancel`, `Esc to clear` in
+  `/config`); `esc to interrupt` is its working footer, never a dialog.

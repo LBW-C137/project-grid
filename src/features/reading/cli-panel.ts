@@ -82,8 +82,8 @@ export function hasCliInput(agent: ScreenAgent, rows: string[], screen: AgentScr
 
 // A dialog of the CLI is open in place of its input: keys sent now would land in it. With no input drawn, Claude's
 // working line alone means it is busy answering; a dialog opened during a round keeps that line above it, and its own
-// "Esc to cancel" hint tells it apart.
-const dialogHint = (row: string) => /\besc to (?:cancel|close|exit|go back|dismiss)\b/i.test(row);
+// "Esc to cancel" or "Esc to clear" hint tells it apart. "Esc to interrupt" belongs to the working footer.
+const dialogHint = (row: string) => /\besc to (?:cancel|close|exit|go back|dismiss|clear)\b/i.test(row);
 // A dialog draws its key hints in its own last rows, at the bottom of the screen; the same words higher up are the
 // conversation (a message quoting them, a command's output), never a dialog.
 const hintAtBottom = (rows: string[]) => rows.filter(row => row.trim()).slice(-8).some(dialogHint);
@@ -92,15 +92,18 @@ function cliDialogOpen(agent: ScreenAgent, rows: string[], screen: AgentScreen):
   const input = cliInputArea(agent, rows, screen);
   if (agent === 'codex' && input && codexPopupBelow(rows, input).length) return true;
   if (input || !rows.some(row => row.trim())) return false;
-  return !(agent === 'claude' && claudeWorking(rows)) || hintAtBottom(rows);
+  return cliEscapeSafe(agent, rows);
 }
 
 // A dialog open on screen whoever opened it (left open in the terminal, or opened while its popup was being put away),
 // told by its own key hints so that an input this parser misses is never taken for one: a message typed now would
 // land in it.
 export const cliDialogShown = (agent: ScreenAgent, rows: string[], screen: AgentScreen) => cliDialogOpen(agent, rows, screen) && hintAtBottom(rows);
-// Claude at work: Escape there interrupts the round, so nothing presses it to close a dialog it might show.
+// Claude at work: Escape interrupts the round unless a dialog takes the key instead.
 export const claudeAtWork = (agent: ScreenAgent, rows: string[]) => agent === 'claude' && claudeWorking(rows);
+// A working Claude only gets Escape when a dialog shows its own Escape hint at the bottom, never for words quoted
+// higher up in the conversation. Codex and an idle Claude do not need this interruption guard.
+export const cliEscapeSafe = (agent: ScreenAgent, rows: string[]) => !claudeAtWork(agent, rows) || hintAtBottom(rows);
 
 // Codex's /side opens a side conversation that only Ctrl+C leaves; Escape there tries to edit the last prompt.
 // Codex refuses /side in a conversation with nothing in it yet ("'/side' is unavailable until …"): then no side
@@ -114,7 +117,7 @@ export const isSideConversation = (agent: ScreenAgent, command: string, output: 
 export function cliCloseKey(agent: ScreenAgent, rows: string[], screen: AgentScreen, command = '', output: readonly string[] = []): string | null {
   if (isSideConversation(agent, command, [...output, ...rows])) return '\x03';
   if (rows.some(row => /\bq close\b/i.test(row))) return 'q';
-  return cliDialogOpen(agent, rows, screen) ? '\x1b' : null;
+  return cliEscapeSafe(agent, rows) && cliDialogOpen(agent, rows, screen) ? '\x1b' : null;
 }
 
 // At its prompt with nothing typed: a command the reading view sent has finished.

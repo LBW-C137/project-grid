@@ -368,6 +368,7 @@ function followClaude(project, s, event) {
   if (!remote && !file.toLowerCase().startsWith(claudeConfigDir().toLowerCase() + path.sep)) return;
   s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
   s.claudeSessionId = event.sessionId;
+  s.usage?.calls.setFolder(remote ? null : path.join(path.dirname(file), event.sessionId, 'subagents'));
   if (s.claudeTranscript?.filename !== file) {
     const onHistory = ready => {
       if (ready) s.conversation.endHistory();
@@ -399,7 +400,7 @@ function followClaude(project, s, event) {
 // What the activity pane shows of the model route and the tokens spent. Which service a model is reached through is
 // read from this computer's settings; over SSH, Claude's stays unnamed and Codex's is the id its records give.
 function startUsage(project, s, event) {
-  const usage = s.usage = new UsageMeter(s.agent);
+  const usage = s.usage = new UsageMeter(s.agent, { changed: () => { if (s.usage === usage) scheduleState(); } });
   if (project.kind === 'ssh') return;
   const named = update => { if (s.usage === usage) { update(); scheduleState(); } };
   if (s.agent === 'claude') {

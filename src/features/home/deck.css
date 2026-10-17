@@ -20,6 +20,8 @@
 }
 .deck-card.is-behind { pointer-events: auto; }
 .deck-card.is-behind > :not(.deck-card-head) { opacity: .55; }
+/* At rest a card behind draws only the strip that peeks out below the front one, so nothing of it shows through the front card; while the deck moves it is whole. */
+.decision-deck:not(.is-moving) .deck-card.is-behind { clip-path: inset(calc(100% - 18px) 0 0 0 round 0 0 20px 20px); }
 /* Out of sight below the stack, and while it moves, the cards follow the frames alone; dragging shows a grab. */
 .deck-card.is-hidden { pointer-events: none; }
 .decision-deck.is-moving .deck-card { transition: none; cursor: grabbing; }

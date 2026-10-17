@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react';
-import { CheckCircle, CircleNotch, PaperPlaneRight, Sparkle, X } from '@phosphor-icons/react';
+import { ArrowRight, CaretDown, CheckCircle, CircleNotch, FolderSimple, X } from '@phosphor-icons/react';
 import type { Project, Result } from '../../shared/types';
 import type { Decision } from './decisions';
 import { DecisionDeck } from './DecisionDeck';
@@ -33,26 +33,32 @@ export function DecisionHome({ projects, decisions, snoozed, onOpenProject, onOp
   const accepted = useMemo(() => acceptedToday(), [decisions]);
   const headline = decisions.length ? t('{count} 件事需要你决定', { count: decisions.length })
     : working.length ? t('现在没有需要你处理的事') : t('接下来想创造什么？');
+  const quiet = !decisions.length;
+  // What needs you and what comes next in the left column, every session in the right one: two columns of panes that
+  // start and end on the same lines.
   return <div className="home-page decision-home">
-    <header className="home-head">
-      <h1>{headline}</h1>
-      <p className="home-counts">
-        {working.length > 0 && <span><CircleNotch size={13} className="loading-spinner" />{t('{count} 个会话正在工作', { count: working.length })}</span>}
-        {breakdown.map(([label, count]) => <span key={label} className="home-count-kind">{t(label, { count })}</span>)}
-        {accepted > 0 && <span><CheckCircle size={13} weight="fill" />{t('今天已接受 {count} 项交付', { count: accepted })}</span>}
-        {snoozed > 0 && <span>{t('{count} 件已暂缓', { count: snoozed })}</span>}
-        {!decisions.length && !working.length && <span>{t('描述一个目标，选择项目后开始。')}</span>}
-      </p>
-    </header>
-    {/* What needs you and what comes next on the left, every session beside them: one page, no scrolling to see it. */}
-    <div className="home-columns">
-      <div className="home-main">
+    <div className="home-main">
+      <section className="home-pane home-overview" aria-label={headline}>
+        <header className="home-head">
+          <h1>{headline}</h1>
+          <p className="home-counts">
+            {working.length > 0 && <span><CircleNotch size={13} className="loading-spinner" />{t('{count} 个会话正在工作', { count: working.length })}</span>}
+            {breakdown.map(([label, count]) => <span key={label} className="home-count-kind">{t(label, { count })}</span>)}
+            {accepted > 0 && <span><CheckCircle size={13} weight="fill" />{t('今天已接受 {count} 项交付', { count: accepted })}</span>}
+            {snoozed > 0 && <span>{t('{count} 件已暂缓', { count: snoozed })}</span>}
+            {quiet && !working.length && <span>{t('描述一个目标，选择项目后开始。')}</span>}
+          </p>
+        </header>
         {notice && <p className="home-notice" role="status"><CheckCircle size={15} weight="fill" />{notice}</p>}
-        {decisions.length > 0 && <DecisionDeck decisions={decisions} now={now} onOpen={onOpenDecision} onDone={setNotice} onError={onError} />}
-        <NewWork projects={projects} onAction={onAction} onDone={setNotice} onError={onError} />
-      </div>
-      <SessionOverview projects={projects} decisions={decisions} onOpenProject={onOpenProject} />
+        {quiet ? <div className="home-empty">
+          <CheckCircle size={84} weight="thin" aria-hidden="true" />
+          <b>{t('所有待办已处理')}</b>
+          <span>{t('你可以开始一项新任务，或让会话继续工作')}</span>
+        </div> : <DecisionDeck decisions={decisions} now={now} onOpen={onOpenDecision} onDone={setNotice} onError={onError} />}
+      </section>
+      <NewWork projects={projects} onAction={onAction} onDone={setNotice} onError={onError} />
     </div>
+    <SessionOverview projects={projects} decisions={decisions} onOpenProject={onOpenProject} />
   </div>;
 }
 
@@ -117,10 +123,11 @@ function NewWork({ projects, onAction, onDone, onError }: {
     } catch (error) { onError(String(error)); } finally { setBusy(false); }
   };
   if (!local.length) return null;
-  return <section className="home-section new-work" aria-label={t('新任务')}>
-    <h3><Sparkle size={15} weight="fill" />{t('告诉 Agentrix 接下来要做什么')}</h3>
+  const empty = !text.trim() && !images.length;
+  return <section className="home-pane new-work" aria-label={t('新任务')}>
+    <h3>{t('告诉 Agentrix 接下来要做什么')}</h3>
     <div className="new-work-input" data-voice-target={VOICE_TARGET} aria-label={t('新任务')}>
-      <textarea ref={box} value={text} rows={text || images.length ? 3 : 1} placeholder={t('描述要做的事，比如“给登录页加上验证码”；可以直接粘贴截图')} onChange={event => setText(event.target.value)} onPaste={paste}
+      <textarea ref={box} value={text} rows={3} placeholder={t('描述要做的事，比如“给登录页加上验证码”；可以直接粘贴截图')} onChange={event => setText(event.target.value)} onPaste={paste}
         onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void start(); } }} />
       <VoiceButton terminalId={VOICE_TARGET} sessionId={null} name={t('新任务')} size={16} onError={onError} />
     </div>
@@ -129,11 +136,11 @@ function NewWork({ projects, onAction, onDone, onError }: {
         onClick={() => showPopup({ kind: 'picture', src: image.preview, path: t('附加的图片 {n}', { n: index + 1 }) })}><img src={image.preview} alt={t('附加的图片 {n}', { n: index + 1 })} /></button>
       <button type="button" aria-label={t('移除这张图片')} onClick={() => setImages(list => list.filter((_, at) => at !== index))}><X size={12} weight="bold" /></button>
     </span>)}</div>}
-    {(text.trim() || images.length > 0) && <div className="new-work-options">
-      <label>{t('项目')}<select value={project?.id} onChange={event => setProjectId(event.target.value)}>{local.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      {terminal && !terminal.codexActive && <label>{t('助手')}<select value={agent} onChange={event => setAgent(event.target.value as 'claude' | 'codex')}><option value="claude">Claude Code</option><option value="codex">Codex</option></select></label>}
-      <span className="new-work-note">{terminal?.codexActive ? t('直接发给它，不离开这一页') : t('先启动助手，准备好就发给它')}</span>
-      <button type="button" className="button primary" disabled={busy} onClick={() => void start()}>{busy ? <CircleNotch size={15} className="loading-spinner" /> : <PaperPlaneRight size={15} />}{busy ? t('发送中…') : t('开始')}</button>
-    </div>}
+    <div className="new-work-options">
+      <label className="new-work-select" title={t('项目')}><FolderSimple size={16} aria-hidden="true" /><select aria-label={t('项目')} value={project?.id} onChange={event => setProjectId(event.target.value)}>{local.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><CaretDown size={13} aria-hidden="true" /></label>
+      {terminal && !terminal.codexActive && <label className="new-work-select" title={t('助手')}><select aria-label={t('助手')} value={agent} onChange={event => setAgent(event.target.value as 'claude' | 'codex')}><option value="claude">Claude Code</option><option value="codex">Codex</option></select><CaretDown size={13} aria-hidden="true" /></label>}
+      {!empty && <span className="new-work-note">{terminal?.codexActive ? t('直接发给它，不离开这一页') : t('先启动助手，准备好就发给它')}</span>}
+      <button type="button" className="button primary new-work-start" disabled={busy || empty} onClick={() => void start()}>{busy ? t('发送中…') : t('开始')}{busy ? <CircleNotch size={16} className="loading-spinner" /> : <ArrowRight size={16} weight="bold" />}</button>
+    </div>
   </section>;
 }

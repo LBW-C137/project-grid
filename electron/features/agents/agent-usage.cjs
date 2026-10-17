@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { claudePrompt } = require('../../agent-actions.cjs');
+const { AgentCalls } = require('./agent-calls.cjs');
 
 // What an agent spends, as its own records tell it, for the activity pane: the service its model is reached through,
 // how full the context window is, the tokens this round and this conversation took and, for Codex, how much of the
@@ -25,9 +26,10 @@ const claudeWindow = (model, used) => LARGE_WINDOW.test(model || '') || used > 2
 // provider: Claude's, known when it starts. Codex names its own in each conversation's first record; names turns that
 // id into what the pane shows.
 class UsageMeter {
-  constructor(agent, { provider = null, names = codexProviderName } = {}) {
+  constructor(agent, { provider = null, names = codexProviderName, changed = () => {} } = {}) {
     this.agent = agent; this.provider = provider; this.names = names; this.providerId = null; this.limits = [];
     this.resets = null; this.limitsAt = null;
+    this.calls = new AgentCalls({ changed, names: id => this.names(id) });
     this.reset();
   }
   // Claude's plan limits and limit resets, as Claude Code last fetched them for its own /usage (claudeAccount). Whether
@@ -38,13 +40,15 @@ class UsageMeter {
     return true;
   }
   // Another conversation starts over; the provider and the plan's limits stay.
-  reset() { this.context = null; this.round = null; this.total = null; this.roundStart = null; this.replies = new Map(); }
+  reset() { this.context = null; this.round = null; this.total = null; this.roundStart = null; this.replies = new Map(); this.calls.reset(); }
   // What the pane shows.
-  snapshot() { return { provider: this.providerId ? this.names(this.providerId) : this.provider, context: this.context, round: this.round, total: this.total, limits: this.limits, limitsAt: this.limitsAt, limitsFrom: this.limitsFrom ?? null, resets: this.resets }; }
+  snapshot() { const provider = this.providerId ? this.names(this.providerId) : this.provider; return { provider, context: this.context, round: this.round, total: this.total, limits: this.limits, limitsAt: this.limitsAt, limitsFrom: this.limitsFrom ?? null, resets: this.resets, calls: this.calls.snapshot(provider) }; }
   // Whether this record changed what the pane shows.
   apply(record) {
     if (!record || typeof record !== 'object') return false;
-    return this.agent === 'claude' ? this.claude(record) : this.codex(record);
+    if (this.agent !== 'claude') return this.codex(record);
+    const callsChanged = this.calls.apply(record);
+    return this.claude(record) || callsChanged;
   }
   claude(record) {
     if (record.isSidechain) return false;

@@ -118,6 +118,10 @@ const expected = {
   // Claude Code 2.1.301 at work, a long dictated message left unsent in its input, wrapped over three rows (see
   // cli-panel.test.cjs): no choice, nothing over it.
   'claude-wrapped-draft': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.301', model: null, effort: null, plan: null, directory: '~\\work\\demo-app' } },
+  // Claude Code 2.1.302's /usage during a round: the capture has no banner, input footer or choice.
+  'claude-usage-working': emptyScreen,
+  // Claude Code 2.1.302's /config during a round: settings and its filter hint are not an agent choice or footer.
+  'claude-config-working': emptyScreen,
   // Codex 0.162's resume list, drawn by "codex resume", by /resume inside a conversation, with nothing to resume, and
   // as Codex draws it on Linux.
   'codex-resume-start': resumeScreen([['整理发布说明', '2s ago'], ['修复阅读视图的滚动', '2s ago'], ['合并远端主分支', '2s ago']], 'new'),

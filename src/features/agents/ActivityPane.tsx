@@ -55,6 +55,22 @@ function RouteCard({ terminal }: { terminal: ProjectTerminal }) {
       </li>)}
     </ol>
     <p className="activity-note">{settings?.model ? how || t('按默认设置运行') : t('第一次回复后显示模型。')}</p>
+    {!!terminal.agentUsage?.calls?.length && <div className="activity-route-calls">
+      <h5>{t('调用的模型')}</h5>
+      {terminal.agentUsage.calls.map(call => <div className="activity-route-call" key={JSON.stringify([call.agent, call.provider, call.model, call.effort, call.fast])} title={call.tasks.join('\n')}>
+        <ol className="activity-route-steps">
+          {[call.agent, ...(call.provider ? [call.provider] : []), modelName(call.model)].map((label, index, route) => <li key={index} className={index === route.length - 1 ? 'is-model' : ''}>
+            {index > 0 && <CaretRight size={10} weight="bold" aria-hidden="true" />}<span>{label}</span>
+          </li>)}
+        </ol>
+        <p className="activity-note">
+          {call.running > 0 && <i className="activity-call-running" aria-hidden="true" />}
+          {[call.agent === 'Codex' ? t('Codex 子任务 ×{count}', { count: call.runs }) : t('子代理 ×{count}', { count: call.runs }),
+            call.running > 0 && t('{count} 个运行中', { count: call.running }),
+            call.effort && t('思考 {effort}', { effort: call.effort }), call.fast != null && (call.fast ? t('快速') : t('普通模式'))].filter(Boolean).join(' · ')}
+        </p>
+      </div>)}
+    </div>}
   </section>;
 }
 

@@ -7,7 +7,7 @@ import { actionText, stepVerb } from '../agents/action-text';
 import { dictateInto } from '../voice/voice-input';
 import { readScreen, useScreen } from '../terminal/terminal-screen';
 import { parseAgentScreen } from '../agents/agent-screen';
-import { claudeAtWork, cliCloseKey, cliDialogShown, cliFooter, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
+import { cliCloseKey, cliDialogShown, cliEscapeSafe, cliFooter, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
 import { ReadingQuestion } from './ReadingQuestion';
@@ -370,9 +370,10 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       const current = readScreen(terminal.id);
       if (!current) return { key: null, closed: true };
       const parsed = parseAgentScreen(agent, current.rows);
-      // Escape at a Claude that is working interrupts its round: what looks like a dialog then is left alone.
-      const key = claudeAtWork(agent, current.rows) ? null : cliCloseKey(agent, current.rows, parsed, first ? command : undefined, cli.panel?.rows);
-      return { key, closed: !key && (!untilInput || hasCliInput(agent, current.rows, parsed) || claudeAtWork(agent, current.rows)) };
+      // A dialog's own bottom hint makes Escape safe even while Claude works; once it disappears, stop pressing it.
+      const safe = cliEscapeSafe(agent, current.rows);
+      const key = safe ? cliCloseKey(agent, current.rows, parsed, first ? command : undefined, cli.panel?.rows) : null;
+      return { key, closed: !key && (!untilInput || hasCliInput(agent, current.rows, parsed) || !safe) };
     };
     let state = look(true);
     if (!state.key) return true;

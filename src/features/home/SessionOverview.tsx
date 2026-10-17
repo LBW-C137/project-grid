@@ -1,8 +1,10 @@
+import { CaretRight, Robot, TerminalWindow } from '@phosphor-icons/react';
 import type { Project, ProjectTerminal } from '../../shared/types';
 import type { Decision } from './decisions';
 import { relativeTime } from '../../shared/time';
 import { t } from '../../shared/i18n';
 import { actionText } from '../agents/action-text';
+import { ClaudeSpark } from '../reading/Timeline';
 import './home.css';
 
 type State = { key: 'deciding' | 'working' | 'unread' | 'done' | 'idle' | 'stopped'; label: string };
@@ -28,18 +30,22 @@ export function SessionOverview({ projects, decisions, onOpenProject }: { projec
   const order: State['key'][] = ['deciding', 'working', 'unread', 'done', 'idle', 'stopped'];
   rows.sort((a, b) => order.indexOf(a.state.key) - order.indexOf(b.state.key));
   const counts = order.map(key => [key, rows.filter(row => row.state.key === key).length] as const).filter(([, count]) => count);
-  return <aside className="home-side session-overview" aria-label={t('所有会话')}>
+  return <aside className="home-pane session-overview" aria-label={t('所有会话')}>
     <h3>{t('所有会话')}</h3>
     {counts.length > 0 && <p className="session-counts">{counts.map(([key, count]) => <span key={key} className={`is-${key}`}>{t(LABELS[key], { count })}</span>)}</p>}
     {!rows.length ? <p className="task-empty">{t('还没有项目。添加项目后，每个会话的工作都会列在这里。')}</p>
       : <ul className="task-rows">{rows.map(({ project, terminal, waiting, state }) => {
         const prompts = terminal.prompts || [], doing = prompts.find(prompt => prompt.state === 'working')?.text || terminal.task;
         const queued = prompts.filter(prompt => prompt.state === 'queued').length;
+        const agent = terminal.codexActive ? terminal.agent === 'claude' ? 'claude' : 'codex' : 'terminal';
         return <li key={terminal.id}><button type="button" onClick={() => onOpenProject(project.id)}>
-          <span className={`task-state is-${state.key}`}>{state.label}</span>
+          <span className={`task-tile is-${agent}`} aria-hidden="true">{agent === 'claude' ? <ClaudeSpark size={20} /> : agent === 'codex' ? <Robot size={20} /> : <TerminalWindow size={20} />}</span>
           <span className="task-main">
-            <b><span>{project.name}{project.terminals.length > 1 ? ` · ${terminal.title}` : ''}</span>{terminal.codexActive && <em>{terminal.agent === 'claude' ? 'Claude Code' : 'Codex'}</em>}</b>
-            <span>{doing || (terminal.codexActive ? t('还没有交代任务') : t('没有运行中的助手'))}</span>
+            <span className="task-top">
+              <span className={`task-state is-${state.key}`}>{state.label}</span>
+              <b>{project.name}{project.terminals.length > 1 ? ` · ${terminal.title}` : ''}</b>{terminal.codexActive && <em>{terminal.agent === 'claude' ? 'Claude Code' : 'Codex'}</em>}
+            </span>
+            <span className="task-doing">{doing || (terminal.codexActive ? t('还没有交代任务') : t('没有运行中的助手'))}</span>
             {state.key === 'working' && terminal.action && <span className="task-step">{t('正在{step}', { step: actionText(terminal.action) })}</span>}
             {(waiting > 0 || queued > 0 || terminal.lastCompletedAt) && <span className="task-meta">
               {waiting > 0 && <span className="is-deciding">{t('{count} 件待决定', { count: waiting })}</span>}
@@ -47,6 +53,7 @@ export function SessionOverview({ projects, decisions, onOpenProject }: { projec
               {terminal.lastCompletedAt && <span>{t('上次完成 {time}', { time: relativeTime(terminal.lastCompletedAt, Date.now()) })}</span>}
             </span>}
           </span>
+          <CaretRight className="task-chevron" size={16} aria-hidden="true" />
         </button></li>;
       })}</ul>}
   </aside>;

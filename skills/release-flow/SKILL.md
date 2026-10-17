@@ -48,3 +48,7 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
 12. **A pixel off in a full-screen panel.** Right after a project opens full screen, it flies in scaled a little
    (`[data-focus-motion]` on the app shell), so every measured top is a fraction off and a rounded position can differ
    by 1px between runs. Before measuring positions, `await page.waitForFunction(() => !document.querySelector('[data-focus-motion]'))`.
+13. **A network error before any test.** `npm ci` failing with `ECONNRESET` ("network read") in "Install locked
+   dependencies" is the runner's connection, not the release: no smoke ran and none left a picture. The install steps
+   retry once by themselves; if it still fails, re-run the failed jobs (with the user's OK) and the release publishes
+   when they pass. Hand the diagnosis to Codex (read-only, the token only inside its scripts) per `model-routing`.

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
-const { claudeAtWork, cliCloseKey, cliDialogShown, cliInputDraft, hasCliInput, isSideConversation, cliHistory, isCliIdle, isAtPrompt, extractCliPanelRows, extractCliOutputRows, advanceCliCommand, cliPanelKey } = require('../src/features/reading/cli-panel.ts');
+const { claudeAtWork, cliCloseKey, cliDialogShown, cliEscapeSafe, cliInputDraft, hasCliInput, isSideConversation, cliHistory, isCliIdle, isAtPrompt, extractCliPanelRows, extractCliOutputRows, advanceCliCommand, cliPanelKey } = require('../src/features/reading/cli-panel.ts');
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/screens', name + '.txt'), 'utf8').split('\n');
 const inspect = (agent, rows) => parseAgentScreen(agent, rows);
 const footer = agent => agent === 'claude' ? ['  ⏺ Opus 5.5 · demo · ctx 4%   ● high · /effort', '  ⏸ manual mode on · ← for agents'] : ['  GPT-6.1-Sol high · C:\\work\\demo · 90% left', '? for shortcuts'];
@@ -550,9 +550,96 @@ test("a long draft wrapped over Claude's input is its input; words quoted in the
   assert.equal(cliDialogShown('claude', rows, screen), false, 'a key hint in the conversation is not a dialog');
   assert.equal(cliCloseKey('claude', rows, screen), null, 'nothing to close');
   assert.equal(claudeAtWork('claude', rows), true);
+  assert.equal(cliEscapeSafe('claude', rows), false, 'a quoted hint must not let Escape interrupt the round');
   // Even with its input box out of sight, a working Claude is never taken for a dialog by words higher up.
   const boxless = rows.filter(row => !/^\s*─{5,}/.test(row)), bare = inspect('claude', boxless);
   assert.equal(hasCliInput('claude', boxless, bare), false);
   assert.equal(cliDialogShown('claude', boxless, bare), false);
+  assert.equal(cliEscapeSafe('claude', boxless), false, 'missing input does not make a historical hint safe');
+  assert.equal(cliCloseKey('claude', boxless, bare), null);
   assert.equal(claudeAtWork('codex', rows), false);
+});
+
+test('Claude 2.1.302 usage dialog takes Escape while the round keeps working', () => {
+  const rows = fixture('claude-usage-working'), screen = inspect('claude', rows);
+  assert.equal(claudeAtWork('claude', rows), true);
+  assert.equal(cliDialogShown('claude', rows, screen), true);
+  assert.equal(cliEscapeSafe('claude', rows), true);
+  assert.equal(cliCloseKey('claude', rows, screen, '/usage'), '\x1b');
+  for (const action of ['cancel', 'close', 'exit', 'go back', 'dismiss']) {
+    const hinted = rows.map(row => row.replace('Esc to cancel', 'Esc to ' + action));
+    assert.equal(cliEscapeSafe('claude', hinted), true, action);
+    assert.equal(cliCloseKey('claude', hinted, inspect('claude', hinted), '/usage'), '\x1b', action);
+  }
+  const closed = rows.slice(0, 2);
+  assert.equal(claudeAtWork('claude', closed), true, 'the round continues after the dialog closes');
+  assert.equal(cliEscapeSafe('claude', closed), false, 'no second Escape after the dialog is gone');
+  assert.equal(cliCloseKey('claude', closed, inspect('claude', closed), '/usage'), null);
+});
+
+test('Claude 2.1.302 config dialog takes Escape while working, but its interrupt footer alone never does', () => {
+  const rows = fixture('claude-config-working'), screen = inspect('claude', rows);
+  assert.equal(claudeAtWork('claude', rows), true);
+  assert.equal(cliDialogShown('claude', rows, screen), true);
+  assert.equal(cliEscapeSafe('claude', rows), true);
+  assert.equal(cliCloseKey('claude', rows, screen, '/config'), '\x1b');
+
+  const footer = '  ⏸ manual mode on · esc to interrupt';
+  assert.equal(cliDialogShown('claude', [footer], inspect('claude', [footer])), false);
+  for (const closed of [[...rows.slice(0, 2), footer], [...rows.slice(0, 2), ...input('claude'), footer]]) {
+    assert.equal(claudeAtWork('claude', closed), true);
+    assert.equal(cliDialogShown('claude', closed, inspect('claude', closed)), false, 'the working footer is not a dialog');
+    assert.equal(cliCloseKey('claude', closed, inspect('claude', closed), '/config'), null);
+    assert.equal(cliEscapeSafe('claude', closed), false);
+  }
+  const historical = ['Esc to clear', ...Array(8).fill('  Earlier output'), ...rows.slice(0, 2), footer];
+  assert.equal(cliDialogShown('claude', historical, inspect('claude', historical)), false, 'clear hints only count at the bottom');
+  assert.equal(cliEscapeSafe('claude', historical), false);
+  assert.equal(cliCloseKey('claude', historical, inspect('claude', historical), '/config'), null);
+});
+
+test('ReadingView closes config after clearing its filter and stops sending Escape as soon as it closes', async () => {
+  // Exercise the actual close loop without mounting the view or starting a terminal.
+  const ts = require('typescript');
+  const filename = path.join(__dirname, '..', 'src/features/reading/ReadingView.tsx');
+  const source = ts.createSourceFile(filename, fs.readFileSync(filename, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let initializer;
+  const find = node => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'closeDialog') initializer = node.initializer;
+    ts.forEachChild(node, find);
+  };
+  find(source);
+  assert.ok(initializer, 'the view owns the close loop');
+  const code = ts.transpileModule('return ' + initializer.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const bind = new Function('{ readScreen, terminal, parseAgentScreen, cliEscapeSafe, cliCloseKey, cli, hasCliInput, window, setTimeout }', code);
+  const empty = fixture('claude-config-working');
+  const filtered = empty.map(row => row.replace('Search settings…', 'motion'));
+  const closed = [...empty.slice(0, 2), '  ⏸ manual mode on · esc to interrupt'];
+  for (const untilInput of [false, true]) {
+    for (const screens of [[empty, closed], [filtered, empty, closed]]) {
+      let at = 0;
+      const writes = [];
+      const close = bind({
+        readScreen: () => ({ rows: screens[at] }), terminal: { id: 'config-test' },
+        parseAgentScreen, cliEscapeSafe, cliCloseKey, cli: { panel: { rows: empty } }, hasCliInput,
+        window: { agentrix: { writeTerminal: (id, key) => {
+          assert.equal(id, 'config-test');
+          assert.ok(at < screens.length - 1, 'no Escape after the dialog disappears');
+          writes.push(key); at++;
+        } } },
+        setTimeout: resolve => resolve(),
+      });
+      assert.equal(await close('claude', '/config', untilInput), true);
+      assert.equal(at, screens.length - 1, 'the dialog closed while Claude kept working');
+      assert.deepEqual(writes, Array(screens.length - 1).fill('\x1b'));
+    }
+  }
+});
+
+test('Escape safety preserves idle Claude and every Codex screen', () => {
+  assert.equal(cliEscapeSafe('claude', fixture('claude-startup')), true);
+  for (const name of fs.readdirSync(path.join(__dirname, 'fixtures/screens')).filter(name => name.startsWith('codex-'))) {
+    assert.equal(cliEscapeSafe('codex', fixture(name.slice(0, -4))), true, name);
+  }
+  assert.equal(cliEscapeSafe('codex', fixture('claude-wrapped-draft')), true, 'Claude working glyphs do not guard Codex');
 });
