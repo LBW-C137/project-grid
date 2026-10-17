@@ -27,9 +27,10 @@ const prompt = (agent: ScreenAgent, row: string) => {
   return (match[1] ?? '').trim();
 };
 
-// A historical prompt is not an input area. Claude needs both surrounding rules; Codex needs its footer right under it
-// (a long draft wraps over a few rows first): the prompt Codex pins to its top row, over a view that took the input's
-// place (/plugins), has none.
+// A historical prompt is not an input area. Claude needs both surrounding rules, a long draft wrapping over indented
+// rows before the closing one (a dictated message left there unsent); Codex needs its footer right under it (a long
+// draft wraps over a few rows first): the prompt Codex pins to its top row, over a view that took the input's place
+// (/plugins), has none.
 function cliInputArea(agent: ScreenAgent, rows: string[], screen: AgentScreen) {
   const status = screen.status;
   const hasFooter = !!(status.model || status.mode || status.context || status.effort || status.notes.length);
@@ -37,10 +38,14 @@ function cliInputArea(agent: ScreenAgent, rows: string[], screen: AgentScreen) {
     const text = prompt(agent, rows[index]);
     if (text === null) continue;
     if (agent === 'claude') {
-      if (!rule(rows[index - 1] ?? '') || !rule(rows[index + 1] ?? '')) continue;
+      if (!rule(rows[index - 1] ?? '')) continue;
+      let end = index + 1;
+      while (end < rows.length && end - index <= 24 && !rule(rows[end]) && /^ {2}\S/.test(rows[end])) end++;
+      if (!rule(rows[end] ?? '')) continue;
       // Claude Code 2.1.296 draws its effort right over the input box ("◉ xhigh · /effort"): part of it, never output.
       const start = /^\s*[●◉]\s+\S+\s+·\s+\/effort\b/.test(rows[index - 2] ?? '') ? index - 2 : index - 1;
-      return { row: index, start, footer: index + 2, text, hasFooter };
+      const draft = [text, ...rows.slice(index + 1, end).map(row => row.trim())].join(' ').trim();
+      return { row: index, start, footer: end + 1, text: draft, hasFooter };
     }
     if (hasFooter && rows.slice(index + 1, index + 14).some(codexFooterRow)) return { row: index, start: index, footer: index + 1, text, hasFooter };
   }
@@ -79,18 +84,23 @@ export function hasCliInput(agent: ScreenAgent, rows: string[], screen: AgentScr
 // working line alone means it is busy answering; a dialog opened during a round keeps that line above it, and its own
 // "Esc to cancel" hint tells it apart.
 const dialogHint = (row: string) => /\besc to (?:cancel|close|exit|go back|dismiss)\b/i.test(row);
+// A dialog draws its key hints in its own last rows, at the bottom of the screen; the same words higher up are the
+// conversation (a message quoting them, a command's output), never a dialog.
+const hintAtBottom = (rows: string[]) => rows.filter(row => row.trim()).slice(-8).some(dialogHint);
 function cliDialogOpen(agent: ScreenAgent, rows: string[], screen: AgentScreen): boolean {
   if (agent === 'codex' && codexDialog(rows)) return true;
   const input = cliInputArea(agent, rows, screen);
   if (agent === 'codex' && input && codexPopupBelow(rows, input).length) return true;
   if (input || !rows.some(row => row.trim())) return false;
-  return !(agent === 'claude' && claudeWorking(rows)) || rows.some(dialogHint);
+  return !(agent === 'claude' && claudeWorking(rows)) || hintAtBottom(rows);
 }
 
 // A dialog open on screen whoever opened it (left open in the terminal, or opened while its popup was being put away),
 // told by its own key hints so that an input this parser misses is never taken for one: a message typed now would
 // land in it.
-export const cliDialogShown = (agent: ScreenAgent, rows: string[], screen: AgentScreen) => cliDialogOpen(agent, rows, screen) && rows.some(dialogHint);
+export const cliDialogShown = (agent: ScreenAgent, rows: string[], screen: AgentScreen) => cliDialogOpen(agent, rows, screen) && hintAtBottom(rows);
+// Claude at work: Escape there interrupts the round, so nothing presses it to close a dialog it might show.
+export const claudeAtWork = (agent: ScreenAgent, rows: string[]) => agent === 'claude' && claudeWorking(rows);
 
 // Codex's /side opens a side conversation that only Ctrl+C leaves; Escape there tries to edit the last prompt.
 // Codex refuses /side in a conversation with nothing in it yet ("'/side' is unavailable until …"): then no side

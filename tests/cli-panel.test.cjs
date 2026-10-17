@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
-const { cliCloseKey, isSideConversation, cliHistory, isCliIdle, isAtPrompt, extractCliPanelRows, extractCliOutputRows, advanceCliCommand, cliPanelKey } = require('../src/features/reading/cli-panel.ts');
+const { claudeAtWork, cliCloseKey, cliDialogShown, cliInputDraft, hasCliInput, isSideConversation, cliHistory, isCliIdle, isAtPrompt, extractCliPanelRows, extractCliOutputRows, advanceCliCommand, cliPanelKey } = require('../src/features/reading/cli-panel.ts');
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/screens', name + '.txt'), 'utf8').split('\n');
 const inspect = (agent, rows) => parseAgentScreen(agent, rows);
 const footer = agent => agent === 'claude' ? ['  ⏺ Opus 5.5 · demo · ctx 4%   ● high · /effort', '  ⏸ manual mode on · ← for agents'] : ['  GPT-6.1-Sol high · C:\\work\\demo · 90% left', '? for shortcuts'];
@@ -539,4 +539,20 @@ test("Codex's dialogs over the conversation and views in its input's place show 
   ], 'the prompt Codex pins to its top row is not taken for its input');
   assert.equal(isAtPrompt('codex', plugins, screen), false);
   assert.equal(cliCloseKey('codex', plugins, screen, '/plugins'), '\x1b');
+});
+
+test("a long draft wrapped over Claude's input is its input; words quoted in the conversation are no dialog; a working Claude gets no Escape", () => {
+  // Claude Code 2.1.301 at work, a long dictated message left unsent in its input (wrapped over three rows), and an
+  // earlier message quoting a dialog's key hint ("esc to cancel") in the conversation above.
+  const rows = fixture('claude-wrapped-draft'), screen = inspect('claude', rows);
+  assert.equal(hasCliInput('claude', rows, screen), true, 'the wrapped input is still the input');
+  assert.equal(cliInputDraft('claude', rows, screen).replace(/\s+/g, ''), '这是一段用语音说出来的很长的话，'.repeat(14) + '说完了。', 'its rows read as one draft');
+  assert.equal(cliDialogShown('claude', rows, screen), false, 'a key hint in the conversation is not a dialog');
+  assert.equal(cliCloseKey('claude', rows, screen), null, 'nothing to close');
+  assert.equal(claudeAtWork('claude', rows), true);
+  // Even with its input box out of sight, a working Claude is never taken for a dialog by words higher up.
+  const boxless = rows.filter(row => !/^\s*─{5,}/.test(row)), bare = inspect('claude', boxless);
+  assert.equal(hasCliInput('claude', boxless, bare), false);
+  assert.equal(cliDialogShown('claude', boxless, bare), false);
+  assert.equal(claudeAtWork('codex', rows), false);
 });

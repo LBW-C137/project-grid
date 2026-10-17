@@ -7,7 +7,7 @@ import { actionText, stepVerb } from '../agents/action-text';
 import { dictateInto } from '../voice/voice-input';
 import { readScreen, useScreen } from '../terminal/terminal-screen';
 import { parseAgentScreen } from '../agents/agent-screen';
-import { cliCloseKey, cliDialogShown, cliFooter, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
+import { claudeAtWork, cliCloseKey, cliDialogShown, cliFooter, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
 import { ReadingQuestion } from './ReadingQuestion';
@@ -369,8 +369,10 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     const look = (first = false) => {
       const current = readScreen(terminal.id);
       if (!current) return { key: null, closed: true };
-      const parsed = parseAgentScreen(agent, current.rows), key = cliCloseKey(agent, current.rows, parsed, first ? command : undefined, cli.panel?.rows);
-      return { key, closed: !key && (!untilInput || hasCliInput(agent, current.rows, parsed)) };
+      const parsed = parseAgentScreen(agent, current.rows);
+      // Escape at a Claude that is working interrupts its round: what looks like a dialog then is left alone.
+      const key = claudeAtWork(agent, current.rows) ? null : cliCloseKey(agent, current.rows, parsed, first ? command : undefined, cli.panel?.rows);
+      return { key, closed: !key && (!untilInput || hasCliInput(agent, current.rows, parsed) || claudeAtWork(agent, current.rows)) };
     };
     let state = look(true);
     if (!state.key) return true;
@@ -454,7 +456,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       return;
     }
     if (left && pending.some(prompt => sameMessage(prompt.text, left))) { window.agentrix.writeTerminal(terminal.id, '\r'); await submitted(agentKind, left); }
-    else if (left) { window.agentrix.writeTerminal(terminal.id, '\x15'); await new Promise(resolve => setTimeout(resolve, 60)); }
+    else if (left) await clearInput(agentKind);
     if (text) {
       if (typed) { lastCommand.current = { text, at: Date.now() }; window.agentrix.writeTerminal(terminal.id, text); }
       else {
@@ -499,6 +501,11 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   };
   // What is typed in the CLI's own input right now.
   const inputDraft = (agent: 'claude' | 'codex') => { const current = readScreen(terminal.id); return current ? cliInputDraft(agent, current.rows, parseAgentScreen(agent, current.rows)) : ''; };
+  // Ctrl+U clears a row of the CLI's input: Claude Code clears only the visual row of a long draft wrapped over several,
+  // so it is pressed again until the input is empty (a few more than the rows, at most).
+  const clearInput = async (agent: 'claude' | 'codex') => {
+    for (let tries = 0; tries < 30 && inputDraft(agent); tries++) { window.agentrix.writeTerminal(terminal.id, '\x15'); await new Promise(resolve => setTimeout(resolve, 80)); }
+  };
   // A message is sent once it has left the CLI's input. An Enter the CLI did not take (it arrived while the CLI was
   // busy redrawing, compacting or taking the paste) leaves it there: Enter again, a few times.
   const submitted = async (agent: 'claude' | 'codex', text: string) => {
@@ -575,7 +582,8 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     // sent with this message, and once pictures are in it Ctrl+U would take them too. One of ours still waiting stays.
     const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', left = !images.length && !remote ? inputDraft(agentKind) : '';
     const clearFirst = !!left && !pending.some(prompt => sameMessage(prompt.text, left));
-    if (clearFirst) window.agentrix.writeTerminal(terminal.id, '\x15');
+    // The clipboard is read during the event; clearing the input and pressing the paste key follow it.
+    const cleared = clearFirst ? clearInput(agentKind) : Promise.resolve();
     // Over SSH the CLI cannot reach this computer's clipboard: the picture goes over as a file on that computer, whose
     // path joins the message when it is sent (serverPictures).
     if (remote) {
@@ -590,7 +598,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       return;
     }
     const pasteKey = terminal.agent === 'claude' ? '\x1bv' : '\x16';
-    if (clearFirst) setTimeout(() => window.agentrix.writeTerminal(terminal.id, pasteKey), 60);
+    if (clearFirst) void cleared.then(() => setTimeout(() => window.agentrix.writeTerminal(terminal.id, pasteKey), 60));
     else window.agentrix.writeTerminal(terminal.id, pasteKey);
     // The agent takes the picture from the clipboard; a copy is kept here to show in the message, small (a 4K
     // screenshot decoded at full size costs tens of megabytes per copy).

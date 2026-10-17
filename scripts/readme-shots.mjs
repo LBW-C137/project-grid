@@ -95,7 +95,9 @@ try {
     [['› 把日活图表改成按周汇总', 'White'], [''], ['• 已完成：图表按 ISO 周聚合，悬停显示每日明细。', 'Gray'], ['  - 修改 charts/active-users.ts', 'Gray'], ['  - 快照测试已更新', 'Gray'], [''], ['• Worked for 3m 40s', 'DarkGray']],
     [['> 给部署文档补一节回滚步骤', 'White'], [''], ['● 我先读一下现有的部署文档结构。', 'Gray'], [''], ['● Read(docs/deploy.md)', 'Green'], ['  ⎿  Read 186 lines', 'DarkGray'], [''], ['● Update(docs/deploy.md)', 'Green'], ['  ⎿  Updated with 24 additions', 'DarkGray']],
     [['PS> git log --oneline -4', 'DarkGray'], ['a41c2e9 登录页适配深色模式', 'Gray'], ['7be03d1 修复安卓返回键退出', 'Gray'], ['3f2a8c4 首页骨架屏', 'Gray'], ['e91b6d0 升级 React Native 0.76', 'Gray']],
-    [['PS> ./check-disk.ps1', 'DarkGray'], [''], ['  web-01   42%  ok', 'Green'], ['  web-02   38%  ok', 'Green'], ['  db-01    81%  注意：建议清理归档日志', 'Yellow']],
+    [['› 清理 db-01 30 天前的归档日志', 'White'], [''], ['  Would you like to run the following command?', 'White'], [''], ['  $ ./cleanup-archive.ps1 -Host db-01 -Days 30', 'Cyan'], [''],
+      ['› 1. Yes, proceed (y)', 'Cyan'], ["  2. Yes, and don't ask again for this command (p)", 'Gray'], ['  3. No, and tell Codex what to do differently (esc)', 'Gray'], [''],
+      ['  Press enter to confirm or esc to cancel', 'DarkGray']],
   ];
   for (let index = 0; index < projects.length; index++) {
     await panel(index).getByRole('button', { name: '只打开终端', exact: true }).click();
@@ -109,7 +111,8 @@ try {
     sessions[index] = { thread: randomUUID() };
   }
   await write(3, `Clear-Host; Send-AgentrixEvent 'codex-started' -Agent 'claude'; ${say(screens[3])}; Start-Sleep -Seconds 3600\r`);
-  for (const index of [4, 5]) await write(index, `Clear-Host; ${say(screens[index])}; Start-Sleep -Seconds 3600\r`);
+  await write(4, `Clear-Host; ${say(screens[4])}; Start-Sleep -Seconds 3600\r`);
+  await write(5, `$env:CODEX_HOME=${quote(home)}; Clear-Host; Send-AgentrixEvent 'codex-started'; ${say(screens[5])}; Start-Sleep -Seconds 3600\r`);
   const stamp = () => new Date().toISOString();
   const event = (type, extra = {}) => ({ type: 'event_msg', timestamp: stamp(), payload: { type, ...extra } });
   const message = (role, id, text) => event('item_completed', { item: { type: role === 'user' ? 'UserMessage' : 'AgentMessage', id, content: [{ type: 'text', text }] } });
@@ -140,6 +143,10 @@ try {
     await fs.appendFile(path.join(home, 'sessions', `rollout-${sessions[index].thread}.jsonl`), JSON.stringify(event('task_complete', { turn_id: turn })) + '\n');
     await waitFor(async () => (await state(index)).codexActivity === 'complete', 'round finished');
   }
+  // The ops scripts: a round under way, waiting for the cleanup to be approved.
+  sessions[5] = { thread: randomUUID() };
+  await rollout(5, [meta(5), event('task_started', { turn_id: 't5' }), message('user', 'u5', '清理 db-01 30 天前的归档日志'), message('agent', 'a5', '先确认归档目录的大小，再删掉 30 天前的文件。')]);
+  await waitFor(async () => (await state(5)).terminals?.[0]?.sessionId || (await state(5)).codexActivity === 'working', 'ops session');
   // The docs site's Claude Code has no transcript in this demo: its card shows the terminal.
   await panel(3).locator('.panel-header').getByRole('button', { name: '切换到终端', exact: true }).click();
   await page.evaluate(id => window.agentrix.acknowledge(id), projects[2].id);
@@ -148,6 +155,14 @@ try {
   // Let the completion settle into its quiet glow.
   await page.waitForTimeout(10000);
   await shot('overview.jpg');
+
+  // The decision page: the cleanup waiting for approval, the finished round to review, every session beside them.
+  await page.locator('.home-nav button', { hasText: '决策' }).click();
+  await page.locator('.deck-title').first().waitFor();
+  await page.mouse.move(800, 2); await page.waitForTimeout(1200);
+  await shot('decisions.jpg');
+  await page.locator('.home-nav button', { hasText: '工作台' }).click();
+  await page.locator('.project-panel').first().waitFor();
 
   // The storefront, expanded: reading view with the activity pane.
   await panel(0).getByRole('button', { name: '全屏查看 商城前端', exact: true }).click();

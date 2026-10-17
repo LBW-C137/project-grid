@@ -88,3 +88,10 @@ An approval only shows after the model asks for a tool. Never use the real sign-
     `workspace_backend_origin`.
   - A throwaway CA given through `CODEX_CA_CERTIFICATE` makes the HTTPS part work.
   - It then stops at "invalid account routing override", so capture `/usage` from someone's real screen instead.
+- Keys sent to a CLI to close what looks like a dialog are dangerous: Escape at a working Claude Code interrupts its
+  round. A message quoting a dialog's hint (`esc to cancel`) sits in the conversation; a dialog's hints are in its own
+  last rows, at the bottom. And Claude's input box is not one row: a long draft wraps over rows indented two spaces
+  before the closing rule (Claude Code 2.1.301), and a pasted picture's chip sits in it too. When the input is not
+  recognised, the parser must not conclude "dialog". Reproduce with the real CLI: a stand-in API with a slow first
+  answer, a long message sent meanwhile, a picture attached by its path (pasted as text, so no clipboard is used),
+  and record every key written to the terminal.

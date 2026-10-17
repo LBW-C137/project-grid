@@ -1351,5 +1351,8 @@
   "Claude Code 的节点标志改为清晰的矢量星芒，任何大小都不再模糊。": "Claude Code's node mark is a crisp vector spark that stays sharp at any size.",
   "阅读视图左右留白更均衡：左边的时间和节点更紧凑，右边留出更多空间，消息框和卡片左右对齐。": "The reading view is balanced left and right: the times and nodes on the left are tighter, the right has more room, and the message box lines up with the cards.",
   "运行中的节点不再转圈：Claude 的星芒像 Claude Code 自己的 ✻ 一样绽放、收回，其他步骤向外扩散柔和的光圈。": "Running nodes no longer spin: Claude's spark blooms and draws back like Claude Code's own ✻, and other steps send out soft rings.",
-  "鼠标划过时间轴上的条目时，条目会轻快地跳一下；滚动时不会跳。": "Items on the timeline hop when the pointer passes over them; they stay still while you scroll."
+  "鼠标划过时间轴上的条目时，条目会轻快地跳一下；滚动时不会跳。": "Items on the timeline hop when the pointer passes over them; they stay still while you scroll.",
+  "修复：在阅读视图里发消息（尤其是带截图或用语音说的长消息）时，可能误按 Esc 打断正在工作的 Claude Code，并提示「命令的对话框没有关闭」。": "Fixed: sending a message in the reading view (especially one with a screenshot or a long dictated one) could press Esc, interrupting a working Claude Code, and say a command's dialog was still open.",
+  "在 HTML 页面里「复制图片」后，可以粘贴到微信、Word 等其他程序里。": "Copy image in an HTML page now pastes into other programs, such as a chat app or Word.",
+  "时间轴更清晰：节点、竖线和运行中的标记去掉了光晕，边缘都是实线。": "A crisper timeline: the nodes, the line and the running marks have no glow, every edge is hard."
 }

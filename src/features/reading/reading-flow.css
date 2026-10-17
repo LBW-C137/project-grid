@@ -6,14 +6,14 @@
   --flow-ink: var(--ink, #f2f7fc); --flow-muted: var(--ink-secondary, #b9c8d8); --flow-faint: var(--ink-faint, rgba(255, 255, 255, .5));
   --flow-ok: var(--accent-green, #3ddc97); --flow-fail: #ff7b72; --flow-lead: #6cb4ff; --flow-avatar: #3b82f6;
   --flow-claude: #e8875f; --flow-codex: #d7e6f5;
-  --flow-rail: #4fd3e8; --flow-rail-glow: rgba(79, 211, 232, .45); --flow-step: #5fd8ec;
+  --flow-rail: #4fd3e8; --flow-step: #5fd8ec;
   --flow-user: #5ea6ff;
   --step-time: calc(36px * var(--reading-text)); --step-node: 28px; --step-gap: 10px;
 }
 :root:is([data-theme="mono-amber"], [data-theme="mono-amber-dark"]) .reading-view {
   --flow-card: var(--theme-hover); --flow-line: var(--theme-line); --flow-ink: var(--theme-ink); --flow-muted: var(--theme-muted); --flow-faint: var(--theme-muted);
   --flow-ok: var(--theme-ink); --flow-fail: var(--mono-alert-ink); --flow-lead: var(--theme-ink); --flow-avatar: var(--theme-ink); --flow-codex: var(--theme-ink); --flow-claude: var(--mono-orange);
-  --flow-rail: var(--theme-line); --flow-rail-glow: transparent; --flow-step: var(--theme-ink); --flow-user: var(--theme-ink);
+  --flow-rail: var(--theme-line); --flow-step: var(--theme-ink); --flow-user: var(--theme-ink);
 }
 
 /* A step: its time, its node on the line, then what it is. The line runs from each node's foot to the next one's head
@@ -21,15 +21,16 @@
 .reading-scroll { container-type: inline-size; }
 .reading-step { position: relative; display: grid; grid-template-columns: var(--step-time) var(--step-node) minmax(0, 1fr); column-gap: var(--step-gap); align-items: start; }
 .reading-step::before { content: ''; position: absolute; left: calc(var(--step-time) + var(--step-gap) + var(--step-node) / 2 - 1px); top: var(--step-node); bottom: -10px; width: 2px;
-  border-radius: 1px; background: var(--flow-rail); box-shadow: 0 0 8px var(--flow-rail-glow); opacity: .75; }
+  border-radius: 1px; background: var(--flow-rail); opacity: .85; }
 .reading-step:not(:has(~ .reading-step))::before { display: none; }
 .reading-step > time { align-self: start; padding-top: 6px; text-align: right; font: 600 calc(12.5px * var(--reading-text))/1.5 var(--font-ui); color: var(--flow-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .reading-step > time.is-quiet { font-weight: 500; opacity: .5; }
-/* Each node a hollow ring: the wallpaper shows through it (no dark fill), a hairline rim, a faint glow and the glyph all
-   in the colour of what it is (blue you, warm orange Claude, cool white Codex, cyan a step). */
+/* Each node a hollow ring: the wallpaper shows through it (no dark fill), a hairline rim and the glyph in the colour of
+   what it is (blue you, warm orange Claude, cool white Codex, cyan a step). No glow anywhere on the line: every edge is
+   hard, so nothing looks hazy over the wallpaper. */
 .reading-node { --node-tint: var(--flow-step); position: relative; z-index: 1; display: grid; place-items: center; width: var(--step-node); height: var(--step-node); border-radius: 50%;
   color: var(--node-tint); background: color-mix(in srgb, var(--node-tint) 7%, transparent);
-  box-shadow: inset 0 0 0 1.5px var(--node-tint), 0 0 10px color-mix(in srgb, var(--node-tint) 32%, transparent); }
+  box-shadow: inset 0 0 0 1.5px var(--node-tint); }
 .reading-node > svg { display: block; shape-rendering: geometricPrecision; }
 .reading-step.is-user .reading-node { --node-tint: var(--flow-user); }
 .reading-step.is-claude .reading-node { --node-tint: var(--flow-claude); }
@@ -37,14 +38,12 @@
 .reading-spark line { stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 /* A node whose steps still run sends soft rings out from its rim, one after another, fading as they spread. Claude's
    spark instead blooms like Claude Code's own ✻ spinner: all its rays burst out from the hub and draw slowly back, the
-   slanted ones a beat behind, its glow swelling with them, like a small firework. One that failed is marked red. */
+   slanted ones a beat behind, like a small firework. One that failed is marked red. */
 .reading-step.is-running .reading-node::before, .reading-step.is-running .reading-node::after { content: ''; position: absolute; inset: 0; border-radius: 50%;
   box-shadow: 0 0 0 1.5px var(--node-tint); opacity: 0; pointer-events: none; animation: reading-node-ripple 2.4s cubic-bezier(.2, .6, .35, 1) infinite; }
 .reading-step.is-running .reading-node::after { animation-delay: 1.2s; }
 @keyframes reading-node-ripple { 0% { transform: scale(1); opacity: .75; } 100% { transform: scale(1.9); opacity: 0; } }
 .reading-step.is-claude.is-running .reading-node::before, .reading-step.is-claude.is-running .reading-node::after { content: none; }
-.reading-step.is-claude.is-running .reading-node { animation: reading-node-glow 1.8s ease-in-out infinite; }
-@keyframes reading-node-glow { 30% { box-shadow: inset 0 0 0 1.5px var(--node-tint), 0 0 20px color-mix(in srgb, var(--node-tint) 60%, transparent); } }
 .reading-step.is-running .reading-spark line { transform-box: view-box; transform-origin: 12px 12px; vector-effect: non-scaling-stroke; animation: reading-spark-bloom 1.8s infinite; }
 .reading-step.is-running .reading-spark g:nth-child(even) line { animation-delay: .12s; }
 @keyframes reading-spark-bloom {
@@ -57,8 +56,8 @@
 /* The working line ends the timeline beside its node, without a mark of its own. */
 .reading-step.is-working .reading-status { margin: 5px 0 0; }
 .reading-step .reading-status-mark { display: none; }
-:root[data-motion="off"] .reading-step.is-running :is(.reading-node, .reading-node::before, .reading-node::after, .reading-spark line) { animation: none; }
-@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .reading-step.is-running :is(.reading-node, .reading-node::before, .reading-node::after, .reading-spark line) { animation: none; } }
+:root[data-motion="off"] .reading-step.is-running :is(.reading-node::before, .reading-node::after, .reading-spark line) { animation: none; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .reading-step.is-running :is(.reading-node::before, .reading-node::after, .reading-spark line) { animation: none; } }
 /* A narrow card keeps the line and its nodes, not the times. */
 @container (max-width: 520px) {
   .reading-step { grid-template-columns: var(--step-node) minmax(0, 1fr); column-gap: 10px; }
@@ -107,7 +106,7 @@
 .reading-tools-caret { flex: none; color: var(--flow-ok); }
 .reading-step-state { flex: none; color: var(--flow-ok); }
 .reading-step-state.is-running { position: relative; display: grid; place-items: center; width: 17px; height: 17px; color: var(--flow-rail); }
-.reading-step-state.is-running::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+.reading-step-state.is-running::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .reading-step-state.is-running::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; box-shadow: 0 0 0 1.5px currentColor; opacity: 0; animation: reading-node-ripple 2s cubic-bezier(.2, .6, .35, 1) infinite; }
 :root[data-motion="off"] .reading-step-state.is-running::after { animation: none; }
 @media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .reading-step-state.is-running::after { animation: none; } }

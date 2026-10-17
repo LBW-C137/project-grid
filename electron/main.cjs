@@ -106,6 +106,39 @@ const projectGit = new ProjectGit(id => remoteFor(id));
 const startupErrors = new Map();
 const restorePlans = new Map();
 const previewResources = new PreviewResources({ remote: project => remoteFor(project.id) });
+// A picture's bytes, from where a page loaded it, as an image for the clipboard. PNG and JPEG decode here; WebP, GIF,
+// SVG and AVIF are decoded by Chromium in the app's own page, which hands back a PNG.
+const PICTURE_LIMIT = 50 * 1024 * 1024;
+async function pictureFrom(contents, src) {
+  if (!src) return null;
+  if (src.startsWith('data:')) { const image = nativeImage.createFromDataURL(src); if (!image.isEmpty()) return image; }
+  let bytes, type;
+  if (previewResources.hasUrl(src)) {
+    const resource = await previewResources.resolve(src);
+    if (resource.size > PICTURE_LIMIT) return null;
+    bytes = resource.readChunk ? await resource.readChunk(0, resource.size) : await fs.promises.readFile(resource.path);
+    type = resource.mimeType;
+  } else if (src.startsWith('data:')) {
+    const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(src);
+    if (!match) return null;
+    bytes = match[2] ? Buffer.from(match[3], 'base64') : Buffer.from(decodeURIComponent(match[3])); type = match[1] || 'image/png';
+  } else {
+    const response = await contents.session.fetch(src);
+    if (!response.ok) return null;
+    bytes = Buffer.from(await response.arrayBuffer()); type = response.headers.get('content-type') || '';
+    if (bytes.length > PICTURE_LIMIT) return null;
+  }
+  const image = nativeImage.createFromBuffer(bytes);
+  if (!image.isEmpty()) return image;
+  const owner = BrowserWindow.fromWebContents(contents) ?? BrowserWindow.getAllWindows()[0];
+  const png = await owner?.webContents.executeJavaScript(`(async source => {
+    const picture = new Image(); picture.src = source; await picture.decode();
+    const canvas = document.createElement('canvas'); canvas.width = picture.naturalWidth || 1024; canvas.height = picture.naturalHeight || 1024;
+    canvas.getContext('2d').drawImage(picture, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png');
+  })(${JSON.stringify(`data:${(type || 'image/png').split(';')[0]};base64,${bytes.toString('base64')}`)})`, true);
+  return typeof png === 'string' ? nativeImage.createFromDataURL(png) : null;
+}
 const capturePage = require('./features/files/capture-page.cjs').createPageCapture(BrowserWindow);
 const fileCard = createFileCards({ previews: previewResources, capture: capturePage, shrink: pictureOf, shrinkBytes: bytes => small(nativeImage.createFromBuffer(bytes)) });
 let stateTimer;
@@ -1041,11 +1074,21 @@ if (!app.requestSingleInstanceLock()) {
     window.on('show', () => window.webContents.setBackgroundThrottling(false));
     window.on('restore', () => window.webContents.setBackgroundThrottling(false));
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    // A picture copies as an image every program pastes (a chat, a document, a paint program): its own bytes, from
+    // where the page loaded it (a project's preview, a data URL, the web), decoded to a bitmap. Chromium's copy of what
+    // is under the pointer is only the fallback: inside a web page's frame the menu's point is not the picture's.
+    const copyPicture = async (window, params) => {
+      try {
+        const image = await pictureFrom(window.webContents, params.srcURL);
+        if (image && !image.isEmpty()) { clipboard.writeImage(image); return; }
+      } catch { /* fall back to Chromium's copy */ }
+      window.webContents.copyImageAt(params.x, params.y);
+    };
     window.webContents.on('context-menu', (_event, params) => {
       // A picture (one enlarged in its popup, one in a reply) copies whole, as a browser's "Copy image" does.
       const picture = params.mediaType === 'image' && params.hasImageContents;
       if (!picture && (activeTerminal || (!params.isEditable && !params.selectionText))) return;
-      const items = picture ? [{ label: t('复制图片'), click: () => window.webContents.copyImageAt(params.x, params.y) }] : params.isEditable ? [
+      const items = picture ? [{ label: t('复制图片'), click: () => void copyPicture(window, params) }] : params.isEditable ? [
         { label: t('撤销'), role: 'undo' }, { label: t('重做'), role: 'redo' }, { type: 'separator' },
         { label: t('剪切'), role: 'cut' }, { label: t('复制'), role: 'copy' }, { label: t('粘贴'), role: 'paste' }, { type: 'separator' }, { label: t('全选'), role: 'selectAll' },
       ] : [{ label: t('复制'), role: 'copy' }];

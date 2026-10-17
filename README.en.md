@@ -30,12 +30,12 @@
 
 <table>
   <tr>
-    <td width="33%" valign="top"><h3>🧩 Many at once</h3>Every project is a card with a real terminal. Codex and Claude Code work at the same time, local and SSH projects on the same grid.</td>
-    <td width="33%" valign="top"><h3>💡 Lights up when done</h3>It reads the agents' own session records: 🔵 working, 🩷 done and waiting, 🟢 seen. One alert per round, with a system notification.</td>
-    <td width="33%" valign="top"><h3>📖 Terminal as a document</h3>Answers laid out as documents, tool calls folded to a line, slash commands, permissions and questions as popups and cards you click.</td>
+    <td width="33%" valign="top"><h3>🧭 Decide first</h3>Everything across your projects that needs your call on one page: approvals, questions, choices, sign-ins, rounds to review. An answer goes only when you confirm it.</td>
+    <td width="33%" valign="top"><h3>🧩 Many at once</h3>Every project is a card with a real terminal. Codex and Claude Code work at the same time: 🔵 working, 🩷 done and waiting, 🟢 seen, one alert per round.</td>
+    <td width="33%" valign="top"><h3>📖 Terminal as a timeline</h3>The conversation as a timeline: each prompt, answer and group of tool calls a node; pictures, pages and videos show right in the answer.</td>
   </tr>
   <tr>
-    <td valign="top"><h3>🖼️ See what it made</h3>Pictures, web pages, videos and documents an agent produces show right under its answer; a click opens them full size without leaving the conversation.</td>
+    <td valign="top"><h3>📊 Usage at a glance</h3>The activity pane shows the model route, how much context is left and the 5-hour and weekly limits; a used-up limit resets in one click, after a 10-second countdown you can cancel.</td>
     <td valign="top"><h3>✅ Keep what matters</h3>Review changes hunk by hunk the way Git shows them: keep what you want, revert the rest, no <code>git add -p</code> to remember.</td>
     <td valign="top"><h3>🎙️ Just say it</h3><kbd>Ctrl</kbd>+<kbd>T</kbd>, talk, Enter. Recognition runs offline on your machine; audio never leaves it.</td>
   </tr>
@@ -75,7 +75,9 @@ flowchart LR
 
 ### 🧭 Decide first, then dive in
 
-Agentrix opens on **Decide**: everything across your projects that needs your call, in one place — approvals, questions, choices, sign-ins — each titled by what it would do ("Run a command: npm run migrate") with the command itself. An answer is sent only when you confirm it, after checking the question has not changed; or put it off, or open the source. Beside the decisions, a column shows what every session is doing and waiting on, all on one page. Decide · Workbench in the title bar switch at any time: the workbench is the project grid.
+<img src="docs/images/decisions.jpg" alt="Decide: a card asks to approve running ./cleanup-archive.ps1 -Host db-01 -Days 30, with the payments round waiting for review under it; a column on the right lists what every session is doing" width="100%" />
+
+Agentrix opens on **Decide**: everything across your projects that needs your call, as a stack of cards — approvals, questions, choices, sign-ins, and rounds of work handed in for review — each titled by what it would do ("Run a command: ./cleanup-archive.ps1 …") with the command itself. An answer is sent only when you confirm it, after checking the question has not changed; or put it off, or open the source. A column beside it shows what every session is doing and waiting on, and the box below tells Agentrix what to do next (paste a screenshot into it too). Decide · Workbench in the title bar switch at any time: the workbench is the project grid.
 
 ### 🧩 Direct every project from one screen
 
@@ -89,15 +91,18 @@ State comes from the rounds Codex and Claude Code record themselves, not from gu
 
 ### 📖 The terminal, laid out again
 
-<img src="docs/images/reading-view.jpg" alt="Reading view: the Codex answer laid out as a document with its plan, a code block and folded tool calls, and the design mock the answer mentions shown right under it; the activity pane on the right lists every step" width="100%" />
+<img src="docs/images/reading-view.jpg" alt="Reading view: the conversation as a timeline, each prompt, answer and group of tool calls a node on the line, the design mock the answer mentions shown in its card; the activity pane on the right shows the model route, context, usage and the reset button" width="100%" />
 
-Switch any Claude Code or Codex conversation to the **reading view**: headings, lists, tables, code blocks with a Copy button, tool calls folded into one line. The box at the bottom writes straight into the real terminal underneath, and the terminal is one click away.
+Switch any Claude Code or Codex conversation to the **reading view**: a timeline where your prompts, its answers and each group of tool calls are nodes on a line, their times beside them. The nodes are hollow rings in the colour of who is speaking (blue you, an orange spark Claude, white Codex, cyan a step), and a running one never spins: Claude's spark blooms and draws back like its own ✻, other steps send out soft rings. Headings, lists, tables and code blocks with a Copy button sit on frosted cards, tool calls fold into a pill naming the files they changed, and an item hops when the pointer passes over it. The box at the bottom writes straight into the real terminal underneath, and the terminal is one click away.
 
 - **What it made is in the answer.** Pictures, web pages, videos and Markdown an agent writes or names appear under its answer; a click opens the full picture, page or document in a popup over the current view (Esc closes it), never jumping into the project page or another program. Agentrix tells the agents so when it starts them, so they show you an image instead of saying a terminal can only show text.
 - **CLI output is rendered again, too.** Slash commands such as `/usage`, `/status` and `/context` open in a popup: frames go, figures line up in tables, usage becomes progress bars. Type `/` for every command, `@` to mention a project file.
 - **Questions and confirmations become cards.** Permission prompts, pickers like `/model`, and questions from Claude Code (AskUserQuestion) and Codex (Plan mode) are cards you click; what the agent is doing is written at the end of the conversation, as in its CLI, with a timer and Esc to interrupt.
+- **Keep talking while it works.** A message sent mid-round is marked *delivered and queued*: the agent reads it once the current step is done, and it is never sent twice or taken for undelivered.
 
-The **activity pane** keeps the round's calls, completions, failures and time at the top; its live feed names each step for what it is (the command as typed, the skill used, the MCP tool called, the files created or changed), and below it are the tasks being worked on and waiting.
+The **activity pane** starts with the tasks being worked on and waiting; below are the model route (agent › service › model, with the reasoning effort and speed mode), the context length (used / window) and usage: tokens this round and this conversation, and the 5-hour and weekly limits with their reset times (Codex's from its session records, Claude Code's from its own cached `/usage`, or CodePulse's record when that is fresher).
+
+At the bottom is the **Reset limit** button: a click starts a 10-second countdown that *Cancel* or Esc stops at any time; only then does the agent get its own command (Claude Code's `/limit-reset`, once a week for the 5-hour limit; Codex's `/usage`, where you pick and confirm). Agentrix itself never calls a reset.
 
 > The reading view currently supports **Claude Code** and **Codex**. OpenCode, Gemini CLI and other command-line agents run as usual in the card's terminal.
 
@@ -122,7 +127,8 @@ Press <kbd>Ctrl</kbd>+<kbd>T</kbd> and talk to the current terminal; Enter sends
 
 - **Pick up where you left off**: terminals and Codex / Claude Code sessions come back on start, and an interrupted task carries on.
 - **SSH projects**: reuse your VS Code Remote-SSH hosts; terminals, files, Git and previews all run over SSH, and pages and pictures made on a machine on your network preview too.
-- **Files at hand**: a folder tree, an auto-saving editor, previews of images, web pages, video and Markdown; <kbd>Ctrl</kbd>+click (<kbd>⌘</kbd>+click on macOS) a path in the terminal to open it in a popup.
+- **Files at hand**: a folder tree, an auto-saving editor (VS Code's editing keys, <kbd>Ctrl</kbd>+<kbd>F</kbd> to find), previews of images, web pages, video and Markdown, and a right-click to open a file's location; <kbd>Ctrl</kbd>+click (<kbd>⌘</kbd>+click on macOS) a path in the terminal to open it in a popup; an enlarged picture fits the window, a click shows it at its own size to drag around.
+- **Splits you drag**: several terminals for one project side by side, with dividers you drag to resize.
 - **Clear to read**: dark frosted glass with white text over a wallpaper at its own brightness; switch to the **solid** surface for the sharpest text. Two minimal themes, light *Monochrome amber* and dark *White, Black & Amber*.
 - **English and Chinese, remappable shortcuts, automatic updates on Windows**, and a guided tour the first time you open it.
 
@@ -178,6 +184,13 @@ Agentrix itself **collects nothing and sends no analytics**. It only contacts Gi
 <summary><strong>How is this different from a few terminals in an IDE?</strong></summary>
 
 The terminals are the same; the difference is that Agentrix **knows what state each agent is in**. It reads the session records of Codex and Claude Code to tell working, done and interrupted apart, and lays answers, command results, pictures, pages and changes out for you to read. It is designed for directing several AI tasks at once, not for one person editing one file.
+
+</details>
+
+<details>
+<summary><strong>Does Reset limit reset anything by itself?</strong></summary>
+
+No. A reset spends one of the plan's few, so the button first counts down 10 seconds that you can cancel at any time; even then it only sends the agent its own command, and Claude Code or Codex carries out the reset. Agentrix calls no reset service and never sends that command unless you clicked.
 
 </details>
 
