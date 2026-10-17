@@ -17,6 +17,10 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
    `test:restore-slow`, `test:completion`, `test:gpu-terminal`, `test:workspace`, `test:editor-terminals`,
    `test:themes-markdown`, `test:visual`, `test:navigation`, `test:git`, `test:cmd`, `test:material`,
    `test:composer`, `test:reading`.
+   For a follow-up changing only test fixtures, docs and version metadata after a recorded full pass, verify that
+   `electron/`, `src/`, `integration/`, `assets/` and dependency definitions are unchanged. Reuse the unaffected local
+   desktop results; rerun the changed unit/fixture tests and their packaged desktop cases in the failing environment.
+   Rebuild and verify the new version's artifacts. The entire CI matrix must still pass before publication.
 5. **Look at the pictures.** `test:workspace` saves `guide-whats-new.png` and `guide-shortcuts.png` in its
    `.test-output/workspace-*` folder: check the notes fit and read well before committing.
 6. **Commit.** Stage everything except local-only files (`.claude/`, personal product drafts under `docs/`), scan

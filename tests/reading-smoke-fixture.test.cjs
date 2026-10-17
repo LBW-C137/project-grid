@@ -37,7 +37,9 @@ test('reading smoke positions delayed real PTY input inside its frame and preser
   assert.ok(literals.fixturePrompt); assert.ok(literals.idle);
   const terminal = new Terminal({ cols: 120, rows: 30 });
   // Unopened xterm parses PTY output and answers cursor queries; no DOM, window or Electron is started.
-  const shell = pty.spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', 'Set-PSReadLineOption -HistorySaveStyle SaveNothing; ' + literals.fixturePrompt], {
+  // Exercise the fixture's isolation from newer PSReadLine history predictions, including /fix-issue after /fix-issue 42.
+  const prediction = "if ((Get-Command Set-PSReadLineOption).Parameters.ContainsKey('PredictionSource')) { Set-PSReadLineOption -PredictionSource History }; ";
+  const shell = pty.spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', 'Set-PSReadLineOption -HistorySaveStyle SaveNothing; ' + prediction + literals.fixturePrompt], {
     name: 'xterm-256color', cols: 120, rows: 30, cwd: path.dirname(filename), env: process.env,
   });
   let disposed = false;

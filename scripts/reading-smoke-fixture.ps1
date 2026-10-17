@@ -1,4 +1,9 @@
 # Only the isolated offline smoke's PowerShell. Ordinary prompts leave permission/question frames untouched.
+# Newer PSReadLine paints history predictions in the input row (for example, the old " 42" after /fix-issue).
+# This fake CLI needs literal physical echoes, without shell suggestions. PSReadLine 2.0 has no prediction option.
+if ((Get-Command Set-PSReadLineOption).Parameters.ContainsKey('PredictionSource')) {
+    Set-PSReadLineOption -PredictionSource None
+}
 $global:ReadingFixtureInputRow = $null
 function global:prompt {
     if ($global:ReadingFixtureClearOnPrompt) {

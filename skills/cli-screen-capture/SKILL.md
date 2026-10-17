@@ -50,6 +50,9 @@ An approval only shows after the model asks for a tool. Never use the real sign-
 - An offline CLI fixture must retain the command's real output or error above its next empty input. Clearing it before
   the screen publisher observes it erases completion evidence. Test the final coalesced frame and keep empty idle alone
   insufficient for success. Capture the input row after drawing the full frame: bottom-of-screen scrolling can move it.
+- Disable supported PSReadLine history prediction only inside shell-based CLI fixtures. Suggested suffixes are painted
+  into physical rows even when absent from the input buffer. Reproduce with a scratch modern module via the child's
+  `PSModulePath`, enable `History` before fixture loading, and verify literal echoes without relaxing exact receipts.
 
 - A repeated command can redraw exactly the same terminal rows. The 100 ms screen subscription can miss its typed
   input even when xterm received it. Confirm the exact live input with `readScreen()` before sending one Enter, and
