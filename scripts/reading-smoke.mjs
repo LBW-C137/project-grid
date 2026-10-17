@@ -10,7 +10,7 @@ import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
-const { hasCliInput, isCliIdle, cliInputDraft } = require('../src/features/reading/cli-panel.ts');
+const { hasCliInput, isCliIdle, cliInputDraft, extractCliOutputRows } = require('../src/features/reading/cli-panel.ts');
 const fixtureIdle = rows => {
   const screen = parseAgentScreen('claude', rows);
   return hasCliInput('claude', rows, screen) && isCliIdle('claude', rows, screen) && cliInputDraft('claude', rows, screen) === '';
@@ -66,19 +66,23 @@ try {
   await write(fixturePrompt + "; Send-AgentrixEvent 'codex-started' -Agent 'claude'\r");
   await waitFor(async () => (await state()).codexActive && (await state()).agent === 'claude', 'authenticated Claude fixture');
   // Claude's idle input between its two rules, with its footer: a typed command shows its output inside the reading
-  // view and is finished once the CLI is idle like this again. The fixture draws it after each command (the helper's
-  // own write is left out of the recorded keys). Only this explicit renderer clears the screen: the blank prompt
-  // leaves later permission/question frames intact. Queue the cursor move for the next prompt, after PowerShell's
-  // command-completion newline; its blank then advances past ❯ to the real input. Subsequent prompts do not move it.
+  // view and is finished once the CLI is idle like this again. The fixture appends it after actual slash execution,
+  // retaining PowerShell's result for even a coalesced screen publication. Only initial setup clears the screen.
+  // The blank prompt leaves later permission/question frames intact and advances past ❯ to the real input.
   const idle = "Clear-Host; Show-ReadingFixtureInput\r";
   const renderIdle = async label => { await write(idle); await waitForFixtureIdle(physicalRows, label); };
   await renderIdle('initial idle');
-  const settled = async label => {
+  const settled = async (label, command = label) => {
     await waitFor(async () => (await writes()).some(item => item.data === '\r'), `${label} submitted`);
-    const sent = await app.evaluate(() => globalThis.voicePastes.slice());
-    await renderIdle(label);
+    await waitForFixtureIdle(physicalRows, label);
+    const rows = await physicalRows();
+    assert.ok(extractCliOutputRows('claude', rows, parseAgentScreen('claude', rows), command).some(row => row.includes('CommandNotFoundException')), `${label}: actual PowerShell slash error stays above the next input`);
+    if (command === '/status' || command === '/unknown-reading-command') {
+      const result = terminal.getByRole('dialog', { name: command, exact: true });
+      await waitFor(async () => await result.filter({ hasText: 'CommandNotFoundException' }).count() === 1, `${label} result observed in the reading view`);
+      await waitFor(async () => await result.getByRole('button', { name: '切换到终端', exact: true }).count() === 0, `${label} tracker finished`);
+    }
     await waitFor(async () => await composer.isEnabled(), `${label} finished in the reading view`);
-    await app.evaluate((_electron, sent) => { globalThis.voicePastes = sent; }, sent);
   };
   await reading(); await composer.fill('/');
   await palette.getByRole('option').filter({ has: page.getByText('/status', { exact: true }) }).waitFor();
@@ -121,7 +125,7 @@ try {
   await composer.fill('/fix-issue 42'); await resetWrites(); await composer.press('Enter');
   await waitFor(async () => (await writes()).some(item => item.data === '\r'), 'project command submitted');
   assert.deepEqual((await writes()).map(item => item.data), ['/fix-issue 42', '\r']);
-  await settled('project command');
+  await settled('project command', '/fix-issue 42');
   assert.equal(await composer.isVisible(), true);
   await resetWrites(); await composer.press('Shift+Tab');
   await waitFor(async () => (await writes()).some(item => item.data === '\x1b[Z'), 'CLI Shift+Tab');
@@ -135,9 +139,9 @@ try {
   await composer.fill('/fix-iss'); await palette.getByRole('option').first().waitFor(); await composer.press('Enter');
   assert.equal(await composer.inputValue(), '/fix-issue ', 'Enter completes a partial command');
   await composer.fill('/fix-issue'); await resetWrites(); await composer.press('Enter');
-  await settled('exact command');
+  await settled('exact command', '/fix-issue');
   assert.equal(await composer.isVisible(), true);
-  await composer.fill('/unknown-reading-command'); await resetWrites(); await composer.press('Enter'); await settled('unknown command');
+  await composer.fill('/unknown-reading-command'); await resetWrites(); await composer.press('Enter'); await settled('unknown command', '/unknown-reading-command');
   assert.deepEqual((await writes()).map(item => item.data), ['/unknown-reading-command', '\r']);
   const finished = terminal.locator('.reading-cli-panel');
   await composer.fill('!echo reading-fixture'); await resetWrites(); await composer.press('Enter');
@@ -219,7 +223,12 @@ try {
 } catch (error) {
   if (page && !page.isClosed()) {
     await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {});
-    await physicalRows().then(rows => fs.writeFile(path.join(output, 'failure-terminal.txt'), rows.join('\n'))).catch(() => {});
+    await physicalRows().then(async rows => {
+      await fs.writeFile(path.join(output, 'failure-terminal.txt'), rows.join('\n'));
+      // CI's screenshot artifact currently includes PNGs/results.json only; keep the physical evidence in its log too.
+      console.error('Reading fixture terminal rows:', JSON.stringify(rows));
+    }).catch(() => {});
+    await writes().then(sent => console.error('Reading fixture writes:', JSON.stringify(sent))).catch(() => {});
     await fs.writeFile(path.join(output, 'failure.json'), JSON.stringify({ checks, errors, state: await state(), writes: await writes() }, null, 2)).catch(() => {});
   }
   throw error;

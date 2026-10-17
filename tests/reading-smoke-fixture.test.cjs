@@ -83,6 +83,33 @@ test('reading smoke positions delayed real PTY input inside its frame and preser
   shell.write("Write-Output 'HOOK_EXECUTED'\r");
   await wait(() => rows().some(row => row.startsWith('HOOK_EXECUTED')), 'PowerShell still executes fixture hook commands');
   shell.write(literals.idle); await idleReady(rows, 'before shell commands');
+  // Execute the smoke's full slash sequence, including the exact command after Shift+Tab. Observe only the final
+  // frame after Enter, as a slow/coalesced renderer can: no tracker gets to depend on transient PowerShell errors.
+  for (const command of ['/status', '/fix-issue 42', '/fix-issue', '/unknown-reading-command']) {
+    if (command === '/fix-issue') {
+      shell.write('\x1b[Z');
+      await idleReady(rows, 'Shift+Tab preserves physical input');
+    }
+    const before = cliHistory('claude', rows(), parseAgentScreen('claude', rows()));
+    shell.write(command);
+    await wait(() => cliInputDraft('claude', rows(), parseAgentScreen('claude', rows())) === command, 'physical slash receipt: ' + command);
+    shell.write('\r'); // Exactly one Enter, after receipt. Native PowerShell executes the unmodified command.
+    await idleReady(rows, 'executed slash result: ' + command);
+    const resultRows = rows(), screen = parseAgentScreen('claude', resultRows);
+    assert.equal(resultRows[terminal.buffer.active.cursorY].trim(), '❯', 'scrolling keeps the physical cursor in the new box');
+    assert.equal(terminal.buffer.active.cursorX, 2);
+    const result = extractCliOutputRows('claude', resultRows, screen, command, before);
+    assert.ok(result.some(row => row.includes('CommandNotFoundException')), 'retain the real execution error: ' + command);
+    assert.ok(result.some(row => row.trim() === '+ ' + command), 'the error belongs to this exact command');
+    const started = { id: command, command, at: 0, observed: false, idleSince: null, output: [], dialog: [], before, inputConfirmed: true, submitted: true };
+    const next = advanceCliCommand(started, 'claude', resultRows, screen, 100, true);
+    assert.equal(advanceCliCommand(next.command, 'claude', resultRows, screen, 500, false).done, true, 'coalesced final frame proves completion');
+    // The previous settled() cleared the only result before a publication. Keep the runtime's refusal to invent
+    // completion from that empty redraw, even with an exact receipt and one acknowledged Enter.
+    const empty = ['─'.repeat(40), '❯ ', '─'.repeat(40), '  ⏸ manual mode on'];
+    const lost = advanceCliCommand(started, 'claude', empty, parseAgentScreen('claude', empty), 100, true);
+    assert.equal(advanceCliCommand(lost.command, 'claude', empty, parseAgentScreen('claude', empty), 500, false).done, false);
+  }
   for (const [command, expected] of [['!echo reading-fixture', ['reading-fixture']], ['!true', []]]) {
     const before = cliHistory('claude', rows(), parseAgentScreen('claude', rows()));
     shell.write(command);

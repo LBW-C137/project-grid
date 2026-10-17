@@ -140,9 +140,15 @@ try {
   await publish(longTurn);
   await reader.getByText('步骤 398', { exact: true }).waitFor();
   const held = reader.locator('.reading-tools-head');
-  await held.click(); assert.equal(await held.getAttribute('aria-expanded'), 'true');
+  await held.waitFor();
+  assert.equal(await held.count(), 1, 'the rolling fixture has one tool group');
+  // Establish expansion before capturing identity: click toggles React state, and a locator re-resolves.
+  if (await held.getAttribute('aria-expanded') !== 'true') await held.click();
+  await waitFor(async () => await held.getAttribute('aria-expanded') === 'true', 'rolling fixture commands expanded');
+  assert.equal(await held.getAttribute('aria-expanded'), 'true');
+  await reader.locator('.reading-tools-tree').getByText('keep-open-marker', { exact: true }).waitFor();
   const headingTime = await reader.locator('.reading-step.is-agent > .reading-step-body > .reading-step-head time').innerText();
-  await reader.evaluate(node => { globalThis.hierarchyHeldButton = node.querySelector('.reading-tools-head'); });
+  await held.evaluate(node => { globalThis.hierarchyHeldButton = node; });
   for (let index = 399; index < 403; index++) {
     longTurn.push(message(`long-${index}`, 'assistant', `步骤 ${index}`));
     await publish(longTurn.slice(-400));
