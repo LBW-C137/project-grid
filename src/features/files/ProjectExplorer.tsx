@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import {
-  ArrowsInLineVertical, CaretLeft, ArrowClockwise, BracketsCurly,
-  CaretDown, CaretRight, File, FileCode, FileText, Folder, FolderOpen,
-  GearSix, GitBranch, LinkSimple, SidebarSimple, SpinnerGap, Image as ImageIcon, FilmStrip, FilePlus, FolderPlus, Clipboard,
+  ArrowsInLineVertical, CaretLeft, ArrowClockwise,
+  CaretDown, CaretRight, Folder,
+  GitBranch, LinkSimple, SidebarSimple, SpinnerGap, FilePlus, FolderPlus, Clipboard,
 } from '@phosphor-icons/react';
 import type { DirectoryListing, FileEntry, Project } from '../../shared/types';
+import { fileIcon, folderIcon } from './file-icons';
 import { useExplorerFileActions } from './ExplorerFileActions';
 import { GitBadge, GitPanel, type GitOpenMode } from '../git/GitPanel';
 import { gitDecorations, gitMark, type GitDecoration } from '../git/git-status';
@@ -16,15 +17,9 @@ import { shortcut } from '../shortcuts/shortcuts';
 const gitTitle = (title: string) => title.split(' · ').map(part => t(part)).join(' · ');
 
 function FileIcon({ entry, open = false }: { entry: FileEntry; open?: boolean }) {
-  if (entry.kind === 'directory') return open ? <FolderOpen className="file-icon folder-icon" size={16} weight="duotone" /> : <Folder className="file-icon folder-icon" size={16} weight="duotone" />;
+  if (entry.kind === 'directory') return folderIcon(entry.name, open);
   if (entry.kind === 'link') return <LinkSimple className="file-icon" size={15} />;
-  if (/\.(png|apng|jpe?g|jpe|jfif|gif|webp|bmp|avif|svg|ico)$/i.test(entry.name)) return <ImageIcon className="file-icon code-icon" size={16} />;
-  if (/\.(mp4|m4v|webm|ogv|ogg|mov|mkv|avi)$/i.test(entry.name)) return <FilmStrip className="file-icon config-icon" size={16} />;
-  if (/\.(json|ya?ml|toml)$/i.test(entry.name)) return <BracketsCurly className="file-icon config-icon" size={15} />;
-  if (/\.(tsx?|jsx?|[cm]js|py|rs|go|html?|css|scss|vue|svelte|ps1)$/i.test(entry.name)) return <FileCode className="file-icon code-icon" size={16} />;
-  if (/\.(md|txt|log)$/i.test(entry.name)) return <FileText className="file-icon text-file-icon" size={16} />;
-  if (/^(\.git|\.env)|config/i.test(entry.name)) return <GearSix className="file-icon" size={15} />;
-  return <File className="file-icon" size={15} />;
+  return fileIcon(entry.name);
 }
 
 function navigateTree(event: KeyboardEvent<HTMLButtonElement>, open: boolean, directory: boolean, toggle: () => void) {

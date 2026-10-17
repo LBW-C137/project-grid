@@ -33,6 +33,39 @@ const codexFooterScreen = (context, fields) => codexScreen({
 });
 
 const expected = {
+  'codex-bang-typed': { ...emptyScreen, banner: { ...codexBanner, version: '0.163.0', model: 'GPT-6-Sol', effort: 'default' }, status: { ...emptyStatus, model: 'GPT-6-Sol', effort: 'default', notes: ['Shell mode'] } },
+  'claude-bang-typed': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.302', model: null, effort: null, plan: null } },
+  'claude-bang-empty-typed': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.302', model: null, effort: null, plan: null } },
+  'claude-bang-running': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.302', model: null, effort: null, plan: null }, status: { ...emptyStatus, mode: 'manual mode on' } },
+  'claude-bang-output': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.302', model: null, effort: null, plan: null }, status: { ...emptyStatus, mode: 'manual mode on' } },
+  'claude-bang-empty-running': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.302', model: null, effort: null, plan: null }, status: { ...emptyStatus, mode: 'manual mode on' } },
+  'claude-bang-empty-done': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.302', model: null, effort: null, plan: null }, status: { ...emptyStatus, mode: 'manual mode on' } },
+  'claude-bang-multiline': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.302', model: null, effort: null, plan: null }, status: { ...emptyStatus, mode: 'manual mode on' } },
+  'claude-bang-empty-model-working': { ...emptyScreen, banner: { ...claudeBanner, version: '2.1.302', model: null, effort: null, plan: null }, status: { ...emptyStatus, mode: 'manual mode on' } },
+  'claude-2-1-302-start': { ...emptyScreen, banner: { product: 'Claude Code', version: '2.1.302', model: null, effort: null, plan: null, directory: 'C:\\work\\demo-app' }, status: { ...emptyStatus, mode: 'manual mode on' } },
+  'claude-2-1-302-status': emptyScreen,
+  'claude-2-1-302-config': emptyScreen,
+  'codex-0-163-status': { ...emptyScreen, banner: { ...codexBanner, version: '0.163.0', model: 'GPT-6-Sol', effort: 'default', directory: null }, status: freshStatus },
+  'codex-0-163-model': { ...emptyScreen, banner: { ...codexBanner, version: '0.163.0', directory: null }, choice: {
+    title: 'Select Model and Effort', kind: 'menu', context: [], hint: 'enter select · esc back', options: [
+      option(1, 'GPT-6.1-Sol', false, 'Latest workhorse model for coding and everyday work.'),
+      option(2, 'GPT-6-Astra', false, 'Frontier intelligence for the most demanding work.'),
+      option(3, 'GPT-6-Sol (current)', true, 'Previous generation workhorse model.'),
+      option(4, 'GPT-6-Luna', false, 'Fast and affordable model for easier tasks.'),
+      option(5, 'GPT-5.6-Sol', false, 'Older generation workhorse model.'),
+      option(6, 'GPT-5.6-Terra', false, 'Older balanced model for straightforward work.'),
+      option(7, 'GPT-5.6-Luna', false, 'Older fast and efficient model.'),
+      option(8, 'GPT-5.5', false, 'Legacy coding model.'),
+    ],
+  } },
+  'codex-0-163-permissions': { ...emptyScreen, banner: { ...codexBanner, version: '0.163.0', directory: null } },
+  'codex-0-163-plugins': { ...emptyScreen, banner: { ...codexBanner, version: '0.163.0', directory: null } },
+  'codex-0-163-memories': { ...emptyScreen, banner: { ...codexBanner, version: '0.163.0', model: 'GPT-6-Sol', effort: 'default', directory: null }, status: freshStatus, choice: {
+    title: 'Enable memories?', kind: 'menu', context: ['Memories are disabled in this TUI session.'], hint: 'enter select · esc back', options: [
+      option(1, 'Yes, enable', true, 'Save on the server for new threads without changing this thread'),
+      option(2, 'Not now', false, 'Keep memories disabled'),
+    ],
+  } },
   'claude-startup': claudeScreen({ status: { ...emptyStatus, mode: 'manual mode on' } }),
   'claude-after-deny': claudeScreen({ status: {
     ...emptyStatus, model: 'Opus 5.5', effort: 'high', context: 'ctx 4%', mode: 'manual mode on',

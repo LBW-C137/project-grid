@@ -77,3 +77,29 @@ test("Claude's weekly session reset explains it requires an exhausted 5-hour lim
   assert.doesNotMatch(render(6, null, 'zh', 'grants'), /5 小时额度用完后可用/);
   assert.doesNotMatch(render(6, null, 'zh', 'session', 'codex'), /5 小时额度用完后可用/);
 });
+
+test('Codex reset count arrives automatically, shows zero and bounded query states, preserving explicit reset controls', () => {
+  const render = (state, left = null, reason) => activityMarkup([], 'zh', { agent: 'codex', agentUsage: {
+    limits: [], resets: left === null ? null : { left, total: null }, resetQuery: { state, reason },
+  } });
+  assert.match(render('ready', 2), /<small>剩余 2 次<\/small>/);
+  const zero = render('ready', 0);
+  assert.match(zero, /<small>剩余 0 次<\/small>/); assert.match(zero, /<button[^>]*disabled/);
+  const loading = render('loading');
+  assert.match(loading, /正在查询剩余次数…/);
+  assert.doesNotMatch(loading, /<button[^>]*disabled/);
+  assert.match(loading, /点击后有 10 秒可以取消/);
+  assert.doesNotMatch(loading, /剩余次数在 \/usage 里显示/);
+  assert.match(render('error', null, 'timeout'), /查询失败，将自动重试/);
+  assert.match(render('unavailable', null, 'remote'), /远程账号暂不支持后台查询/);
+  assert.match(render('unavailable', null, 'provider'), /当前接口不提供重置次数/);
+  assert.match(render('unavailable', null, 'unsupported'), /当前账号或 Codex 版本未提供次数，将自动重试/);
+});
+
+test('working task keeps its real status, spinner and text, with no fake progress or dead theme overrides', () => {
+  const html = activityMarkup([], 'zh', { prompts: [{ id: 'work', text: 'Continue responding while usage hangs', state: 'working' }] });
+  assert.match(html, /正在处理/); assert.match(html, /Continue responding while usage hangs/);
+  assert.match(fs.readFileSync(path.join(__dirname, '../src/features/agents/ActivityPane.tsx'), 'utf8'), /className="loading-spinner"/);
+  assert.doesNotMatch(html, /activity-progress/);
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../src/features/agents/activity-pane.css'), 'utf8'), /activity-progress/);
+});

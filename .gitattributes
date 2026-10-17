@@ -8,3 +8,5 @@
 *.sh text eol=lf
 *.zsh text eol=lf
 *.bash text eol=lf
+# Official brand sources are checksum verified; preserve their exact bytes on Windows too.
+assets/brands/*.svg -text

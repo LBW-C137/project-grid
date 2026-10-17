@@ -5,7 +5,7 @@ import { t } from '../../shared/i18n';
 import { modelName } from '../reading/model-name';
 import { readScreen, subscribeScreen } from '../terminal/terminal-screen';
 import { sendToAgent } from '../home/send-to-agent';
-import { claudeResetsSaid, codexResetsSaid } from './reset-count';
+import { claudeResetsSaid, codexResetCount, codexResetsSaid } from './reset-count';
 import './activity-pane.css';
 
 // 1234 → "1.2k", 828400 → "828k", 23898406 → "23.9M": token counts the way a person reads them at a glance.
@@ -105,17 +105,17 @@ function UsageCard({ usage, terminal }: { usage: AgentUsage | null | undefined; 
     {known.length ? <dl className="activity-tokens">
       {known.map(([label, tokens]) => <TokenRow key={label} label={label} tokens={tokens!} />)}
     </dl> : <p className="activity-note">{t('第一次回复后显示。')}</p>}
-    <ResetQuota key={terminal.id} terminal={terminal} resets={claude ? usage?.resets ?? null : null} />
+    <ResetQuota key={`${terminal.id}:${terminal.sessionId}:${terminal.agentStartedAt}`} terminal={terminal} resets={usage?.resets ?? null} />
     {claude && <p className="activity-note">{usage?.limitsAt ? t('额度来自 {source}，{time} 更新', { source: usage.limitsFrom || 'Claude Code', time: resetTime(usage.limitsAt) }) : t('Claude Code 还没有获取账号额度；在终端输入 /usage 查看。')}</p>}
   </section>;
 }
 
-// What the agent last said on its screen of the resets left (Codex keeps the number nowhere else; Claude says whether its
+// What the agent last said on its screen of the resets left (Claude says whether its
 // weekly reset is still there only when offered it or after using it), per terminal.
 type Said = { left: number; again: string | null };
 const resetsSaid = new Map<string, Said>();
 function useResetsSaid(terminal: ProjectTerminal) {
-  const key = `${terminal.agent}:${terminal.id}`;
+  const key = `${terminal.agent}:${terminal.id}:${terminal.sessionId}:${terminal.agentStartedAt}`;
   const [said, setSaid] = useState(() => resetsSaid.get(key) ?? null);
   useEffect(() => {
     setSaid(resetsSaid.get(key) ?? null);
@@ -125,7 +125,8 @@ function useResetsSaid(terminal: ProjectTerminal) {
       if (now && (now.left !== known?.left || now.again !== known?.again)) { resetsSaid.set(key, now); setSaid(now); }
     };
     const current = readScreen(terminal.id); if (current) read(current.rows);
-    return subscribeScreen(terminal.id, screen => read(screen.rows));
+    const unsubscribe = subscribeScreen(terminal.id, screen => read(screen.rows));
+    return () => { unsubscribe(); resetsSaid.delete(key); };
   }, [key]);
   return said;
 }
@@ -137,7 +138,13 @@ function useResetsSaid(terminal: ProjectTerminal) {
 const COUNTDOWN = 10;
 function ResetQuota({ terminal, resets }: { terminal: ProjectTerminal; resets: AgentUsage['resets'] }) {
   const claude = terminal.agent === 'claude', said = useResetsSaid(terminal);
-  const left = said?.left ?? (claude ? resets?.left ?? null : null), weekly = claude && resets?.kind === 'session';
+  const left = claude ? said?.left ?? resets?.left ?? null : codexResetCount(terminal.agentUsage, said?.left ?? null);
+  const weekly = claude && resets?.kind === 'session', query = terminal.agentUsage?.resetQuery;
+  const queryNote = query?.state === 'loading' ? t('正在查询剩余次数…')
+    : query?.reason === 'remote' ? t('远程账号暂不支持后台查询')
+    : query?.reason === 'provider' ? t('当前接口不提供重置次数')
+    : query?.reason === 'scope' ? t('无法确认账号环境，暂不能查询')
+    : query?.state === 'error' ? t('查询失败，将自动重试') : t('当前账号或 Codex 版本未提供次数，将自动重试');
   const sessionPercent = terminal.agentUsage?.limits.find(limit => limit.minutes === 300)?.percent;
   const afterLimit = weekly && left !== 0 && sessionPercent != null && sessionPercent < 100;
   const [count, setCount] = useState<number | null>(null), [note, setNote] = useState<string | null>(null);
@@ -181,7 +188,8 @@ function ResetQuota({ terminal, resets }: { terminal: ProjectTerminal; resets: A
     </div>
     {counting ? <button ref={cancelButton} type="button" className="activity-reset-cancel" onClick={() => setCount(null)}>{t('取消')}</button>
       : <small>{afterLimit ? t('5 小时额度用完后可用 · 每周 1 次')
-        : left === null ? weekly ? t('每周可重置 1 次 5 小时额度') : claude ? t('剩余次数未知') : t('剩余次数在 /usage 里显示')
+        : left === null ? weekly ? t('每周可重置 1 次 5 小时额度') : claude ? t('剩余次数未知') : queryNote
+        : !claude ? t('剩余 {count} 次', { count: left })
         : none ? said?.again ? t('本周已用，{date} 后可再用', { date: said.again }) : t('没有可用的重置')
         : weekly ? t('本周还可重置 1 次') : t('剩余 {count} 次', { count: left })}</small>}
     {note && <p className="activity-reset-note" role="status">{note}</p>}
@@ -227,7 +235,6 @@ function PromptList({ terminal }: { terminal: ProjectTerminal }) {
       ? <li key={prompt.id} className="is-working" title={prompt.text}>
         <span className="activity-prompt-state"><CircleNotch size={20} weight="bold" className="loading-spinner" aria-hidden="true" />{t('正在处理')}</span>
         <p>{prompt.text}</p>
-        <span className="activity-progress" aria-hidden="true"><i /></span>
       </li>
       : <li key={prompt.id} title={prompt.text}><span className="activity-prompt-state">{t('排队中')}</span><p>{prompt.text}</p></li>)}
   </ol>;

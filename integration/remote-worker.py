@@ -792,15 +792,18 @@ class Worker:
             read_start = max(bom, start - 2)
             source.seek(read_start)
             data = source.read(max(0, min(meta["size"], end + 4) - read_start))
+            # Match local paging: adjacent pages move past the same character or CRLF pair.
             def boundary(position):
                 offset = max(0, min(len(data), position - read_start))
                 if encoding == "utf-8":
                     while offset < len(data) and data[offset] & 0xc0 == 0x80: offset += 1
+                    if 0 < offset < len(data) and data[offset - 1:offset + 1] == b"\r\n": offset += 1
                 elif offset >= 2 and offset + 1 < len(data):
                     order = "little" if encoding == "utf-16le" else "big"
                     unit = int.from_bytes(data[offset:offset + 2], order)
                     previous = int.from_bytes(data[offset - 2:offset], order)
                     if 0xdc00 <= unit <= 0xdfff and 0xd800 <= previous <= 0xdbff: offset += 2
+                    elif previous == 13 and unit == 10: offset += 2
                 return offset
             byte_start, byte_end = boundary(start), boundary(end)
             page = data[byte_start:byte_end]

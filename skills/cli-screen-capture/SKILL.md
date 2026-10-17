@@ -47,6 +47,11 @@ An approval only shows after the model asks for a tool. Never use the real sign-
 
 ## Lessons
 
+- A repeated command can redraw exactly the same terminal rows. The 100 ms screen subscription can miss its typed
+  input even when xterm received it. Confirm the exact live input with `readScreen()` before sending one Enter, and
+  carry that receipt into tracking. Never recover by automatically resending Enter. Test four consecutive `/status`
+  commands and a different command afterward; a recovery card alone does not prove the normal path is fixed.
+
 - Claude Code 2.1.296 draws its effort over the input box (`◉ xhigh · /effort`) and may head the model line with `●`;
   `/effort` became a centred slider with an Ultracode switch beside it.
 - Codex 0.162 prints `fast` after the effort in its footer, and its resume list's Esc means "start new" after

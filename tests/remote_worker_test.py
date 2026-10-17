@@ -503,6 +503,36 @@ class RemoteFilesTest(unittest.TestCase):
                 self.worker.save_file("editable.txt", 0, current["revision"], payload)
             self.assertEqual(filename.read_text(encoding="utf-8"), "external content")
 
+    def test_page_boundaries_preserve_crlf_and_unicode_when_editing_either_side(self):
+        filename = self.root / "boundary.txt"
+        for encoding, bom in (("utf-8", b""), ("utf-8", b"\xef\xbb\xbf"), ("utf-16le", b"\xff\xfe"), ("utf-16be", b"\xfe\xff")):
+            units = remote.PAGE_BYTES // (1 if encoding == "utf-8" else 2)
+            originals = ["x" * (units - 1) + "\r\n" + "y" * (units - 2) + "\r\nTAIL中文🙂\r\nlast"]
+            # A UTF-16 smile uses a surrogate pair; UTF-8 covers every interior byte of both widths.
+            originals += ["x" * (units - offset) + "🙂\r\nTAIL中文\r\nlast" for offset in ([1, 2, 3] if encoding == "utf-8" else [1])]
+            if encoding == "utf-8": originals += ["x" * (units - offset) + "中\r\nTAIL\r\nlast" for offset in (1, 2)]
+            for original in originals:
+                with self.subTest(encoding=encoding, length=len(original), bom=bom):
+                    filename.write_bytes(bom + original.encode(encoding))
+                    first = self.worker.preview("boundary.txt", 0)
+                    pages = [self.worker.preview("boundary.txt", index) for index in range(first["page"]["count"])]
+                    self.assertEqual("".join(page["content"] for page in pages), original)
+                    self.assertEqual(pages[0]["page"]["byteStart"], len(bom))
+                    self.assertEqual(pages[-1]["page"]["byteEnd"], filename.stat().st_size)
+                    for left, right in zip(pages, pages[1:]):
+                        self.assertEqual(left["page"]["byteEnd"], right["page"]["byteStart"])
+                        self.assertFalse(left["content"].endswith("\r") and right["content"].startswith("\n"))
+                    expected = original
+                    for index in range(len(pages)):
+                        page = self.worker.preview("boundary.txt", index)
+                        before, after = ("x", "X") if index == 0 else ("last", "LAST") if index == len(pages) - 1 else ("y", "Y")
+                        self.assertIn(before, page["content"])
+                        edited = page["content"].replace("\r\n", "\n").replace(before, after, 1)
+                        payload = base64.b64encode(edited.encode("utf-8")).decode("ascii")
+                        self.worker.save_file("boundary.txt", index, page["revision"], payload)
+                        expected = expected.replace(before, after, 1)
+                        self.assertEqual(filename.read_bytes(), bom + expected.encode(encoding))
+
     def test_traversal_and_non_files_are_rejected(self):
         for filename in ("../outside", "/etc/passwd", "bad\0path", "a\\b"):
             with self.assertRaises(ValueError): self.worker.resolve(filename)

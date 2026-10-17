@@ -1372,5 +1372,22 @@
   "活动栏固定在窗口里，不再上下滚动：任务卡片自动让出空间，窗口较矮时其余卡片排得更紧凑。": "The activity pane stays fixed in the window and never scrolls: the tasks card makes room, and in a shorter window the other cards sit tighter.",
   "阅读视图和输入框排成一列：头像和输入框左边对齐，卡片和输入框右边对齐，左右留白一样宽；时间放在名字后面（如「你 18:39」）。": "The reading view and the message box form one column: the avatars line up with its left edge, the cards with its right, equal margins on both sides; each time follows the name (as in \"You 18:39\").",
   "语音输入完成后，文字先在输入框里显示半秒再发送；这半秒内打字或按 Esc 可以取消发送。": "After dictation, the words show in the message box for half a second before they are sent; typing or Esc in that half second cancels the send.",
-  "Claude 的每周重置在 5 小时额度用完前标明「用完后可用」，不再显得随时可用。": "Claude's weekly reset says it is available once the 5-hour limit is used up, instead of looking available any time."
+  "Claude 的每周重置在 5 小时额度用完前标明「用完后可用」，不再显得随时可用。": "Claude's weekly reset says it is available once the 5-hour limit is used up, instead of looking available any time.",
+  "阅读视图按机器人回合分层，技能和命令显示在下一级，长对话中展开的工具组保持展开。": "The reading view groups each agent turn with its skills and commands beneath it, keeping tool groups expanded in long conversations.",
+  "消息排队和送达状态更可靠，从终端提交的排队消息也能在阅读视图中查看。": "Queued messages and delivery status are more reliable, including messages queued from the terminal.",
+  "自动保存会继续保存写入期间的新修改，大文件分段编辑保留原有换行符，文件弹窗支持翻页。": "Autosave follows up on edits made during a save, paged edits preserve line endings, and file popups support page navigation.",
+  "远程 Claude 会话正确恢复，跨目录的同名文件可以一起复制，已查看的完成提醒不再被后台回调重新触发。": "Remote Claude sessions restore correctly, same-named files from different folders can be copied together, and background callbacks no longer rearm acknowledged completion alerts.",
+  "文件树图标按文件类型和目录用途区分颜色，单色主题继续使用统一墨色。": "File-tree icons distinguish file types and folder purposes with color while monochrome themes keep a uniform ink.",
+  "阅读视图按回合分层，技能和命令显示在下一级，GPT/Codex 和 Claude 使用官方标志，长对话展开状态保持不变。": "The reading view groups agent turns with nested skills and commands, official GPT/Codex and Claude marks, and stable expanded tools in long conversations.",
+  "Slash 指令即时显示执行状态，慢响应提供终端恢复入口，终端排队消息也能正确显示。": "Slash commands show their status immediately, slow responses offer terminal recovery, and messages queued from the terminal remain visible.",
+  "剩余重置次数由后端自动查询并刷新，任务卡片保留正在处理状态，移除无意义的进度条。": "Remaining reset counts refresh automatically in the background; task cards keep their processing status without meaningless progress bars.",
+  "自动保存补存写入期间的新修改，分段编辑保留换行符，文件弹窗支持翻页。": "Autosave follows up on newer edits, paged editing preserves line endings, and file popups support page navigation.",
+  "修复远程 Claude 恢复、跨目录同名文件复制和完成提醒重复触发，保留文件树的新图标样式。": "Fixed remote Claude restoration, copying same-named files from different folders and repeated completion alerts, while keeping the new file-tree icon style.",
+  "正在查询剩余次数…": "Checking remaining resets…",
+  "远程账号暂不支持后台查询": "Background queries are not yet supported for remote accounts",
+  "当前接口不提供重置次数": "This provider does not provide reset counts",
+  "无法确认账号环境，暂不能查询": "Cannot verify the account environment; query unavailable",
+  "查询失败，将自动重试": "Query failed; retrying automatically",
+  "当前账号或 Codex 版本未提供次数，将自动重试": "This account or Codex version did not provide a count; retrying automatically",
+  "尚未确认命令完成。请切换到终端检查，避免重复执行。": "Command completion is unconfirmed. Check the terminal before running it again."
 }

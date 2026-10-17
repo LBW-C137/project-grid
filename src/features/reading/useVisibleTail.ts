@@ -1,7 +1,10 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { ConversationEntry } from '../../shared/types';
+import { timelineIdentity } from './reading-timeline-identity.ts';
 
 type ConversationBlock = { kind: 'message'; entry: ConversationEntry } | { kind: 'tools'; id: string; entries: ConversationEntry[] };
+type AgentTurn = { kind: 'agent'; id: string; at: number; blocks: ConversationBlock[] };
+type ConversationTurn = { kind: 'user'; entry: ConversationEntry } | AgentTurn;
 export const VISIBLE_TAIL_PAGE = 40;
 export const blockId = (block: ConversationBlock) => block.kind === 'message' ? block.entry.id : block.id;
 
@@ -12,9 +15,33 @@ export function blocks(entries: readonly ConversationEntry[]): ConversationBlock
     const last = result.at(-1);
     if (entry.role === 'tool') {
       if (last?.kind === 'tools') last.entries.push(entry);
-      else result.push({ kind: 'tools', id: entry.id, entries: [entry] });
+      else result.push({ kind: 'tools', id: timelineIdentity(entry)?.tools?.id ?? entry.id, entries: [entry] });
     } else result.push({ kind: 'message', entry });
   }
+  return result;
+}
+
+// Page by content blocks, then nest the visible ones in turns. Read the prefix only for parent identity/time:
+// revealing earlier content in the same turn must not remount its tools or change the agent's timestamp.
+export function conversationTurns(grouped: readonly ConversationBlock[], start = 0): ConversationTurn[] {
+  const result: ConversationTurn[] = [];
+  let agent: AgentTurn | undefined;
+  grouped.forEach((block, index) => {
+    if (block.kind === 'message' && block.entry.role === 'user') {
+      agent = undefined;
+      if (index >= start) result.push({ kind: 'user', entry: block.entry });
+    } else {
+      if (!agent) {
+        const entry = block.kind === 'tools' ? block.entries[0] : block.entry;
+        const identity = timelineIdentity(entry)?.turn;
+        agent = { kind: 'agent', id: identity?.id ?? blockId(block), at: identity?.at ?? entry.at, blocks: [] };
+      }
+      if (index >= start) {
+        if (!agent.blocks.length) result.push(agent);
+        agent.blocks.push(block);
+      }
+    }
+  });
   return result;
 }
 

@@ -20,10 +20,10 @@ function fromColumn(row: string, column: number) {
 }
 // The part of a row set off to the right, beside or instead of the conversation's own text (which starts at its left
 // edge): its column and text, or null.
-function rightPart(row: string, from: number) {
+function rightPart(row: string, from: number, matches: (text: string) => boolean = () => true) {
   for (const gap of row.matchAll(/\s{2,}(?=\S)/g)) {
     const end = gap.index + gap[0].length, column = cells(row.slice(0, end));
-    if (column >= from) return { column, text: row.slice(end) };
+    if (column >= from && matches(row.slice(end))) return { column, text: row.slice(end) };
   }
   return null;
 }
@@ -35,14 +35,14 @@ const DIALOG_LEFT = 12;
 export function codexDialog(rows: string[]): string[] | null {
   let hint = rows.length - 1, left = Infinity;
   for (; hint >= 0; hint--) {
-    const part = rightPart(rows[hint], DIALOG_LEFT);
-    if (part && hintRow(part.text)) { left = part.column; break; }
+    const part = rightPart(rows[hint], DIALOG_LEFT, hintRow);
+    if (part) { left = part.column; break; }
   }
   if (hint < 0) return null;
   // Up from the hints, the rows with a part in the dialog's columns; three rows in a row without one end it.
   let top = hint;
   for (let index = hint - 1, empty = 0; index >= 0 && empty < 3; index--) {
-    const part = rightPart(rows[index], DIALOG_LEFT);
+    const part = rightPart(rows[index], Math.max(DIALOG_LEFT, left - 8));
     if (part && part.column >= left - 8) { top = index; empty = 0; left = Math.min(left, part.column); }
     else empty++;
   }
@@ -65,7 +65,8 @@ function footerStart(agent: ScreenAgent, rows: string[]): number {
     }
   } else {
     for (let index = rows.length - 1; index >= 0; index--) {
-      if (inputRow(agent, rows[index])) return index + 1;
+      // Codex 0.163 replaces › with ! in its shell editor. This footer anchor is separate from shortcut/menu rows.
+      if (inputRow(agent, rows[index]) || /^\s*!(?:\s|$)/.test(rows[index])) return index + 1;
     }
   }
   return rows.length;

@@ -72,12 +72,12 @@ test('named timeline heads show their time even in the same minute as the previo
   }
 });
 
-test('unnamed timeline steps and tool pills show time only when the minute changes', () => {
-  const { TimelineStep } = loadUI('features/reading/Timeline.tsx');
+test('child replies and tools show minute changes without adding main rail nodes', () => {
+  const { AgentTurnItem } = loadUI('features/reading/Timeline.tsx');
   const at = new Date(2026, 9, 17, 16, 16, 40).getTime();
-  for (const kind of ['agent', 'tools']) {
-    const render = showTime => renderToStaticMarkup(React.createElement(TimelineStep, { at, kind, showTime, mark: null }, 'step'));
-    assert.doesNotMatch(render(false), /<time|reading-step-head/);
+  for (const kind of ['message', 'tools']) {
+    const render = showTime => renderToStaticMarkup(React.createElement(AgentTurnItem, { at, kind, showTime, mark: null }, 'step'));
+    assert.doesNotMatch(render(false), /<time|reading-step-head|reading-node|class="reading-step /);
     assert.match(render(true), /<time dateTime=/);
     if (kind === 'tools') assert.match(render(true), /step<time/);
   }
@@ -241,7 +241,7 @@ function elements(node) {
 }
 
 // Run ReadingView's composer handlers and effect cleanup without starting a browser or Electron.
-function dictationHarness(t) {
+function dictationHarness(t, overrides = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const slots = [], effects = [], written = [], pasted = [], echoed = [];
   let cursor = 0, root, insert, closed = 0;
@@ -292,13 +292,14 @@ function dictationHarness(t) {
     './reading-mode': { setChoiceVisible() {} }, './typing': { markTyping() {}, isTyping: () => false },
     './useStickToBottom': { useStickToBottom: () => ({ stuck: true, unseen: 0, ready: true, holdPosition() {}, toBottom() {} }) },
     './useReadingConversation': { conversationKey: () => 'session', useReadingConversation: () => [] },
-    './useVisibleTail': { blocks: () => [], useVisibleTail: () => ({ earlier: 0, visible: [] }) },
+    './useVisibleTail': { blocks: () => [], conversationTurns: () => [], useVisibleTail: () => ({ earlier: 0, visible: [] }) },
     './useMentions': { useMentions: () => ({ open: false, keys: () => false }) }, './MentionPalette': {},
     './usePendingPrompts': { usePendingPrompts: () => ({ pending: [], echo: (text, images) => { echoed.push({ text, images }); return null; }, cancelEcho() {} }) },
     './PendingPromptEntries': {}, './markdown-parse': {}, './FileCards': {},
     './reading-welcome': { useWelcomeStarting: () => false }, './ReadingCliPanel': {},
     './useReadingCli': { useReadingCli: () => ({ ...cli, entries: [] }) },
     './image-thumbnail': { thumbnail: async () => 'data:image/png;base64,picture' },
+    ...overrides,
   });
   const render = () => {
     cursor = 0; root = ReadingView(props);
@@ -310,7 +311,7 @@ function dictationHarness(t) {
   const unmount = () => { for (const slot of slots) if (slot?.cleanup) { slot.cleanup(); slot.cleanup = undefined; } };
   t.after(() => { unmount(); globalThis.window = previousWindow; globalThis.document = previousDocument; });
   render(); render();
-  return { props, screen, cli, node, written, pasted, echoed, render, unmount, closed: () => closed,
+  return { props, screen, cli, node, written, pasted, echoed, render, unmount, tree: () => root, closed: () => closed,
     dictate: (text, submit = true) => { insert(text, submit); render(); },
     edit: text => { render().props.onChange({ target: { value: text } }); render(); },
     pending: () => elements(root).some(element => /\bis-sending-soon\b/.test(element.props.className)),
@@ -557,7 +558,7 @@ test('reading view requires an active agent and a live terminal session', () => 
   assert.equal(mode.readingShown({ ...value, sessionId: null }, []), false);
 });
 
-test('reading entry rendering parses only the last 40 blocks and leaves the welcome branch intact', t => {
+function readingHarness(t, entries = [], overrides = {}) {
   const tail = require('../src/features/reading/useVisibleTail.ts');
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
@@ -567,41 +568,228 @@ test('reading entry rendering parses only the last 40 blocks and leaves the welc
     if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow); else delete globalThis.window;
     if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument); else delete globalThis.document;
   });
-  let entries = Array.from({ length: 400 }, (_, index) => ({ id: String(index), at: 0, role: 'assistant', text: `answer-${index}` }));
+  const state = { entries, pending: [], terminal: { id: 'terminal', sessionId: 'session', agent: 'codex', codexActive: true, needsInput: null } };
   const parsed = [], icon = () => React.createElement('svg');
   const { ReadingView } = loadUI('features/reading/ReadingView.tsx', {
     './markdown-escape': { readingMarked: { parse: text => { parsed.push(text); return text; } } },
     dompurify: { default: () => ({ sanitize: html => html }) },
     '@phosphor-icons/react': new Proxy({}, { get: () => icon }),
-    './action-text': {}, './voice-input': {}, './terminal-screen': { useScreen: () => null },
+    './action-text': { stepVerb: tool => tool.kind, actionText: tool => tool.target }, './voice-input': {}, './terminal-screen': { useScreen: () => null },
     './agent-screen': { parseAgentScreen: () => fakeScreen() },
     './ReadingWelcome': { ReadingWelcome: () => React.createElement('p', null, 'welcome preserved') },
     './ReadingChoice': {}, './ReadingQuestion': {}, './choice-keys': {}, './reading-mode': {},
     './useStickToBottom': { useStickToBottom: () => ({ stuck: true, unseen: 0, ready: true, holdPosition() {}, toBottom() {} }) },
-    './useReadingConversation': { conversationKey: () => 'session', useReadingConversation: () => entries },
+    './useReadingConversation': { conversationKey: () => 'session', useReadingConversation: () => state.entries },
     './useVisibleTail': tail, './reading.css': {},
     './useMentions': { useMentions: () => ({ open: false }) }, './MentionPalette': { MentionPalette: () => null },
     './pending-prompts': require('../src/features/reading/pending-prompts.ts'),
-    './usePendingPrompts': { usePendingPrompts: () => ({ pending: [], echo() {}, cancelEcho() {} }) },
-    './PendingPromptEntries': { PendingPromptEntries: () => null }, './ReadingDirectCard': { ReadingDirectCard: () => null }, './markdown-parse': { parseMarkdown: async () => null, parsedMarkdown: () => undefined }, './FileCards': { FileCards: () => null, previewable: () => false },
+    './usePendingPrompts': { usePendingPrompts: () => ({ pending: state.pending, echo() {}, cancelEcho() {} }) },
+    './PendingPromptEntries': loadUI('features/reading/PendingPromptEntries.tsx'),
+    './markdown-parse': { parseMarkdown: async () => null, parsedMarkdown: () => undefined },
+    './FileCards': { FileCards: ({ files }) => React.createElement('div', { className: 'file-cards' }, files.join(',')), previewable: () => true },
     './ReadingSessions': { ReadingSessions: () => null }, './reading-sessions': require('../src/features/reading/reading-sessions.ts'),
     './reading-welcome': { useWelcomeStarting: () => false },
     './ReadingCliPanel': { ReadingCliPanel: () => null }, './ReadingCommandOutput': { ReadingCommandOutput: () => null },
     './cli-panel': require('../src/features/reading/cli-panel.ts'),
     './useReadingCli': { useReadingCli: (id, session, agent, list) => ({ entries: list, busy: false, panel: null, begin() {} }) },
     './i18n': { currentLanguage: () => 'en', t: (text, values) => (en[text] ?? text).replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? name)) },
+    ...overrides,
   });
   const render = () => renderToStaticMarkup(React.createElement(ReadingView, {
-    projectId: 'project', terminal: { id: 'terminal', sessionId: 'session', agent: 'codex', codexActive: true, needsInput: null },
+    projectId: 'project', terminal: state.terminal,
     autoFocus: false, onShowTerminal() {}, onError() {}, onOpenLink() {},
   }));
+  return { state, render, parsed, ReadingView };
+}
+
+test('reading entry rendering parses only the last 40 blocks inside a turn and leaves the welcome branch intact', t => {
+  const { state, render, parsed } = readingHarness(t, Array.from({ length: 400 }, (_, index) => ({ id: String(index), at: 0, role: 'assistant', text: `answer-${index}` })));
   const html = render();
   assert.equal(parsed.length, 40);
   assert.equal(parsed[0], 'answer-360'); assert.equal(parsed.at(-1), 'answer-399');
   assert.match(html, /Show earlier conversation \(360\)/);
   assert.doesNotMatch(html, /answer-359/);
-  entries = []; parsed.length = 0;
+  assert.equal((html.match(/class="reading-step is-agent/g) || []).length, 1);
+  state.entries = []; parsed.length = 0;
   assert.match(render(), /welcome preserved/); assert.equal(parsed.length, 0);
+});
+
+const timelineSections = html => html.split(/(?=<div class="reading-step is-)/).filter(part => part.startsWith('<div class="reading-step is-'));
+const readingEntry = (id, role, minute, extra = {}) => ({ id, role, at: new Date(2026, 9, 17, 16, minute).getTime(), ...extra });
+const readingTool = (id, minute, extra = {}) => readingEntry(id, 'tool', minute, { tool: { kind: 'command', tool: 'shell', target: id, done: true, failed: false, ...extra } });
+
+test('Claude and Codex render user and agent parents with ordered child replies, leading tools and tools-only turns', t => {
+  const { state, render } = readingHarness(t, [
+    readingEntry('u1', 'user', 10, { text: 'first prompt' }), readingTool('skill', 11, { kind: 'skill' }),
+    readingEntry('a1', 'assistant', 12, { text: 'first reply' }), readingEntry('a2', 'assistant', 13, { text: 'second reply' }),
+    readingTool('cmd', 14), readingEntry('a3', 'assistant', 15, { text: 'third reply' }),
+    readingEntry('u2', 'user', 16, { text: 'next prompt' }),
+    readingTool('edit', 17, { kind: 'edit', written: ['report.md'] }), readingTool('failed command', 17, { failed: true }),
+    readingTool('running command', 18, { done: false, detail: 'still processing' }),
+  ]);
+  for (const agent of ['claude', 'codex']) {
+    state.terminal.agent = agent;
+    const html = render(), sections = timelineSections(html);
+    assert.deepEqual(sections.map(section => section.match(/reading-step is-(\w+)/)[1]), ['user', 'agent', 'user', 'agent']);
+    assert.equal((html.match(/class="reading-node"/g) || []).length, 4);
+    assert.equal((html.match(/class="reading-turn-tools/g) || []).length, 3);
+    assert.equal((html.match(/class="reading-assistant /g) || []).length, 3);
+    assert.equal((html.match(new RegExp(`<b class="reading-step-label">${agent === 'claude' ? 'Claude Code' : 'Codex'}</b>`, 'g')) || []).length, 2);
+    assert.deepEqual([...sections[1].matchAll(/class="reading-turn-(tools|message)/g)].map(match => match[1]), ['tools', 'message', 'message', 'tools', 'message']);
+    assert.match(sections[1], /first reply[\s\S]*second reply[\s\S]*third reply/);
+    for (const minute of [10, 11, 12, 13, 14, 15, 16, 17]) {
+      assert.ok(html.includes(`dateTime="${new Date(2026, 9, 17, 16, minute).toISOString()}"`));
+    }
+    assert.match(sections[3], /is-running/); assert.match(sections[3], /has-failed/);
+    assert.match(sections[3], /aria-expanded="true"/); assert.match(sections[3], /reading-tools-tree/);
+    assert.match(sections[3], /failed command/); assert.match(sections[3], /still processing/);
+    assert.match(sections[3], /class="file-cards">report.md/);
+  }
+});
+
+test('live thinking and confirmation stay inside the latest agent, including a tools-only history', t => {
+  const { state, render } = readingHarness(t, [readingTool('leading', 11)]);
+  state.terminal.codexActivity = 'working';
+  let sections = timelineSections(render());
+  assert.equal(sections.length, 1); assert.match(sections[0], /reading-turn-tools[\s\S]*role="status"/);
+  assert.match(sections[0], /Codex is thinking/);
+  state.terminal.needsInput = 'confirm this command';
+  sections = timelineSections(render());
+  assert.equal(sections.length, 1); assert.match(sections[0], /confirm this command/);
+  state.entries = [readingEntry('user', 'user', 12, { text: 'new prompt' })];
+  sections = timelineSections(render());
+  assert.deepEqual(sections.map(section => section.match(/reading-step is-(\w+)/)[1]), ['user', 'agent']);
+  state.entries = [readingTool('failed only', 13, { failed: true })];
+  state.terminal.codexActivity = 'idle'; state.terminal.needsInput = null;
+  sections = timelineSections(render());
+  assert.equal(sections.length, 1); assert.match(sections[0], /class="reading-step is-agent is-codex is-failed"/);
+  assert.match(sections[0], /reading-turn-tools is-failed/); assert.match(sections[0], /aria-expanded="false"/);
+  assert.doesNotMatch(sections[0], /reading-tools-tree|role="status"/);
+});
+
+test('pending users retain their cards and a new sending prompt separates live agent turns; queued users wait after the active agent', t => {
+  const { state, render } = readingHarness(t, [readingEntry('reply', 'assistant', 11, { text: 'answer' })]);
+  state.terminal.codexActivity = 'working';
+  state.pending = [{ id: 'pending', at: readingEntry('', 'user', 12).at, text: 'next prompt', sending: true }];
+  let sections = timelineSections(render());
+  assert.deepEqual(sections.map(section => section.match(/reading-step is-(\w+)/)[1]), ['agent', 'user', 'agent']);
+  assert.match(sections[1], /reading-pending is-sending/); assert.match(sections[2], /role="status"/);
+  state.entries.push(readingEntry('queued', 'user', 12, { text: 'next prompt', queued: true }));
+  sections = timelineSections(render());
+  assert.deepEqual(sections.map(section => section.match(/reading-step is-(\w+)/)[1]), ['agent', 'user']);
+  assert.match(sections[0], /role="status"/); assert.match(sections[1], /reading-pending is-queued/);
+});
+
+test('real Claude queue records render without an echo and promote once in producer order', t => {
+  const { ConversationLog, claudeConversation } = require('../electron/conversation.cjs');
+  const log = new ConversationLog(), timestamp = '2026-10-17T01:00:00Z';
+  log.put(readingEntry('active', 'assistant', 0, { text: 'active reply' }));
+  claudeConversation(log, { type: 'queue-operation', operation: 'enqueue', timestamp, content: 'QUEUED_FROM_TERMINAL' });
+  const { state, render } = readingHarness(t, log.list);
+  state.terminal.agent = 'claude'; state.terminal.codexActivity = 'working';
+  let html = render(), sections = timelineSections(html);
+  assert.deepEqual(sections.map(section => section.match(/reading-step is-(\w+)/)[1]), ['agent', 'user']);
+  assert.match(sections[0], /role="status"/); assert.match(sections[1], /reading-pending is-queued/);
+  assert.equal((html.match(/QUEUED_FROM_TERMINAL/g) || []).length, 1);
+  assert.match(sections[1], new RegExp(`dateTime="${timestamp.replace('Z', '.000Z')}"`));
+  state.pending = [{ id: 'echo', role: 'user', text: 'QUEUED_FROM_TERMINAL', at: Date.parse(timestamp) - 100, sending: true }];
+  assert.equal((render().match(/QUEUED_FROM_TERMINAL/g) || []).length, 1, 'an echo adds no duplicate');
+  claudeConversation(log, { type: 'queue-operation', operation: 'dequeue', timestamp, content: 'QUEUED_FROM_TERMINAL' });
+  claudeConversation(log, { type: 'attachment', uuid: 'accepted', timestamp, attachment: { type: 'queued_command', prompt: 'QUEUED_FROM_TERMINAL' } });
+  state.entries = log.list;
+  const prompts = require('../src/features/reading/pending-prompts.ts');
+  state.pending = prompts.reconcilePendingPrompts({ sessionId: 'session', seen: [], prompts: state.pending }, 'session', state.entries, Date.parse(timestamp)).prompts;
+  html = render(); sections = timelineSections(html);
+  assert.equal((html.match(/QUEUED_FROM_TERMINAL/g) || []).length, 1);
+  assert.match(sections[0], /active reply/); assert.match(sections[1], /QUEUED_FROM_TERMINAL/);
+  assert.doesNotMatch(html, /is-queued/);
+  state.entries = log.list.filter(entry => entry.role === 'user').map(entry => ({ ...entry, queued: true }));
+  html = render(); assert.match(html, /QUEUED_FROM_TERMINAL/); assert.doesNotMatch(html, /welcome preserved/);
+});
+
+test('an expanded visible tool group keeps its component state through rolling eviction and snapshot refreshes', t => {
+  const { applyConversationPacket } = require('../src/features/reading/conversation-buffer.ts');
+  // Retain hook state at React's keyed ancestry, so a changed parent or child key resets ToolGroup's open state.
+  const instances = new Map(); let slots, cursor;
+  const hooks = {
+    useState(initial) { const index = cursor++; if (!Object.hasOwn(slots, index)) slots[index] = typeof initial === 'function' ? initial() : initial; const own = slots; return [own[index], value => { own[index] = typeof value === 'function' ? value(own[index]) : value; }]; },
+    useRef(initial) { return hooks.useState(() => ({ current: initial }))[0]; },
+    useMemo(make) { return make(); }, useEffect() {}, useLayoutEffect() {},
+  };
+  const run = (key, component, props) => { if (!instances.has(key)) instances.set(key, []); slots = instances.get(key); cursor = 0; return component(props); };
+  const initial = Array.from({ length: 400 }, (_, index) => index === 398 ? readingTool('visible-tool', 10) : readingEntry('a' + index, 'assistant', 9, { text: 'reply' }));
+  const tail = require('../src/features/reading/useVisibleTail.ts');
+  let count = 40;
+  const { state, ReadingView } = readingHarness(t, applyConversationPacket([], { list: initial }), { react: hooks, './useVisibleTail': { ...tail, useVisibleTail: grouped => tail.visibleTail(grouped, count) } });
+  const props = { projectId: 'project', terminal: state.terminal, autoFocus: false, onShowTerminal() {}, onError() {}, onOpenLink() {} };
+  const group = () => {
+    const root = run('root', ReadingView, props); let found;
+    const visit = (node, path = '') => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(child => visit(child, path)); return; }
+      const key = path + '/' + String(node.key ?? (typeof node.type === 'function' ? node.type.name : node.type));
+      if (node.type?.name === 'ToolGroup') found = { key, node: run(key, node.type, node.props) };
+      else visit(node.props?.children, key);
+    };
+    visit(root); return found;
+  };
+  const before = group();
+  elements(before.node).find(element => element.type === 'button').props.onClick();
+  assert.equal(elements(group().node).find(element => element.type === 'button').props['aria-expanded'], true);
+  count = 80;
+  assert.equal(group().key, before.key);
+  assert.equal(elements(group().node).find(element => element.type === 'button').props['aria-expanded'], true);
+  count = 40;
+  for (let index = 400; index < 425; index++) {
+    const entry = readingEntry('a' + index, 'assistant', 11, { text: 'next' });
+    state.entries = applyConversationPacket(state.entries, index % 2 ? { list: [...state.entries, entry].slice(-400).map(entry => ({ ...entry })) } : { changes: [entry] });
+    const after = group();
+    assert.equal(state.entries.length, 400); assert.equal(after.key, before.key);
+    assert.equal(elements(after.node).find(element => element.type === 'button').props['aria-expanded'], true);
+    assert.ok(elements(after.node).some(element => element.type === 'ul'));
+  }
+});
+
+test('unrelated user records cannot discard a stalled prompt; retries stay bounded and queued prompts never resend', async t => {
+  const prompts = require('../src/features/reading/pending-prompts.ts');
+  let clock = 30000, sequence = 0;
+  t.mock.method(Date, 'now', () => clock);
+  const records = [{ id: 'unrelated', role: 'user', text: 'DIFFERENT_MESSAGE', at: 2000 }], cancellations = [];
+  let state = prompts.addPendingPrompt(prompts.createPendingPrompts('session'), 'lost', 'NEVER_DELIVERED', 1000);
+  state = prompts.reconcilePendingPrompts(state, 'session', records, clock);
+  const h = dictationHarness(t, {
+    './useReadingConversation': { conversationKey: (id, session) => session, useReadingConversation: () => records },
+    './usePendingPrompts': { usePendingPrompts: () => {
+      state = prompts.reconcilePendingPrompts(state, 'session', records, clock);
+      return { pending: state.prompts,
+        echo(text, images) { const id = 'retry-' + ++sequence; state = prompts.addPendingPrompt(state, id, text, clock, images); return id; },
+        cancelEcho(id) { cancellations.push(id); state = prompts.removePendingPrompt(state, id); },
+      };
+    } },
+  });
+  h.props.terminal.codexActivity = 'idle';
+  clock += 6000; await h.tick(6000);
+  assert.deepEqual(h.pasted.map(item => item.text), ['NEVER_DELIVERED']);
+  assert.deepEqual(cancellations, ['lost'], 'a replacement echo follows a real resend, never a timestamp-only acknowledgment');
+  await h.tick(400); await h.tick(2000); await h.tick(1000);
+  clock += 21000; h.render(); await h.tick(0);
+  assert.equal(h.pasted.length, 2);
+  await h.tick(400); await h.tick(2000); await h.tick(1000);
+  clock += 21000; h.render(); await h.tick(0);
+  assert.equal(h.pasted.length, 2, 'at most two automatic resends');
+  assert.equal(state.prompts.length, 1, 'an undelivered prompt remains visible');
+  const card = elements(h.tree()).find(element => element.props?.undelivered);
+  assert.equal(card.props.undelivered(state.prompts[0]), true);
+  records.push({ id: 'q', role: 'user', text: 'NEVER_DELIVERED', at: clock, queued: true });
+  clock += 30000; h.render(); await h.tick(0);
+  assert.equal(h.pasted.length, 2);
+  assert.equal(elements(h.tree()).find(element => element.props?.queued).props.queued(state.prompts[0]), true);
+  records.pop();
+  h.props.terminal.sessionId = 'next-session';
+  // The actual pending hook clears old-session echoes; give this new session its own stalled send.
+  state = prompts.addPendingPrompt(prompts.createPendingPrompts('session'), 'new-send', 'NEVER_DELIVERED', clock - 21000);
+  h.render(); await h.tick(0);
+  assert.equal(h.pasted.length, 3, 'the previous session cannot exhaust the new session retry budget');
 });
 
 test('a question renders as its own card: progress, the question, options, an own answer or notes, Submit and Chat', () => {
@@ -619,4 +807,165 @@ test('a question renders as its own card: progress, the question, options, an ow
   assert.match(review, /Review your answers/); assert.match(review, /node_modules, abc/); assert.match(review, /Submit answers/);
   const codex = render('codex-question');
   assert.match(codex, /Question 1\/2/); assert.match(codex, /Notes \(optional\)/); assert.doesNotMatch(codex, /Optionally, add details/);
+});
+
+for (const agent of ['claude', 'codex']) {
+  test(agent + ': slash feedback begins before typed Enter, slow hooks never cause an automatic resubmit', async t => {
+    const cli = { busy: false, panel: null, begin(text) { assert.equal(h.written.length, 0); this.busy = true; this.panel = { command: text, rows: [] }; }, close() { this.panel = null; this.busy = false; }, recover() { this.feedback = 'recovery'; } };
+    const rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens', agent === 'claude' ? 'claude-idle-2-1-296.txt' : 'codex-fresh-default.txt'), 'utf8').split('\n');
+    let h;
+    h = dictationHarness(t, {
+      './useReadingCli': { useReadingCli: () => cli },
+      './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows: h?.written.length ? rows.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ /status' : '› /status') : row) : rows }) },
+    });
+    h.props.terminal.agent = agent;
+    h.edit('/status'); h.press('Enter');
+    assert.equal(cli.panel.command, '/status');
+    assert.deepEqual(h.written.map(item => item.text), ['/status']);
+    await h.tick(150);
+    assert.deepEqual(h.written.map(item => item.text), ['/status', '\r']);
+    await h.tick(30000);
+    assert.deepEqual(h.written.map(item => item.text), ['/status', '\r']);
+  });
+
+  test(agent + ': Escape before Enter stops the scheduled submission and retains terminal recovery feedback', async t => {
+    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; }, close() { this.panel = null; this.busy = false; }, recover() { this.feedback = 'recovery'; } };
+    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli } });
+    h.props.terminal.agent = agent;
+    h.edit('/status'); h.press('Enter'); h.press('Escape');
+    await h.tick(150); await h.tick(30000);
+    assert.deepEqual(h.written.map(item => item.text), ['/status'], 'no unverified Escape, Ctrl+C or subsequent Enter');
+    assert.equal(cli.feedback, 'recovery'); assert.equal(cli.panel.command, '/status');
+  });
+
+  test(agent + ': switching PTY during a slash send cancels the old scheduled Enter', async t => {
+    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; }, close() {}, recover() {} };
+    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli } });
+    h.props.terminal.agent = agent;
+    h.edit('/status'); h.press('Enter');
+    h.props.terminal.sessionId = 'replacement-pty'; h.render();
+    await h.tick(30000);
+    assert.deepEqual(h.written.map(item => item.text), ['/status']);
+  });
+
+  test(agent + ': Enter waits for the exact live slash echo, not a fixed delay or a matching prefix', async t => {
+    const fresh = fs.readFileSync(path.join(__dirname, 'fixtures/screens', agent === 'claude' ? 'claude-2-1-302-start.txt' : 'codex-0-163-status.txt'), 'utf8').split('\n');
+    const withDraft = text => fresh.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ ' : '› ') + text : row);
+    let rows = fresh, confirmed = 0, submitted = 0;
+    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; return 'receipt'; }, confirmInput(id) { assert.equal(id, 'receipt'); confirmed++; return true; }, submitted() { submitted++; }, close() {}, recover() { this.feedback = 'recovery'; } };
+    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
+    h.props.terminal.agent = agent;
+    h.edit('/status'); h.press('Enter');
+    for (let i = 0; i < 12; i++) await h.tick(25);
+    assert.deepEqual(h.written.map(item => item.text), ['/status'], '300 ms alone never sends Enter');
+    rows = withDraft('/status-extra'); await h.tick(25);
+    assert.equal(confirmed, 0); assert.equal(h.written.length, 1);
+    rows = withDraft('/status'); await h.tick(25);
+    assert.deepEqual(h.written.map(item => item.text), ['/status', '\r']);
+    assert.equal(confirmed, 1); assert.equal(submitted, 1);
+    await h.tick(30000); assert.equal(h.written.length, 2, 'one Enter, no automatic repeat');
+  });
+
+  test(agent + ': missing slash echo times out safely without an Enter or a false completion', async t => {
+    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; }, close() {}, recover() { this.feedback = 'recovery'; } };
+    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli } });
+    h.props.terminal.agent = agent;
+    h.edit('/status'); h.press('Enter');
+    for (let i = 0; i < 80; i++) await h.tick(25);
+    assert.equal(cli.feedback, 'recovery'); assert.equal(cli.panel.done, undefined);
+    await h.tick(60000); assert.deepEqual(h.written.map(item => item.text), ['/status']);
+  });
+
+  test(agent + ': UI Escape clears four stale trackers at verified idle and lets the next model command execute', async t => {
+    const fresh = fs.readFileSync(path.join(__dirname, 'fixtures/screens', agent === 'claude' ? 'claude-2-1-302-start.txt' : 'codex-0-163-status.txt'), 'utf8').split('\n');
+    let rows = fresh, closes = 0;
+    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; return 'new-model'; }, confirmInput: () => true, submitted() {}, close() { this.busy = false; this.panel = null; this.feedback = undefined; closes++; }, recover() { this.feedback = 'recovery'; } };
+    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
+    h.props.terminal.agent = agent;
+    for (let i = 0; i < 4; i++) {
+      cli.busy = true; cli.panel = { command: '/status', rows: [] }; cli.feedback = 'recovery'; h.render();
+      h.press('Escape'); assert.equal(cli.busy, true, 'close must verify idle across reads');
+      await h.tick(100);
+      assert.equal(cli.panel, null); assert.equal(cli.busy, false);
+    }
+    assert.equal(closes, 4); assert.deepEqual(h.written, [], 'UI Escape never sends a raw key to idle CLI input');
+    h.edit('/model'); h.press('Enter');
+    rows = fresh.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ /model' : '› /model') : row);
+    await h.tick(25);
+    assert.equal(cli.panel.command, '/model'); assert.deepEqual(h.written.map(item => item.text), ['/model', '\r']);
+  });
+
+  test(agent + ': idle cancellation cannot clear a draft that appears during verification', async t => {
+    const fresh = fs.readFileSync(path.join(__dirname, 'fixtures/screens', agent === 'claude' ? 'claude-2-1-302-start.txt' : 'codex-0-163-status.txt'), 'utf8').split('\n');
+    let rows = fresh;
+    const cli = { busy: true, panel: { command: '/status', rows: [] }, close() { assert.fail('a non-idle CLI must keep its tracker'); }, recover() { this.feedback = 'recovery'; } };
+    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
+    h.props.terminal.agent = agent; h.press('Escape');
+    rows = fresh.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ held' : '› held') : row);
+    await h.tick(100);
+    assert.equal(cli.feedback, 'recovery'); assert.deepEqual(h.written, []);
+  });
+}
+
+test('pending and recovery popups expose a terminal action, keep Escape local and block arbitrary CLI input', () => {
+  const hooks = { useRef: value => ({ current: value }), useMemo: make => make(), useEffect() {}, useLayoutEffect() {} };
+  const { ReadingCliPanel } = loadUI('features/reading/ReadingCliPanel.tsx', { react: hooks, './cli-panel': require('../src/features/reading/cli-panel.ts'), './cli-render': require('../src/features/reading/cli-render.ts') });
+  for (const feedback of ['waiting', 'recovery']) {
+    const writes = []; let closes = 0, terminals = 0;
+    const root = ReadingCliPanel({ command: '/status', rows: [], done: false, terminalId: 'test', feedback, interactive: false, onWrite: key => { writes.push(key); return true; }, onClose: () => closes++, onShowTerminal: () => terminals++ });
+    const dialog = elements(root).find(element => element.props.role === 'dialog');
+    for (const key of ['Enter', 'a', 'ArrowDown']) dialog.props.onKeyDown({ key, nativeEvent: {}, stopPropagation() {}, preventDefault() {} });
+    dialog.props.onCompositionEnd({ data: 'text' }); dialog.props.onPaste({ clipboardData: { getData: () => 'text' }, preventDefault() {} });
+    dialog.props.onKeyDown({ key: 'Escape', nativeEvent: {}, stopPropagation() {}, preventDefault() {} });
+    elements(root).find(element => element.type === 'button').props.onClick();
+    assert.deepEqual(writes, []); assert.equal(closes, 1); assert.equal(terminals, 1);
+    assert.ok(elements(root).some(element => element.props.role === 'status'));
+  }
+});
+
+test('disposing a command popup cancels delayed navigation keys', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let cleanup;
+  const hooks = { useRef: value => ({ current: value }), useMemo: make => make(), useEffect: effect => { cleanup = effect(); }, useLayoutEffect() {} };
+  const { ReadingCliPanel } = loadUI('features/reading/ReadingCliPanel.tsx', { react: hooks, './cli-panel': require('../src/features/reading/cli-panel.ts'), './cli-render': require('../src/features/reading/cli-render.ts') });
+  const writes = [];
+  const root = ReadingCliPanel({ command: '/effort', rows: ['Effort'], done: false, terminalId: 'test', interactive: true, onWrite: key => { writes.push(key); return true; }, onClose() {}, onShowTerminal() {} });
+  elements(root).find(element => element.type?.name === 'CliBlocks').props.onKeys(['\x1b[C', '\x1b[C']);
+  assert.deepEqual(writes, ['\x1b[C']);
+  cleanup(); t.mock.timers.tick(1000); await Promise.resolve();
+  assert.deepEqual(writes, ['\x1b[C'], 'the old popup cannot type into a replacement session');
+});
+
+test('bang sends wait for the captured exact Claude shell editor before one Enter', async t => {
+  let rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/claude-2-1-302-start.txt'), 'utf8').split('\n'), receipts = 0, submitted = 0;
+  const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; return 'bang'; }, confirmInput(id) { assert.equal(id, 'bang'); receipts++; return true; }, submitted() { submitted++; }, close() {}, recover() { this.feedback = 'recovery'; } };
+  const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
+  h.props.terminal.agent = 'claude'; h.edit('!echo BANG_CAPTURE_OK'); h.press('Enter');
+  for (let i = 0; i < 12; i++) await h.tick(25);
+  assert.deepEqual(h.written.map(item => item.text), ['!echo BANG_CAPTURE_OK'], 'the old 150 ms bang delay is not receipt');
+  rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/claude-bang-typed.txt'), 'utf8').split('\n');
+  await h.tick(25);
+  assert.deepEqual(h.written.map(item => item.text), ['!echo BANG_CAPTURE_OK', '\r']);
+  assert.equal(receipts, 1); assert.equal(submitted, 1);
+  await h.tick(30000); assert.equal(h.written.length, 2);
+});
+
+test('closing a completed Bash popup never interrupts the captured subsequent model reply', async t => {
+  const rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/claude-bang-empty-model-working.txt'), 'utf8').split('\n');
+  const cli = { busy: false, panel: { command: '!true', rows: [], done: true }, close() { this.panel = null; }, recover() { assert.fail('a finished Bash result can close locally'); } };
+  const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
+  h.props.terminal.agent = 'claude'; h.props.terminal.codexActivity = 'working'; h.render();
+  h.press('Escape'); await h.tick(1000);
+  assert.equal(cli.panel, null); assert.deepEqual(h.written, []); assert.equal(h.props.terminal.codexActivity, 'working');
+});
+
+test('Codex bang delivery waits for the captured shell-mode editor instead of a fixed sleep', async t => {
+  let rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/codex-fresh-default.txt'), 'utf8').split('\n'), receipts = 0;
+  const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; return 'codex-bang'; }, confirmInput() { receipts++; return true; }, submitted() {}, close() {}, recover() {} };
+  const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
+  h.edit('!echo CODEX_BANG_INPUT'); h.press('Enter');
+  for (let i = 0; i < 12; i++) await h.tick(25);
+  assert.deepEqual(h.written.map(item => item.text), ['!echo CODEX_BANG_INPUT']);
+  rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/codex-bang-typed.txt'), 'utf8').split('\n'); await h.tick(25);
+  assert.deepEqual(h.written.map(item => item.text), ['!echo CODEX_BANG_INPUT', '\r']); assert.equal(receipts, 1);
 });

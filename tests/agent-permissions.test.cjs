@@ -5,19 +5,26 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { spawn } = require('node:child_process');
 const { createEventServer } = require('../electron/events.cjs');
+const { isLocalAgentCommand } = require('../electron/agent-commands.cjs');
 
 const main = fs.readFileSync(path.join(__dirname, '../electron/main.cjs'), 'utf8');
 // Exercise the actual event handlers without opening Electron or the user's terminals.
 function handlers() {
-  const project = { id: 'p' }, session = { terminalId: 't', projectId: 'p', sessionKey: 'key', codexActive: true, agent: 'claude', codexActivity: 'working', promptQueue: { reset() {} }, submissions: { reset() {} } };
-  const calls = { broadcast: 0, restore: 0, activity: 0, follow: 0 };
+  const project = { id: 'p', completionArmed: false }, session = { terminalId: 't', projectId: 'p', sessionKey: 'key', codexActive: true, agent: 'claude', codexActivity: 'working', promptQueue: { reset() {} }, submissions: { reset() {} } };
+  const calls = { broadcast: 0, restore: 0, activity: 0, follow: 0, completion: [], usageDispose: 0 };
+  session.usageAccount = { dispose() { calls.usageDispose++; } };
+  session.bindUsageAccount = () => {};
   const context = vm.createContext({
-    sessions: new Map([['t', session]]), store: { projects: [project], setRestore() { calls.restore++; } }, quitting: false,
+    sessions: new Map([['t', session]]), store: { projects: [project], setRestore() { calls.restore++; },
+      expectCompletion(id, expected = true) { assert.equal(id, project.id); calls.completion.push([id, expected]); project.completionArmed = expected; } }, quitting: false,
     broadcast() { calls.broadcast++; }, followClaude() { calls.follow++; }, applyActivity(_project, s, event) { calls.activity++; s.codexActivity = event.state; },
-    acceptShellEvent: () => true, resumeAfterPrompt: async () => {}, t: text => text,
+    acceptShellEvent: () => true, resumeAfterPrompt: async () => {}, isLocalAgentCommand, t: text => text,
   });
+  // onEvent owns account-query cleanup on real agent/shell exit. Include that
+  // legitimate dependency, with an observable subscription instead of a PTY.
+  vm.runInContext(main.slice(main.indexOf('function stopUsageAccount('), main.indexOf("// Claude's plan limits and resets,")), context);
   vm.runInContext(main.slice(main.indexOf('function claudeActivity('), main.indexOf('async function resumeAfterPrompt(')), context);
-  return { context, session, calls, send: event => context.onEvent({ projectId: 't', sessionKey: 'key', type: 'agent-activity', sessionId: 'session', eventId: 'session:1', ...event }) };
+  return { context, project, session, calls, send: event => context.onEvent({ projectId: 't', sessionKey: 'key', type: 'agent-activity', sessionId: 'session', eventId: 'session:1', ...event }) };
 }
 
 test('Claude permission notices broadcast waiting state without changing activity or restore plans', () => {
@@ -27,25 +34,72 @@ test('Claude permission notices broadcast waiting state without changing activit
   assert.equal(session.needsInput.message, '长'.repeat(300));
   assert.ok(session.needsInput.since >= before && session.needsInput.since <= Date.now());
   assert.equal(session.codexActivity, 'working');
-  assert.deepEqual(calls, { broadcast: 1, restore: 0, activity: 0, follow: 0 });
+  assert.deepEqual(calls, { broadcast: 1, restore: 0, activity: 0, follow: 0, completion: [], usageDispose: 0 });
   send({ state: 'attention', sessionKey: 'wrong', message: 'Ignored' });
   send({ state: 'attention', sessionId: '../invalid', message: 'Ignored' });
   send({ state: 'idle', message: 'Ignored' });
   assert.equal(calls.broadcast, 1);
   session.agent = 'codex'; send({ state: 'attention', message: 'Ignored' });
   assert.equal(calls.broadcast, 1);
+  assert.deepEqual(calls.completion, []);
 });
 
-test('later working, complete, agent exit and shell prompt events clear the waiting notice', () => {
-  for (const event of [{ state: 'working' }, { state: 'complete' }, { type: 'codex-exited', exitCode: 0 }, { type: 'shell-prompt', cwd: '/project' }]) {
+test('working and complete clear waiting without disposing usage; actual agent/shell exits clean up', () => {
+  for (const event of [{ state: 'working' }, { state: 'complete' }, { type: 'codex-exited', exitCode: 0 }, { type: 'shell-ready', cwd: '/project' }, { type: 'shell-prompt', cwd: '/project' }]) {
     const { session, calls, send } = handlers();
+    const account = session.usageAccount, bind = session.bindUsageAccount;
     send({ state: 'attention', message: 'Approve tool' });
+    assert.equal(calls.usageDispose, 0, 'attention leaves the usage subscription running');
+    assert.equal(session.usageAccount, account);
+    assert.equal(session.bindUsageAccount, bind);
     send(event);
     assert.equal(session.needsInput, null);
     assert.equal(calls.restore, 1);
     assert.equal(calls.activity, event.state ? 1 : 0);
     assert.equal(calls.broadcast, event.state ? 1 : 2);
+    assert.deepEqual(calls.completion, event.state === 'working' ? [['p', true]] : []);
+    assert.equal(calls.usageDispose, event.state ? 0 : 1);
+    assert.equal(session.usageAccount, event.state ? account : null);
+    assert.equal(session.bindUsageAccount, event.state ? bind : null);
   }
+});
+
+test('only distinct Claude UserPromptSubmit events arm completion; attention and Stop callbacks never rearm it', () => {
+  const { project, session, calls, send } = handlers();
+  const waiting = () => send({ state: 'attention', message: 'Approve tool' });
+  waiting();
+  send({ state: 'complete', eventId: 'session:background-stop' });
+  assert.equal(session.needsInput, null, 'a Stop clears the waiting notice without new input');
+  assert.deepEqual(calls.completion, []);
+  assert.equal(project.completionArmed, false);
+
+  waiting();
+  send({ state: 'working', eventId: 'session:prompt-1', prompt: 'Run the task' });
+  assert.equal(session.needsInput, null, 'UserPromptSubmit clears the waiting notice');
+  assert.deepEqual(calls.completion, [['p', true]]);
+  assert.equal(project.completionArmed, true);
+
+  // Simulate the alert being consumed by applyActivity/WorkspaceStore, covered by backend-activity.test.cjs.
+  project.completionArmed = false;
+  waiting();
+  assert.equal(project.completionArmed, false, 'permission notices cannot rearm a consumed alert');
+  send({ state: 'complete', eventId: 'session:stop-1' });
+  send({ state: 'complete', eventId: 'session:distinct-background-stop' });
+  assert.equal(session.needsInput, null);
+  assert.deepEqual(calls.completion, [['p', true]]);
+  assert.equal(project.completionArmed, false);
+
+  waiting();
+  send({ state: 'working', eventId: 'session:prompt-1', prompt: 'Run the task' });
+  assert.equal(session.needsInput, null, 'a duplicated hook still clears the waiting notice');
+  assert.deepEqual(calls.completion, [['p', true]], 'the same submission event cannot arm twice');
+  assert.equal(project.completionArmed, false);
+
+  waiting();
+  send({ state: 'working', eventId: 'session:prompt-2', prompt: 'Run the task' });
+  assert.equal(session.needsInput, null);
+  assert.deepEqual(calls.completion, [['p', true], ['p', true]], 'a distinct submission arms even with identical prompt text');
+  assert.equal(project.completionArmed, true);
 });
 
 test('the key that answers Claude\'s permission prompt ends the waiting notice; moving through its options does not', () => {

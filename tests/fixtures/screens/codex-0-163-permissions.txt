@@ -1,0 +1,55 @@
+› 创建一个md文件在对话框给我看 2
+  Model:               GPT-6-Sol (reasoning medium, summaries auto)
+  Model provider:      standin
+  Directory:           C:\work\demo-app
+  Permissions:         Read Only (Ask for approval)
+  Agents.md:           ..\..\..\..\..\AGENTS.md
+  Collaboration mode:  Default
+  Session:             00000000-0000-0000-0000-000000000001
+
+  Token usage:         0 total  (0 input + 0 output)
+  Context window:      100% left (0 used / 258K)
+  Limits:              data not available yet
+
+/status
+
+  >_ OpenAI Codex (v0.163.0)
+
+  Model:               GPT-6-Sol (reasoning medium, summaries auto)
+  Model provider:      standin
+  Directory:           C:\work\demo-app
+  Permissions:         Read Only (Ask for approval)
+  Agents.md:           ..\..\..\..\..\AGENTS.md
+  Collaboration mode:  Default
+  Session:             00000000-0000-0000-0000-000000000001
+
+  Token usage:         0 total  (0 input + 0 output)
+  Context window:      100% left (0 used / 258K)
+  Limits:              data not available yet
+
+/status
+
+  >_ OpenAI Codex (v0.163.0)
+
+  Model:               GPT-6-Sol (reasoning medium, summaries auto)
+  Model provider:      standin
+  Directory:           C:\work\demo-app
+  Permissions:         Read Only (Ask for approval)
+  Agents.md:           ..\..\..\..\..\AGENTS.md
+  Collaboration mode:  Default
+  Session:             00000000-0000-0000-0000-000000000001
+
+  Token usage:         0 total  (0 input + 0 output)
+  Context window:      100% left (0 used / 258K)
+  Limits:              data not available yet
+
+
+  Update Model Permissions
+
+
+  1. Ask for approval     Read and edit workspace files and run commands, with approval required for internet access or edits outside the workspace
+  2. Approve for me       Only ask for actions detected as potentially unsafe
+  3. Full Access          Use with caution: Codex can edit files outside this workspace and access the internet without approval
+› 4. Read Only (current)  Read workspace files, with approval required for edits or internet access
+
+  enter select · esc back

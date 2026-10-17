@@ -1,7 +1,8 @@
 import type { ConversationEntry, ConversationPacket } from '../../shared/types';
+import { retainTimelineIdentity } from './reading-timeline-identity.ts';
 
 export function applyConversationPacket(entries: readonly ConversationEntry[], packet: Pick<ConversationPacket, 'list' | 'changes'>): ConversationEntry[] {
-  if (packet.list) return packet.list.slice(-400);
+  if (packet.list) return retainTimelineIdentity(entries, packet.list).slice(-400);
   const next = [...entries];
   const indices = new Map(next.map((entry, index) => [entry.id, index]));
   for (const entry of packet.changes ?? []) {
@@ -9,7 +10,7 @@ export function applyConversationPacket(entries: readonly ConversationEntry[], p
     if (at === undefined) { indices.set(entry.id, next.length); next.push(entry); }
     else next[at] = entry;
   }
-  return next.slice(-400);
+  return retainTimelineIdentity(entries, next).slice(-400);
 }
 
 // The initial IPC snapshot is the base; events received while it is in flight follow it.
@@ -26,7 +27,7 @@ export function createConversationBuffer(apply: (entries: ConversationEntry[]) =
   return {
     snapshot(initial: ConversationEntry[]) {
       if (disposed) return;
-      entries = initial.slice(-400);
+      entries = applyConversationPacket([], { list: initial });
       for (const packet of queued) entries = applyConversationPacket(entries, packet);
       queued = []; waiting = false; schedule();
     },

@@ -1,0 +1,26 @@
+ ▝▝   ▝▝   C:\work\demo-app
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Settings  Status   Config   Usage   Stats
+
+   Version:                    2.1.302
+   Session name:               /rename to add a name
+   Session ID:                 00000000-0000-0000-0000-000000000001
+   Session kind:               interactive
+   Peer address:               uds:\\.\pipe\LOCAL\cc-msg-placeholder
+   cwd:                        C:\work\demo-app
+   Auth token:                 none
+   API key:                    ANTHROPIC_API_KEY
+   Anthropic base URL:         http://127.0.0.1:54321
+
+   Model:                      Default (claude-opus-5-5)
+   Setting sources:            User settings, Command line arguments
+   Managed settings (remote):  not fetched — not available with a custom ANTHROPIC_BASE_URL
+   Organization policy:        not fetched with a custom ANTHROPIC_BASE_URL
+   Auto mode server:           Disabled
+
+   System diagnostics
+    ⚠ Running native installation but config install method is 'not set'
+
+
+   Esc to cancel

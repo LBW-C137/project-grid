@@ -53,17 +53,19 @@ Open every image before showing it. Present them all, one line each on what sets
 - **App icons** are a squircle (continuous corners) with a soft top-lit gradient, exported as SVG, then rendered to
   the sizes the platform needs.
 
+- **Agent brand avatars** use the exact supplied official vector paths and proportions, with source attribution.
+  Keep checksum-verified SVG sources exempt from Git newline conversion; verify their hashes through checkout filters.
+  GPT/Codex uses OpenAI's Blossom; Claude uses its official spark. Do not redraw their geometry or animate its parts.
+  Use the supplied white/black OpenAI variants for contrast. Task cards show real state text, without invented progress bars.
+
 - **Small marks over the wallpaper** (timeline nodes, badges) are hollow: a hairline rim and the glyph in the
   kind's colour, the wallpaper showing through. A dark filled disc reads as a black hole there, and the user
   rejected it. A line joining them runs from rim to rim, never through a see-through mark. Rays meeting at a centre
   (an asterisk) start at the centre, or their round caps leave a dark speck.
 
 - **Motion for "busy" never spins a border** (the user calls it cheap). A running mark sends soft rings out from its
-  rim, fading as they spread (two, half a cycle apart); Claude's spark blooms like Claude Code's own ✻ spinner, all
-  rays bursting from the hub and drawing slowly back. To animate parts of an SVG glyph, wrap each part in a `<g>` that
-  carries its rotation, so the CSS transform on the part does not replace it (`transform-box: view-box`,
-  `transform-origin` at the hub, `vector-effect: non-scaling-stroke`). Check motion with a strip of clip screenshots
-  taken 100ms apart, and stop every loop under `data-motion="off"` and reduced motion.
+  rim, fading as they spread (two, half a cycle apart). Official brand geometry stays still. Check motion with a strip
+  of clip screenshots taken 100ms apart, and stop every loop under `data-motion="off"` and reduced motion.
 - **A hover hop** (the user wanted items to "jump" when the pointer passes, no glow): a one-shot keyframe on the card,
   up about 12px, down, a small second bounce, landing at 0. Hang the `:hover` on the row that does not move, never on the
   moving card, or a card hopping out from under the pointer restarts forever. Arm hops on `pointermove` and disarm them

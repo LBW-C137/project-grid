@@ -97,7 +97,8 @@ try {
   await input('给登录页加上验证码。然后跑一下测试\r');
   const prompts = () => overview.locator('.activity-prompts li').evaluateAll(items => items.map(item => `${item.classList.contains('is-working') ? 'working' : 'queued'}:${item.querySelector('p').textContent}`));
   await waitFor(async () => JSON.stringify(await prompts()) === JSON.stringify(['working:first instruction', 'queued:给登录页加上验证码。然后跑一下测试']), 'prompt list shows the working and the waiting prompt');
-  assert.equal(await overview.locator('li.is-working .activity-progress').count(), 1, 'the prompt being worked on has its moving bar');
+  assert.equal(await overview.locator('.activity-progress').count(), 0, 'task cards show state without an invented progress bar');
+  assert.equal(await overview.locator('li.is-working .activity-prompt-state').innerText(), '正在处理');
   assert.equal(await routeTop(), before, 'a second prompt leaves the cards under the task list where they were');
   assert.deepEqual(await text('.activity-task-count'), ['2'], 'the title counts the prompts');
   await page.waitForFunction(() => !document.querySelector('[data-focus-motion]')); await page.screenshot({ path: path.join(output, 'activity-pane.png') });

@@ -39,10 +39,19 @@ class UsageMeter {
     this.limits = account.limits; this.resets = account.resets; this.limitsAt = account.at; this.limitsFrom = account.source ?? null;
     return true;
   }
+  // Sanitized official Codex account read. Null/unavailable never means zero.
+  codexAccount(account) {
+    if (this.agent !== 'codex' || !account?.resetQuery) return false;
+    this.resets = account.resets; this.resetQuery = account.resetQuery;
+    if (account.resetQuery.state === 'ready') {
+      this.limits = account.limits; this.limitsAt = account.at; this.limitsFrom = account.source;
+    }
+    return true;
+  }
   // Another conversation starts over; the provider and the plan's limits stay.
   reset() { this.context = null; this.round = null; this.total = null; this.roundStart = null; this.replies = new Map(); this.calls.reset(); }
   // What the pane shows.
-  snapshot() { const provider = this.providerId ? this.names(this.providerId) : this.provider; return { provider, context: this.context, round: this.round, total: this.total, limits: this.limits, limitsAt: this.limitsAt, limitsFrom: this.limitsFrom ?? null, resets: this.resets, calls: this.calls.snapshot(provider) }; }
+  snapshot() { const provider = this.providerId ? this.names(this.providerId) : this.provider; return { provider, context: this.context, round: this.round, total: this.total, limits: this.limits, limitsAt: this.limitsAt, limitsFrom: this.limitsFrom ?? null, resets: this.resets, ...(this.resetQuery ? { resetQuery: this.resetQuery } : {}), calls: this.calls.snapshot(provider) }; }
   // Whether this record changed what the pane shows.
   apply(record) {
     if (!record || typeof record !== 'object') return false;

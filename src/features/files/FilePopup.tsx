@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
-import { ArrowUp, File, FileText, FilmStrip, Folder, Globe, Image as ImageIcon, SpinnerGap, X } from '@phosphor-icons/react';
+import { ArrowUp, CaretLeft, CaretRight, File, FileText, FilmStrip, Folder, Globe, Image as ImageIcon, SpinnerGap, X } from '@phosphor-icons/react';
 import type { DirectoryListing, FilePreview as Preview } from '../../shared/types';
 import { TextContent } from './FilePreview';
 import { closePopup, showPopup, type PopupTarget } from './file-popup';
@@ -13,13 +13,21 @@ type Shown = { kind: 'preview'; preview: Preview } | { kind: 'picture'; url: str
 // click beside it puts it away. A link inside a document, or an entry of a folder, opens the same way; a web address
 // opens outside.
 export function FilePopup({ target, onError }: { target: PopupTarget; onError: (message: string) => void }) {
-  const [shown, setShown] = useState<Shown | null>(null);
+  const [loaded, setLoaded] = useState<{ target: PopupTarget; page: number; value: Shown } | null>(null);
+  const [selected, setSelected] = useState<{ target: PopupTarget; page: number } | null>(null);
+  const [pageInput, setPageInput] = useState('1');
+  const pageIndex = selected?.target === target ? selected.page : 0;
+  const shown = loaded?.target === target && loaded.page === pageIndex ? loaded.value : null;
+  // Keep the controls in place while the selected page loads, but never show the previous page as it.
+  const previous = loaded?.target === target && loaded.value.kind === 'preview' ? loaded.value.preview : null;
+  const textPage = previous?.kind === 'text' || previous?.kind === 'markdown' ? previous.page : null;
+  const loading = !shown;
   const card = useRef<HTMLDivElement>(null);
   const fileName = target.path.split(/[\\/]/).filter(Boolean).at(-1) || target.path;
   const name = target.kind === 'folder' && !target.path ? t('项目根目录') : fileName;
   useEffect(() => {
     let live = true, previewId: string | null = null;
-    setShown(null);
+    const release = () => { const id = previewId; previewId = null; if (id) void window.agentrix.closePreview(id).catch(() => {}); };
     const read: Promise<Shown> = target.kind === 'picture' ? Promise.resolve({ kind: 'picture' as const, url: target.src })
       : target.kind === 'image'
       ? window.agentrix.agentImage(target.path).then(result => result.ok ? { kind: 'picture' as const, url: result.value.url } : { kind: 'error' as const, message: result.error })
@@ -27,16 +35,20 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
       ? window.agentrix.listDirectory(target.projectId, target.path).then(result => result.ok ? { kind: 'folder' as const, listing: result.value } : { kind: 'error' as const, message: result.error })
       : target.kind === 'document'
       ? window.agentrix.agentDocument(target.projectId, target.path).then(result => result.ok ? { kind: 'document' as const, content: result.value.truncated ? `${result.value.content}\n\n…` : result.value.content } : { kind: 'error' as const, message: result.error })
-      : window.agentrix.readFile(target.projectId, target.path).then(result => {
+      : window.agentrix.readFile(target.projectId, target.path, pageIndex).then(result => {
         if (!result.ok) return { kind: 'error' as const, message: result.error };
         if ('previewId' in result.value) previewId = result.value.previewId;
         return { kind: 'preview' as const, preview: result.value };
       });
     void read.catch(() => ({ kind: 'error' as const, message: '无法预览此文件。' })).then(value => {
-      if (live) setShown(value); else if (previewId) void window.agentrix.closePreview(previewId);
+      if (live) setLoaded({ target, page: pageIndex, value }); else release();
     });
-    return () => { live = false; if (previewId) void window.agentrix.closePreview(previewId); };
-  }, [target]);
+    return () => { live = false; release(); };
+  }, [target, pageIndex]);
+  useEffect(() => { setPageInput(String(pageIndex + 1)); }, [target, pageIndex]);
+  const selectPage = (index: number) => {
+    if (textPage) setSelected({ target, page: Math.max(0, Math.min(textPage.count - 1, index)) });
+  };
   // Escape here never reaches the conversation behind it (where it would interrupt the agent).
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
@@ -73,15 +85,23 @@ export function FilePopup({ target, onError }: { target: PopupTarget; onError: (
   else if (preview?.kind === 'html') body = <iframe className="html-preview-frame" title={t('HTML 页面预览')} src={preview.url} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" />;
   else if (preview?.kind === 'markdown') body = <div className="file-popup-document"><Suspense fallback={<div className="file-popup-message">{t('正在渲染 Markdown…')}</div>}><MarkdownPreview content={preview.content} baseUrl={preview.url} onOpenLink={openLink} /></Suspense></div>;
   else if (preview?.kind === 'video') body = <div className="file-popup-video"><video src={preview.url} controls autoPlay preload="metadata" playsInline aria-label={t('视频预览')} /></div>;
-  else if (preview?.kind === 'text') body = <TextContent content={preview.content} />;
+  else if (preview?.kind === 'text') body = <TextContent key={pageIndex} content={preview.content} />;
   else body = <div className="file-popup-message"><FileText size={28} /><p>{preview?.kind === 'unsupported' ? t(preview.reason) : t('无法预览此文件。')}</p></div>;
-  const wide = preview?.kind === 'html' || preview?.kind === 'text' || preview?.kind === 'markdown' || shown?.kind === 'document';
+  const wide = preview?.kind === 'html' || preview?.kind === 'text' || preview?.kind === 'markdown' || shown?.kind === 'document' || !!textPage;
   const picture = shown?.kind === 'picture' || preview?.kind === 'image';
   return <div className="file-popup-overlay" onMouseDown={event => { if (event.target === event.currentTarget) closePopup(); }}>
     <div ref={card} className={`file-popup${wide ? ' is-wide' : ''}${picture ? ' is-picture' : ''}`} role="dialog" aria-modal="true" aria-label={name} tabIndex={-1}>
       <div className="file-popup-head"><Icon size={15} /><strong title={target.path}>{name}</strong><small>{t('Esc 关闭')}</small>
         <button type="button" className="icon-button" title={t('关闭')} aria-label={t('关闭')} onClick={closePopup}><X size={15} /></button></div>
       <div className="file-popup-body">{body}</div>
+      {textPage && textPage.count > 1 && <form className="text-pagination file-popup-pagination" onSubmit={event => { event.preventDefault(); const value = Number(pageInput); if (Number.isSafeInteger(value)) selectPage(value - 1); }}>
+        <button type="button" className="preview-option" disabled={!pageIndex || loading} onClick={() => selectPage(0)}>{t('首页')}</button>
+        <button type="button" className="icon-button" aria-label={t('上一页')} disabled={!pageIndex || loading} onClick={() => selectPage(pageIndex - 1)}><CaretLeft size={15} /></button>
+        <label>{t('第')} <input aria-label={t('文件页码')} type="number" min={1} max={textPage.count} value={pageInput} onChange={event => setPageInput(event.target.value)} /> {t('/ {count} 页', { count: textPage.count })}</label>
+        <button type="submit" className="preview-option" disabled={loading}>{t('跳转')}</button>
+        <button type="button" className="icon-button" aria-label={t('下一页')} disabled={pageIndex >= textPage.count - 1 || loading} onClick={() => selectPage(pageIndex + 1)}><CaretRight size={15} /></button>
+        <button type="button" className="preview-option" disabled={pageIndex >= textPage.count - 1 || loading} onClick={() => selectPage(textPage.count - 1)}>{t('末页')}</button>
+      </form>}
     </div>
   </div>;
 }

@@ -1,4 +1,23 @@
 const { test } = require('node:test');
+
+test('official Codex counts/status integrate without changing conversation tokens or Claude account semantics', () => {
+  const { accountResult } = require('../electron/features/agents/codex-account-usage.cjs');
+  const meter = new UsageMeter('codex');
+  const account = left => accountResult({ rateLimitResetCredits: { availableCount: left }, rateLimits: {
+    primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 123 },
+  } }, 1000);
+  for (const left of [2, 0]) {
+    assert.equal(meter.codexAccount(account(left)), true);
+    assert.equal(meter.snapshot().resets.left, left);
+    assert.equal(meter.snapshot().limits[0].percent, 25);
+    assert.equal(meter.snapshot().limitsAt, 1000);
+  }
+  meter.reset(); assert.equal(meter.snapshot().resets.left, 0, 'conversation reset keeps the same account');
+  meter.codexAccount({ resets: null, resetQuery: { state: 'error', reason: 'timeout' } });
+  assert.equal(meter.snapshot().resets, null);
+  assert.equal(meter.snapshot().resetQuery.state, 'error');
+  assert.equal(new UsageMeter('claude').codexAccount(account(2)), false);
+});
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');

@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.302
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   C:\work\demo-app
+
+
+! echo BANG_CAPTURE_OK
+  ⎿  BANG_CAPTURE_OK
+
+● Local probe.
+
+✻ Worked for 0s · done 23:55
+
+! true
+  ⎿  (Bash completed with no output)
+
+● Local probe.
+
+✻ Cogitated for 0s · done 23:55
+
+! printf 'BANG_LINE1\nBANG_LINE2\n'
+  ⎿  BANG_LINE1
+     BANG_LINE2
+
+● Local probe.
+
+✻ Cogitated for 0s · done 23:55
+
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts

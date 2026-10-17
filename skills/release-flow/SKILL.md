@@ -52,3 +52,12 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
    dependencies" is the runner's connection, not the release: no smoke ran and none left a picture. The install steps
    retry once by themselves; if it still fails, re-run the failed jobs (with the user's OK) and the release publishes
    when they pass. Hand the diagnosis to Codex (read-only, the token only inside its scripts) per `model-routing`.
+14. **Offline completion fixtures need received input.** A fresh task fixture includes a `user_message`, not only
+   `task_started` and `task_complete`. Those callbacks must never rearm notifications themselves. Keep historical
+   completed/resumed fixture records distinct; use the actual conversation reader and store in the regression.
+15. **Isolated local installer output.** Build with `npm run dist -- --config.directories.output=<output>` in a new
+   test-output folder, so packaging cannot overwrite a running checkout build. Validate the installer, update feed,
+   blockmap and packaged runtime there, and launch GUI checks with their own data profiles.
+16. **Injected provider transcripts.** A smoke that intercepts the conversation endpoint must model a provider switch
+   explicitly: set the fixture snapshot to empty, publish an empty conversation packet, await the reader clearing,
+   then publish the new provider's entries. The real main log may already be empty, so its no-op reset emits no packet.

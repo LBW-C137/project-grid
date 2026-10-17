@@ -86,12 +86,13 @@ try {
   }
   const thread = randomUUID(), transcript = path.join(home, 'sessions', `rollout-${thread}.jsonl`);
   const record = (type, turn) => JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type, turn_id: turn } }) + '\n';
+  const submitted = message => JSON.stringify({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message } }) + '\n';
   const quote = value => "'" + value.replaceAll("'", "''") + "'";
   await write(0, `Clear-Host; Write-Host 'Agentrix / 界面开发'; Write-Host ''; Write-Host '  正在处理：验证独立项目的任务状态' -ForegroundColor Cyan; Write-Host '  背景任务运行中，可操作其他窗口。'; Write-Host ''; Send-AgentrixEvent 'codex-started'; for ($pgVisual=0; $pgVisual -lt 2400 -and -not (Test-Path -LiteralPath ${quote(doneFile)}); $pgVisual++) { Start-Sleep -Milliseconds 100 }; Send-AgentrixEvent 'codex-exited'\r`);
   await waitFor(async () => (await state()).projects[0].codexActive, 'offline task active');
   // The running agent's conversation shows as a document by default; these checks are about the terminal surface.
   await panel(0).locator('button[title="切换到终端"]').click();
-  await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: { id: thread, cwd: projects[0].path, source: 'cli' } }) + '\n' + record('task_started', 'visual-turn'));
+  await fs.writeFile(transcript, JSON.stringify({ type: 'session_meta', payload: { id: thread, cwd: projects[0].path, source: 'cli' } }) + '\n' + record('task_started', 'visual-turn') + submitted('验证独立项目的任务状态'));
   await waitFor(async () => panel(0).getAttribute('data-status').then(status => status === 'working'), 'working lifecycle reaches UI');
   await page.evaluate(() => document.activeElement?.blur()); await page.mouse.move(2, 2);
   assert.equal(await page.locator('.panel-edge-light').count(), 0, 'old decorative strips are removed');
@@ -197,7 +198,7 @@ try {
   await page.screenshot({ path: path.join(output, 'automatic-completion.png') });
   await panel(0).locator('.panel-terminal-area').click({ position: { x: 40, y: 50 } });
   assert.equal(await page.locator('.focus-mode').count(), 0, 'automatic green does not expand on terminal clicks');
-  await fs.appendFile(transcript, record('task_started', 'next-turn'));
+  await fs.appendFile(transcript, record('task_started', 'next-turn') + submitted('继续验证下一轮任务完成后的提醒'));
   await waitFor(async () => panel(0).getAttribute('data-status').then(status => status === 'working'), 'a new submitted turn is working');
   assert.equal(await breathing(0), 0, 'working again stays steady');
   await fs.appendFile(transcript, record('task_complete', 'next-turn'));

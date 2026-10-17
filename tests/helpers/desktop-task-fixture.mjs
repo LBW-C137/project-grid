@@ -18,6 +18,8 @@ export async function runDesktopTask(page, project, home, turn, waitFor) {
   await fs.writeFile(filename, [
     { type: 'session_meta', payload: { id: thread, cwd: project.path, source: 'cli' } },
     { type: 'event_msg', timestamp: stamp, payload: { type: 'task_started', turn_id: turn } },
+    // A fresh task includes received input; lifecycle callbacks alone must never arm completion.
+    { type: 'event_msg', timestamp: stamp, payload: { type: 'user_message', message: `Run desktop test task ${turn}.` } },
     { type: 'event_msg', timestamp: stamp, payload: { type: 'task_complete', turn_id: turn } },
   ].map(value => JSON.stringify(value)).join('\n') + '\n');
   try { await waitFor(async () => (await state()).lastCompletedAt !== previous, 'interactive parent task completion'); }

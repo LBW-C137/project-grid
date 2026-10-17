@@ -5,8 +5,11 @@ description: Use when Agentrix should show something new that Codex or Claude Co
 
 # Reading a new fact from the agents' records
 
-Both CLIs already write what they use and spend. Read it from their records; never wrap their status line, call their
-APIs or read their credentials.
+Both CLIs already write what they use and spend. Read ordinary usage from their records; never wrap their status
+line or read their credentials. The explicitly requested Codex reset counter is the narrow exception: its owned
+background app-server reads `account/rateLimits/read` and `rateLimitResetCredits.availableCount`, without creating a
+thread, sending a turn or consuming a reset. Keep timeouts, output bounds, account-environment scoping and cleanup.
+Unknown or unsupported counters are not zero; do not substitute the local account's count for an SSH account.
 
 ## Where each agent writes it
 

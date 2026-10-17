@@ -9,7 +9,7 @@ const { renderToStaticMarkup } = require('react-dom/server');
 const en = require('../electron/locales/en.json');
 const {
   normalizePrompt, isTypedCommand, createPendingPrompts, addPendingPrompt,
-  reconcilePendingPrompts, removePendingPrompt, PENDING_PROMPT_TIMEOUT, sameMessage,
+  reconcilePendingPrompts, removePendingPrompt, pendingPromptCards, PENDING_PROMPT_TIMEOUT, sameMessage,
 } = require('../src/features/reading/pending-prompts.ts');
 
 const user = (id, text) => ({ id, role: 'user', text });
@@ -161,6 +161,39 @@ test('a failed paste cancels only its own echo', () => {
   const state = add(add(createPendingPrompts('session'), 'p1', 'first'), 'p2', 'second');
   assert.deepEqual(removePendingPrompt(state, 'p1').prompts.map(prompt => prompt.id), ['p2']);
   assert.equal(removePendingPrompt(state, 'missing'), state);
+});
+
+test('a late replay predating the send cannot acknowledge it, and a queue record is not acceptance', () => {
+  const state = add(createPendingPrompts('session'), 'p', 'same', 5000);
+  assert.equal(sync(state, [{ ...user('old-replay', 'same'), at: 2000 }]).prompts.length, 1);
+  assert.equal(sync(state, [{ ...user('queue', 'same'), at: 5001, queued: true }]).prompts.length, 1);
+  assert.equal(sync(state, [{ ...user('accepted', 'same'), at: 5001 }]).prompts.length, 0);
+});
+
+test('queue cards survive without echoes and pair repeated identical sends one-to-one without paste-summary guesses', () => {
+  const prompts = add(add(createPendingPrompts('session'), 'p1', 'same'), 'p2', 'same').prompts;
+  const queue = { ...user('q1', 'same'), at: 1200, queued: true };
+  let cards = pendingPromptCards(prompts, [queue]);
+  assert.deepEqual(cards.prompts.map(prompt => [prompt.id, prompt.at, prompt.sending]), [['p1', 1200, false], ['p2', 1000, true]]);
+  assert.deepEqual([...cards.queuedIds], ['p1']);
+  cards = pendingPromptCards([], [queue]);
+  assert.deepEqual(cards.prompts.map(prompt => [prompt.id, prompt.text, prompt.at]), [['q1', 'same', 1200]]);
+  assert.deepEqual([...cards.queuedIds], ['q1']);
+  const long = add(createPendingPrompts('session'), 'long', 'x'.repeat(300)).prompts;
+  assert.equal(pendingPromptCards(long, [{ ...queue, text: '[Pasted Content 300 chars]' }]).prompts.length, 2);
+});
+
+test('producer-bounded long queued and accepted transcripts keep one echo and its full text', () => {
+  const { ConversationLog, claudeConversation } = require('../electron/conversation.cjs');
+  const log = new ConversationLog(), timestamp = '2026-10-17T01:00:00Z', text = 'x'.repeat(21000);
+  const state = add(createPendingPrompts('session'), 'long', text, Date.parse(timestamp));
+  claudeConversation(log, { type: 'queue-operation', operation: 'enqueue', timestamp, content: text });
+  const cards = pendingPromptCards(state.prompts, log.list);
+  assert.equal(cards.prompts.length, 1); assert.equal(cards.prompts[0].text, text);
+  assert.deepEqual([...cards.queuedIds], ['long']);
+  claudeConversation(log, { type: 'queue-operation', operation: 'dequeue', timestamp, content: text });
+  claudeConversation(log, { type: 'attachment', uuid: 'accepted', timestamp, attachment: { type: 'queued_command', prompt: text } });
+  assert.deepEqual(sync(state, log.list, Date.parse(timestamp)).prompts, []);
 });
 
 test('a prompt received after one Claude put back in its input still acknowledges the echo', () => {

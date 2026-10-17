@@ -9,6 +9,21 @@ import { _electron as electron } from 'playwright-core';
 import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
+const { hasCliInput, isCliIdle, cliInputDraft } = require('../src/features/reading/cli-panel.ts');
+const fixtureIdle = rows => {
+  const screen = parseAgentScreen('claude', rows);
+  return hasCliInput('claude', rows, screen) && isCliIdle('claude', rows, screen) && cliInputDraft('claude', rows, screen) === '';
+};
+const waitForFixtureIdle = async (readRows, label) => {
+  let emptySince;
+  await waitFor(async () => {
+    if (!fixtureIdle(await readRows())) { emptySince = undefined; return false; }
+    emptySince ??= Date.now();
+    // Let the 100 ms screen publisher and 400 ms tracker settlement see this same empty physical input.
+    return Date.now() - emptySince >= 600;
+  }, `${label}: fixture has stable empty CLI input`);
+};
 const output = await testRun('reading'), profile = path.join(output, 'profile'), home = path.join(output, 'codex-home');
 const project = { id: randomUUID(), name: '阅读命令', path: path.join(output, 'project'), restore: { terminal: false, codex: false } };
 for (const directory of [profile, home, path.join(project.path, '.claude/commands')]) await fs.mkdir(directory, { recursive: true });
@@ -19,6 +34,7 @@ const packaged = process.argv.includes('--packaged'), errors = [], checks = [];
 let app, page;
 const state = async () => (await page.evaluate(() => window.agentrix.getState())).value.projects[0].terminals[0];
 const write = data => page.evaluate(({ id, data }) => window.agentrix.writeTerminal(id, data), { id: project.id, data });
+const physicalRows = () => page.locator(`[data-terminal-id="${project.id}"] .xterm-rows > div`).evaluateAll(nodes => nodes.map(node => node.textContent.replace(/\u00a0/g, ' ').trimEnd()));
 // xterm reports focus separately when the card switches views.
 const writes = () => app.evaluate(() => globalThis.voicePastes.filter(item => !['\x1b[I', '\x1b[O'].includes(item.data)));
 const resetWrites = () => app.evaluate(() => { globalThis.voicePastes = []; });
@@ -41,18 +57,26 @@ try {
   const showRaw = async () => { await card.locator('.panel-header').getByRole('button', { name: '切换到终端', exact: true }).click(); await raw(); };
   await card.getByRole('button', { name: '只打开终端', exact: true }).click();
   await waitFor(async () => (await state()).shellReady, 'isolated PowerShell ready');
-  // A normal shell prompt reports the agent's exit. Keep this fixture active without launching a CLI.
-  await write("function global:prompt { 'reading-fixture> ' }; Send-AgentrixEvent 'codex-started' -Agent 'claude'\r");
+  // A normal shell prompt reports the agent's exit. Keep this fixture active without launching a CLI, and let
+  // PowerShell read at the cursor the idle frame supplies. A truly empty return invokes PowerShell's PS> fallback,
+  // so return one blank that overwrites the frame's blank after ❯ instead of drawing a second prompt below it.
+  // Keep the smoke's delayed-typing assertion meaningful: the fake CLI really processes '/' slowly, so receipt has
+  // to await the physical echo instead of relying on a renderer sleep. This changes only this isolated shell's keys.
+  const fixturePrompt = ". '" + path.join(root, 'scripts/reading-smoke-fixture.ps1').replace(/'/g, "''") + "'";
+  await write(fixturePrompt + "; Send-AgentrixEvent 'codex-started' -Agent 'claude'\r");
   await waitFor(async () => (await state()).codexActive && (await state()).agent === 'claude', 'authenticated Claude fixture');
   // Claude's idle input between its two rules, with its footer: a typed command shows its output inside the reading
   // view and is finished once the CLI is idle like this again. The fixture draws it after each command (the helper's
-  // own write is left out of the recorded keys).
-  const idle = "Clear-Host; Write-Host ([string][char]0x2500 * 40); Write-Host ([string][char]0x276F + ' '); Write-Host ([string][char]0x2500 * 40); Write-Host ('  ' + [char]0x23F8 + ' manual mode on')\r";
-  await write(idle);
+  // own write is left out of the recorded keys). Only this explicit renderer clears the screen: the blank prompt
+  // leaves later permission/question frames intact. Queue the cursor move for the next prompt, after PowerShell's
+  // command-completion newline; its blank then advances past ❯ to the real input. Subsequent prompts do not move it.
+  const idle = "Clear-Host; Show-ReadingFixtureInput\r";
+  const renderIdle = async label => { await write(idle); await waitForFixtureIdle(physicalRows, label); };
+  await renderIdle('initial idle');
   const settled = async label => {
     await waitFor(async () => (await writes()).some(item => item.data === '\r'), `${label} submitted`);
     const sent = await app.evaluate(() => globalThis.voicePastes.slice());
-    await write(idle);
+    await renderIdle(label);
     await waitFor(async () => await composer.isEnabled(), `${label} finished in the reading view`);
     await app.evaluate((_electron, sent) => { globalThis.voicePastes = sent; }, sent);
   };
@@ -115,13 +139,21 @@ try {
   assert.equal(await composer.isVisible(), true);
   await composer.fill('/unknown-reading-command'); await resetWrites(); await composer.press('Enter'); await settled('unknown command');
   assert.deepEqual((await writes()).map(item => item.data), ['/unknown-reading-command', '\r']);
-  await composer.fill('!echo reading-fixture'); await resetWrites(); await composer.press('Enter'); await settled('shell mode');
+  const finished = terminal.locator('.reading-cli-panel');
+  await composer.fill('!echo reading-fixture'); await resetWrites(); await composer.press('Enter');
+  await waitFor(async () => (await writes()).some(item => item.data === '\r'), 'shell mode submitted');
+  // These fixture commands execute and draw their own accepted Bash result plus idle frame. Do not erase the result
+  // with the generic idle helper before the production tracker observes its completion evidence.
+  await waitForFixtureIdle(physicalRows, 'shell output');
+  await finished.getByText('reading-fixture', { exact: true }).waitFor({ timeout: 10000 });
   assert.deepEqual((await writes()).map(item => item.data), ['!echo reading-fixture', '\r']);
   checks.push('partial/exact Enter, unknown command and shell mode');
-  // Here neither printed anything: the popup says the command is done, with no spinner, and stays until Escape puts it
-  // away, without a key reaching the CLI.
-  const finished = terminal.locator('.reading-cli-panel');
-  await finished.getByText('!echo reading-fixture 已完成，没有输出。').waitFor({ timeout: 10000 });
+  await composer.fill('!true'); await resetWrites(); await composer.press('Enter');
+  await waitFor(async () => (await writes()).some(item => item.data === '\r'), 'silent shell command submitted');
+  await waitForFixtureIdle(physicalRows, 'silent shell result');
+  assert.deepEqual((await writes()).map(item => item.data), ['!true', '\r']);
+  // A genuine no-output command has explicit Bash completion evidence; an idle input alone is never success.
+  await finished.getByText('!true 已完成，没有输出。').waitFor({ timeout: 10000 });
   assert.equal(await finished.locator('.loading-spinner').count(), 0);
   await resetWrites(); await composer.press('Escape');
   await finished.waitFor({ state: 'detached', timeout: 5000 });
@@ -173,7 +205,7 @@ try {
   // A card that comes while someone writes in the box never takes the keyboard: the Enter meant for the message must not
   // answer it (here, approve a command). The fixture prints Codex's approval prompt and keeps its own prompt away.
   await composer.fill(''); await composer.click(); await page.keyboard.type('先别批准', { delay: 40 });
-  await write("Clear-Host; Write-Host '  Would you like to run the following command?'; Write-Host ''; Write-Host '  $ npm test'; Write-Host ''; Write-Host '› 1. Yes, proceed (y)'; Write-Host '  2. No, and tell Codex what to do differently (esc)'; Write-Host ''; Write-Host '  Press enter to confirm or esc to cancel'; Start-Sleep -Seconds 30\r");
+  await write("Clear-Host; Write-Host '  Would you like to run the following command?'; Write-Host ''; Write-Host '  $ npm test'; Write-Host ''; Write-Host '› 1. Yes, proceed (y)'; Write-Host '  2. No, and tell Codex what to do differently (esc)'; Write-Host ''; Write-Host '  Press enter to confirm or esc to cancel'; $global:ReadingFixtureClearOnPrompt = $true; Start-Sleep -Seconds 30\r");
   const asked = page.locator('.reading-choice'); await asked.waitFor({ timeout: 10000 });
   assert.equal(await page.evaluate(() => !!document.activeElement?.closest('.reading-choice-host')), false, 'the card does not take the keyboard from someone writing');
   await resetWrites(); await page.keyboard.press('Enter'); await page.waitForTimeout(800);
@@ -187,6 +219,7 @@ try {
 } catch (error) {
   if (page && !page.isClosed()) {
     await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {});
+    await physicalRows().then(rows => fs.writeFile(path.join(output, 'failure-terminal.txt'), rows.join('\n'))).catch(() => {});
     await fs.writeFile(path.join(output, 'failure.json'), JSON.stringify({ checks, errors, state: await state(), writes: await writes() }, null, 2)).catch(() => {});
   }
   throw error;

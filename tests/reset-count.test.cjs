@@ -1,6 +1,14 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { claudeResetsSaid, codexResetsSaid } = require('../src/features/agents/reset-count.ts');
+const { claudeResetsSaid, codexResetsSaid, codexResetCount } = require('../src/features/agents/reset-count.ts');
+
+test('scoped official counts include zero and supersede stale terminal text; unknown is never zero', () => {
+  for (const left of [0, 2]) assert.equal(codexResetCount({ resets: { left }, resetQuery: { state: 'ready' } }, 7), left);
+  for (const state of ['loading', 'unavailable', 'error']) assert.equal(codexResetCount({ resets: { left: 2 }, resetQuery: { state } }, 7), null);
+  assert.equal(codexResetCount({ resetQuery: { state: 'ready' }, resets: null }, 7), null);
+  assert.equal(codexResetCount(undefined, null), null);
+  assert.equal(codexResetCount(undefined, 2), 2);
+});
 
 test('the limit resets Codex last said are left, wherever it said so on screen', () => {
   assert.equal(codexResetsSaid(['• Hit your limit.', '  You have 2 resets available. Run /usage to use one.']), 2);

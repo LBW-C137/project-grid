@@ -97,26 +97,31 @@ class FileOperations {
     return this.run(project, '正在复制文件…', async (update, check) => {
       const revision = this.clipboardWrites.reserve();
       const files = [];
-      if (project.kind !== 'ssh') {
-        for (const relative of chosen) files.push(await entryPath(project, relative, true));
-      } else {
-        await fs.mkdir(this.cacheRoot, { recursive: true });
-        const destination = await fs.mkdtemp(path.join(this.cacheRoot, 'clipboard-'));
-        try {
+      let destination;
+      try {
+        if (project.kind !== 'ssh') {
+          for (const relative of chosen) files.push(await entryPath(project, relative, true));
+        } else {
+          await fs.mkdir(this.cacheRoot, { recursive: true });
+          destination = await fs.mkdtemp(path.join(this.cacheRoot, 'clipboard-'));
           const connection = this.remote(project.id); await connection.ready;
           for (const relative of chosen) {
             check();
-            const filename = path.join(destination, path.posix.basename(relative || connection.info.root));
+            // Each selection keeps its basename for paste, even when another selection has the same name.
+            const staging = path.join(destination, String(files.length));
+            await fs.mkdir(staging);
+            const filename = path.join(staging, cleanName(path.posix.basename(relative || connection.info.root)));
             await this.download(connection, relative, filename, update, check);
             files.push(filename);
           }
-        } catch (error) {
-          if (path.dirname(path.resolve(destination)) === path.resolve(this.cacheRoot)) await fs.rm(destination, { recursive: true, force: true });
-          throw error;
         }
+        if (!await this.clipboardWrites.commit(revision, () => { check(); return this.clipboard('copy', files); })) return { count: 0, superseded: true };
+        // Committed FileDrop paths must remain available to the eventual paste.
+        destination = null;
+        return { count: files.length };
+      } finally {
+        if (destination && path.dirname(path.resolve(destination)) === path.resolve(this.cacheRoot)) await fs.rm(destination, { recursive: true, force: true });
       }
-      if (!await this.clipboardWrites.commit(revision, () => { check(); return this.clipboard('copy', files); })) return { count: 0, superseded: true };
-      return { count: files.length };
     });
   }
   async download(connection, relative, destination, update, check) {

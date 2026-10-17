@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { CheckCircle, CircleNotch } from '@phosphor-icons/react';
 import { cliPanelKey } from './cli-panel';
 import { renderCliRows } from './cli-render';
@@ -40,33 +40,39 @@ function CliBlocks({ rows, live = false, onKeys }: { rows: readonly string[]; li
 // A slash command in a popup over the conversation, never in it. While the command runs, keys typed here go to the
 // CLI, so its dialogs (tabs, lists) work as in the terminal; once it has finished the popup shows what it showed.
 // Escape or a click outside closes it (onClose closes what the command opened in the CLI as well).
-export function ReadingCliPanel({ command, rows, done, terminalId, onClose, onShowTerminal }: { command: string; rows: string[]; done: boolean; terminalId: string; onClose: () => void; onShowTerminal: () => void }) {
+export function ReadingCliPanel({ command, rows, done, terminalId, feedback, interactive = false, onWrite, onClose, onShowTerminal }: { command: string; rows: string[]; done: boolean; terminalId: string; feedback?: 'waiting' | 'recovery'; interactive?: boolean; onWrite?: (key: string) => boolean; onClose: () => void; onShowTerminal: () => void }) {
   const card = useRef<HTMLDivElement>(null);
-  // Nothing read from the command for a while (a screen this view no longer understands, hooks that take long): the
-  // terminal shows what the CLI is doing.
-  const [slow, setSlow] = useState(false);
-  useEffect(() => {
-    setSlow(false);
-    if (rows.length || done) return;
-    const timer = window.setTimeout(() => setSlow(true), 10000);
-    return () => clearTimeout(timer);
-  }, [rows.length > 0, done]);
+  const alive = useRef(true);
+  const waits = useRef(new Map<ReturnType<typeof setTimeout>, (ready: boolean) => void>());
+  useEffect(() => { alive.current = true; return () => {
+    alive.current = false;
+    for (const [timer, resolve] of waits.current) { clearTimeout(timer); resolve(false); }
+    waits.current.clear();
+  }; }, [terminalId]);
+  const live = !done && interactive && feedback !== 'recovery';
   // A live dialog takes the keys when the reader is here (in this reading view, or nowhere in particular); a result
   // that is done never takes focus from what is being typed, and another card's typing stays where it is.
   useLayoutEffect(() => {
     const active = document.activeElement, view = card.current?.closest('.reading-view');
     if (!done && !isTyping(active) && (!active || active === document.body || (view && view.contains(active)))) card.current?.focus({ preventScroll: true });
   }, []);
-  const write = (key: string) => window.agentrix.writeTerminal(terminalId, key);
+  const write = (key: string) => {
+    if (!alive.current || !live) return false;
+    if (onWrite) return onWrite(key);
+    window.agentrix.writeTerminal(terminalId, key); return true;
+  };
   // Keys one after another, as typed: a burst of arrows can arrive as one paste.
   const writeKeys = async (keys: string[]) => {
-    for (const [at, key] of keys.entries()) { if (at) await new Promise(resolve => setTimeout(resolve, 30)); write(key); }
+    for (const [at, key] of keys.entries()) {
+      if (at && !await new Promise<boolean>(resolve => { const timer = setTimeout(() => { waits.current.delete(timer); resolve(true); }, 30); waits.current.set(timer, resolve); })) return;
+      if (!write(key)) return;
+    }
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation();
     if (event.nativeEvent.isComposing) return;
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
-    if (done) return;
+    if (!live) return;
     // Ctrl+C with text selected copies it (twice to the CLI would quit it); Ctrl+V pastes the text through onPaste.
     const control = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
     if (control && event.key.toLowerCase() === 'c' && window.getSelection()?.toString()) return;
@@ -78,14 +84,16 @@ export function ReadingCliPanel({ command, rows, done, terminalId, onClose, onSh
   const outside = (event: MouseEvent<HTMLDivElement>) => { if (event.target === event.currentTarget) onClose(); };
   return <div className="reading-cli-overlay" onMouseDown={outside}>
     <div className="reading-cli-panel" data-terminal-id={terminalId} ref={card} tabIndex={-1} role="dialog" aria-modal="true" aria-label={command} onKeyDown={keys}
-      onCompositionEnd={event => { if (event.data && !done) write(event.data); }}
-      onPaste={event => { const text = event.clipboardData.getData('text/plain'); if (text && !done) { event.preventDefault(); write(text); } }}
+      onCompositionEnd={event => { if (event.data && live) write(event.data); }}
+      onPaste={event => { const text = event.clipboardData.getData('text/plain'); if (text && live) { event.preventDefault(); write(text); } }}
       onFocus={() => window.agentrix.terminalFocus(terminalId, false)}>
       <div className="reading-cli-head"><strong>{command}</strong><small>{t('Esc 关闭')}</small></div>
-      <div className="reading-cli-body">{!rows.length && done ? <p className="cli-waiting"><CheckCircle size={14} weight="fill" className="cli-done" />{t('{command} 已完成，没有输出。', { command })}</p>
-        : !rows.length ? <p className="cli-waiting"><CircleNotch size={13} className="loading-spinner" />{t('正在等待 {command} 的结果…', { command })}
-        {slow && <button type="button" className="text-button" onClick={onShowTerminal}>{t('切换到终端')}</button>}</p>
-        : <CliBlocks rows={rows} live={!done} onKeys={done ? undefined : keys => void writeKeys(keys)} />}</div>
+      <div className="reading-cli-body">{feedback === 'recovery' && <p className="cli-waiting" role="status">{t('尚未确认命令完成。请切换到终端检查，避免重复执行。')}</p>}
+        {!rows.length && done && feedback !== 'recovery' ? <p className="cli-waiting"><CheckCircle size={14} weight="fill" className="cli-done" />{t('{command} 已完成，没有输出。', { command })}</p>
+        : !rows.length ? feedback !== 'recovery' && <p className="cli-waiting" role="status"><CircleNotch size={13} className="loading-spinner" />{t('正在等待 {command} 的结果…', { command })}
+        </p>
+        : <CliBlocks rows={rows} live={!done} onKeys={live ? keys => void writeKeys(keys) : undefined} />}
+        {(!done || feedback === 'recovery') && <button type="button" className="text-button" onClick={onShowTerminal}>{t('切换到终端')}</button>}</div>
     </div>
   </div>;
 }

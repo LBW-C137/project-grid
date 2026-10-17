@@ -51,12 +51,18 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
   const [pageIndex, setPageIndex] = useState(0);
   const [pageInput, setPageInput] = useState('1');
   const [editing, setEditing] = useState(false), [draft, setDraft] = useState(''), [saving, setSaving] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
-  const savingTask = useRef<Promise<boolean> | null>(null);
   const guard = useRef<() => Promise<boolean>>(async () => true);
   const dirtyRef = useRef(false);
   const editor = useRef<HTMLTextAreaElement>(null);
   const key = `${projectId}:${filePath}:${pageIndex}`;
+  // A save owns its file/page and revision until it finishes, independently of React rendering.
+  const session = useMemo(() => ({ live: true, preview: null as Preview | null, draft: '',
+    task: null as Promise<boolean> | null, flush: false, resources: new Set<string>() }), [key, revision]);
+  const sessionRef = useRef(session); sessionRef.current = session;
+  const autoSaveRef = useRef(autoSave); autoSaveRef.current = autoSave;
+  const currentSession = () => session.live && sessionRef.current === session;
   const preview = loaded?.key === key && loaded.result.ok ? loaded.result.value : null;
   const error = loaded?.key === key && !loaded.result.ok ? loaded.result.error : null;
   const previewId = preview && 'previewId' in preview ? preview.previewId : null;
@@ -73,23 +79,43 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
   dirtyRef.current = dirty;
 
   // quiet: an automatic save. The editor stays enabled and keeps its focus, and whatever was typed
-  // while the file was being written stays in the editor (and is saved by the next pause).
-  const draftRef = useRef(draft); draftRef.current = draft;
+  // while the file was being written stays in the editor and follows it in the next serial write.
+  session.draft = draft;
   const save = (quiet = false): Promise<boolean> => {
-    if (savingTask.current) return savingTask.current;
-    if (!preview || !textPage || !editing || !dirty) return Promise.resolve(true);
-    if (!quiet) setSaving(true);
-    setSaveMessage('');
-    const sent = draft;
-    const task = window.agentrix.saveFile(projectId, filePath, textPage.index, preview.revision, sent).then(result => {
-      if (!result.ok) { setSaveMessage(result.error); return false; }
-      setLoaded({ key, result });
-      if ('content' in result.value) { const saved = result.value.content.replace(/\r\n/g, '\n'); setDraft(current => current === sent ? saved : current); }
-      if (draftRef.current === sent) { dirtyRef.current = false; window.agentrix.editorDirty(false); }
-      setSaveMessage(quiet ? t('已自动保存') : t('已保存')); return true;
-    }).catch(error => { setSaveMessage(String(error.message || error)); return false; })
-      .finally(() => { setSaving(false); savingTask.current = null; });
-    savingTask.current = task; return task;
+    if (!currentSession()) return Promise.resolve(false);
+    if (!quiet && (session.task || dirtyRef.current)) { session.flush = true; setSaving(true); }
+    if (session.task) return session.task;
+    if (!session.preview || !('content' in session.preview) || !editing || !dirtyRef.current) return Promise.resolve(true);
+    setSaveMessage(''); setWriting(true);
+    const task = (async () => {
+      while (currentSession() && session.preview && 'content' in session.preview) {
+        const base = session.preview, sent = session.draft;
+        const result = await window.agentrix.saveFile(projectId, filePath, base.page.index, base.revision, sent);
+        if (!currentSession()) {
+          if (result.ok && 'previewId' in result.value) void window.agentrix.closePreview(result.value.previewId).catch(() => {});
+          return false;
+        }
+        if (!result.ok) { setSaveMessage(result.error); return false; }
+        session.preview = result.value;
+        if ('previewId' in result.value) session.resources.add(result.value.previewId);
+        setLoaded({ key, result });
+        if ('content' in result.value && session.draft === sent) {
+          session.draft = result.value.content.replace(/\r\n/g, '\n');
+          setDraft(session.draft);
+        }
+        dirtyRef.current = 'content' in result.value && session.draft !== result.value.content.replace(/\r\n/g, '\n');
+        if (!dirtyRef.current) {
+          window.agentrix.editorDirty(false);
+          setSaveMessage(session.flush ? t('已保存') : t('已自动保存')); return true;
+        }
+        // The next write uses the returned revision, even if a debounce fired during this write.
+        // Disabling auto save leaves newer edits dirty unless an explicit save requested a flush.
+        if (!session.flush && !autoSaveRef.current) return true;
+      }
+      return false;
+    })().catch(error => { if (currentSession()) setSaveMessage(String(error.message || error)); return false; })
+      .finally(() => { session.task = null; session.flush = false; if (currentSession()) { setSaving(false); setWriting(false); } });
+    session.task = task; return task;
   };
   const saveRef = useRef(save); saveRef.current = save;
   // Auto save: one second after the last keystroke, and at once when the window loses focus. A save
@@ -102,24 +128,31 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
     return () => { clearTimeout(timer); window.removeEventListener('blur', blur); };
   }, [autoSave, dirty, draft]);
   guard.current = async () => {
-    if (savingTask.current && !await savingTask.current) return false;
+    if (session.task && !await session.task) return false;
+    if (!currentSession()) return false;
     if (!dirtyRef.current) return true;
     // With auto save, leaving the file saves it; the question is asked only when that fails.
-    if (autoSave && await saveRef.current(true) && !dirtyRef.current) return true;
+    if (autoSaveRef.current) {
+      const saved = await saveRef.current(true);
+      if (!currentSession()) return false;
+      if (saved && !dirtyRef.current) return true;
+    }
     const result = await window.agentrix.confirmEditorClose(filePath);
+    if (!currentSession()) return false;
     if (!result.ok || result.value === 'cancel') return false;
-    if (result.value === 'save') return save();
+    if (result.value === 'save') return saveRef.current();
     dirtyRef.current = false; window.agentrix.editorDirty(false);
-    setDraft((text || '').replace(/\r\n/g, '\n')); return true;
+    session.draft = session.preview && 'content' in session.preview ? session.preview.content.replace(/\r\n/g, '\n') : '';
+    setDraft(session.draft); return true;
   };
   useEffect(() => {
     registerGuard(() => guard.current());
-    const beforeUnload = (event: BeforeUnloadEvent) => { if (dirtyRef.current) { event.preventDefault(); event.returnValue = ''; } };
+    const beforeUnload = (event: BeforeUnloadEvent) => { if (dirtyRef.current || sessionRef.current.task) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', beforeUnload);
     return () => { registerGuard(null); window.agentrix.editorDirty(false); window.removeEventListener('beforeunload', beforeUnload); };
   }, [registerGuard]);
-  useEffect(() => { window.agentrix.editorDirty(dirty || saving, projectId, filePath); }, [dirty, saving, projectId, filePath]);
-  const navigate = async (action: () => void) => { if (await guard.current()) { setEditing(false); setSaveMessage(''); action(); } };
+  useEffect(() => { window.agentrix.editorDirty(dirty || saving || writing, projectId, filePath); }, [dirty, saving, writing, projectId, filePath]);
+  const navigate = async (action: () => void) => { if (await guard.current() && currentSession()) { setEditing(false); setSaveMessage(''); action(); } };
   const beginEditing = () => { if (text === null) return; if (!editing) setDraft(text.replace(/\r\n/g, '\n')); setEditing(true); setMode('source'); setSaveMessage(''); requestAnimationFrame(() => editor.current?.focus()); };
 
   useEffect(() => { setImageError(false); setVideoError(false); }, [previewUrl]);
@@ -140,15 +173,23 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
     return () => { active = false; };
   }, [projectId, filePath, editing, textPage?.count, preview?.revision]);
   useEffect(() => { if (textPage) setPageInput(String(textPage.index + 1)); }, [textPage?.index]);
-  useEffect(() => () => { if (previewId) window.agentrix.closePreview(previewId).catch(() => {}); }, [previewId]);
+  useEffect(() => {
+    session.live = true;
+    return () => { session.live = false; for (const id of session.resources) void window.agentrix.closePreview(id).catch(() => {}); session.resources.clear(); };
+  }, [session]);
+  useEffect(() => {
+    for (const id of session.resources) if (id !== previewId) { session.resources.delete(id); void window.agentrix.closePreview(id).catch(() => {}); }
+  }, [session, previewId]);
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    setLoading(true); setSaving(false); setWriting(false); setEditing(false);
     window.agentrix.readFile(projectId, filePath, pageIndex).then(result => {
       if (active) {
+        session.preview = result.ok ? result.value : null;
+        if (result.ok && 'previewId' in result.value) session.resources.add(result.value.previewId);
         setLoaded({ key, result }); setSaveMessage('');
         if (result.ok && 'content' in result.value) {
-          setDraft(result.value.content.replace(/\r\n/g, '\n'));
+          session.draft = result.value.content.replace(/\r\n/g, '\n'); setDraft(session.draft);
           const editable = result.value.kind !== 'html' || modeRef.current === 'source';
           setEditing(editable);
           if (editable && result.value.kind !== 'markdown') setMode('source');
@@ -171,7 +212,7 @@ export function FilePreview({ projectId, filePath, autoSave, onClose, onError, r
     if (!document.execCommand(replacement ? 'insertText' : 'delete', false, replacement)) setDraft(node.value.slice(0, from) + replacement + node.value.slice(to));
   };
   const editorField = <CodeEditor editor={editor} text={draft} diff={diff} onResolve={resolve}><textarea ref={editor} className="file-text-editor" aria-label={t('文件编辑器')} value={draft} spellCheck={false} wrap="off" disabled={saving}
-    onChange={event => { setDraft(event.target.value); setSaveMessage(''); }} onFocus={() => { window.agentrix.terminalFocus(projectId, false); window.agentrix.fileTreeFocus(projectId, false); }}
+    onChange={event => { session.draft = event.target.value; dirtyRef.current = session.draft !== (text || '').replace(/\r\n/g, '\n'); setDraft(session.draft); setSaveMessage(''); }} onFocus={() => { window.agentrix.terminalFocus(projectId, false); window.agentrix.fileTreeFocus(projectId, false); }}
     onKeyDown={event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); void save(); }
       else runEditorKey(event.nativeEvent, event.currentTarget, filePath);

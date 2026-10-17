@@ -6,6 +6,47 @@ const os = require('node:os');
 const { readProjectFile, saveProjectFile, TEXT_PAGE_BYTES } = require('../electron/project-files.cjs');
 const { projectPaths } = require('../electron/project-paths.cjs');
 
+test('page boundaries keep CRLF and Unicode intact through edits on either side and successive pages', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-boundary-edit-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const project = { path: directory }, filename = path.join(directory, 'boundary.txt');
+  for (const [encoding, bom] of [['utf-8', []], ['utf-8', [239, 187, 191]], ['utf-16le', [255, 254]], ['utf-16be', [254, 255]]]) {
+    const units = TEXT_PAGE_BYTES / (encoding === 'utf-8' ? 1 : 2);
+    const encode = text => {
+      const bytes = Buffer.from(text, encoding === 'utf-8' ? 'utf8' : 'utf16le');
+      return Buffer.concat([Buffer.from(bom), encoding === 'utf-16be' ? bytes.swap16() : bytes]);
+    };
+    const originals = [
+      'x'.repeat(units - 1) + '\r\n' + 'y'.repeat(units - 2) + '\r\nTAIL中文🙂\r\nlast',
+      ...[1, ...(encoding === 'utf-8' ? [2, 3] : [])].map(offset => 'x'.repeat(units - offset) + '🙂\r\nTAIL中文\r\nlast'),
+      ...(encoding === 'utf-8' ? [1, 2].map(offset => 'x'.repeat(units - offset) + '中\r\nTAIL\r\nlast') : []),
+    ];
+    for (const original of originals) {
+      await fs.writeFile(filename, encode(original));
+      const first = await readProjectFile(project, 'boundary.txt');
+      const pages = await Promise.all(Array.from({ length: first.page.count }, (_, index) => readProjectFile(project, 'boundary.txt', index)));
+      assert.equal(pages.map(page => page.content).join(''), original);
+      assert.equal(pages[0].page.byteStart, bom.length);
+      assert.equal(pages.at(-1).page.byteEnd, encode(original).length);
+      for (let index = 1; index < pages.length; index++) {
+        assert.equal(pages[index - 1].page.byteEnd, pages[index].page.byteStart);
+        assert.ok(!(pages[index - 1].content.endsWith('\r') && pages[index].content.startsWith('\n')), encoding);
+      }
+      // Each save reads the current revision/page, as the editor does after another page was saved.
+      let expected = original;
+      for (let index = 0; index < pages.length; index++) {
+        const page = await readProjectFile(project, 'boundary.txt', index);
+        const [before, after] = index === 0 ? ['x', 'X'] : index === pages.length - 1 ? ['last', 'LAST'] : ['y', 'Y'];
+        assert.ok(page.content.includes(before));
+        const edited = page.content.replace(/\r\n/g, '\n').replace(before, after);
+        await saveProjectFile(project, 'boundary.txt', index, page.revision, edited);
+        expected = expected.replace(before, after);
+        assert.deepEqual(await fs.readFile(filename), encode(expected), `${encoding} page ${index}`);
+      }
+    }
+  }
+});
+
 test('saving an edited page preserves the rest of a large Unicode file and original BOM/encoding', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-file-edit-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

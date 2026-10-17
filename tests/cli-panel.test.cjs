@@ -3,12 +3,42 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
-const { claudeAtWork, cliCloseKey, cliDialogShown, cliEscapeSafe, cliInputDraft, hasCliInput, isSideConversation, cliHistory, isCliIdle, isAtPrompt, extractCliPanelRows, extractCliOutputRows, advanceCliCommand, cliPanelKey } = require('../src/features/reading/cli-panel.ts');
+const { claudeAtWork, cliCloseKey, cliDialogShown, cliEscapeSafe, cliInputDraft, commandInputText, hasCliInput, isSideConversation, cliHistory, isCliIdle, isAtPrompt, extractCliPanelRows, extractCliOutputRows, advanceCliCommand, cliPanelKey } = require('../src/features/reading/cli-panel.ts');
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/screens', name + '.txt'), 'utf8').split('\n');
 const inspect = (agent, rows) => parseAgentScreen(agent, rows);
 const footer = agent => agent === 'claude' ? ['  ⏺ Opus 5.5 · demo · ctx 4%   ● high · /effort', '  ⏸ manual mode on · ← for agents'] : ['  GPT-6.1-Sol high · C:\\work\\demo · 90% left', '? for shortcuts'];
 const input = (agent, text = '') => agent === 'claude' ? ['────', '❯ ' + text, '────', ...footer(agent)] : ['› ' + text, '', ...footer(agent)];
 const marker = agent => agent === 'claude' ? '❯' : '›';
+
+test('captured Claude bang editor acknowledges the mode prefix and exact command body', () => {
+  const rows = fixture('claude-bang-typed'), screen = inspect('claude', rows);
+  assert.equal(hasCliInput('claude', rows, screen), true);
+  assert.equal(cliInputDraft('claude', rows, screen), '!echo BANG_CAPTURE_OK');
+  assert.equal(commandInputText('! echo BANG_CAPTURE_OK'), '!echo BANG_CAPTURE_OK');
+  assert.notEqual(cliInputDraft('claude', rows, screen), commandInputText('!echo BANG_CAPTURE'));
+  assert.equal(isCliIdle('claude', rows, screen), false);
+  for (const name of ['running', 'empty-running']) {
+    const running = fixture('claude-bang-' + name);
+    assert.equal(isCliIdle('claude', running, inspect('claude', running)), false, 'Running… is not completed idle');
+    assert.equal(cliCloseKey('claude', running, inspect('claude', running)), null, 'closing the popup must not interrupt Bash/model work');
+  }
+});
+
+test('captured Codex bang editor retains its model footer and acknowledges exact shell input', t => {
+  const rows = fixture('codex-bang-typed'), screen = inspect('codex', rows);
+  assert.equal(hasCliInput('codex', rows, screen), true); assert.equal(isCliIdle('codex', rows, screen), false);
+  assert.equal(cliInputDraft('codex', rows, screen), '!echo CODEX_BANG_INPUT');
+  const h = rendererHarness(t, 'codex'); h.emit('a', fixture('codex-fresh-default'));
+  const id = h.render().begin('!echo CODEX_BANG_INPUT'); h.emit('a', rows);
+  assert.equal(h.render().confirmInput(id), true);
+});
+
+test('captured Bash results exclude model replies and earlier commands, including real multiline output', () => {
+  for (const [name, command, expected] of [['output', '!echo BANG_CAPTURE_OK', ['BANG_CAPTURE_OK']], ['empty-done', '!true', []], ['multiline', "!printf 'BANG_LINE1\\nBANG_LINE2\\n'", ['BANG_LINE1', 'BANG_LINE2']]]) {
+    const rows = fixture('claude-bang-' + name);
+    assert.deepEqual(extractCliOutputRows('claude', rows, inspect('claude', rows), command, []), expected);
+  }
+});
 
 for (const agent of ['claude', 'codex']) {
   test(agent + ': startup fixture is idle with its own placeholder', () => {
@@ -136,36 +166,261 @@ test('panel keys forward navigation, editing, search, tabs and control keys', ()
 
 // Test the renderer's screen subscriptions with fake clocks; no DOM, Electron or
 // actual agent sessions are started. This also exercises state across remounts.
-function rendererHarness(t, agent = 'claude') {
+function rendererHarness(t, agent = 'claude', screenService) {
   const Module = require('node:module');
   const ts = require('typescript');
   const filename = path.join(__dirname, '..', 'src/features/reading/useReadingCli.ts');
   const mod = new Module(filename, module);
   mod.filename = filename; mod.paths = Module._nodeModulePaths(path.dirname(filename));
   const screens = new Map(), watchers = new Map();
-  let prior = null, focused = 0;
+  let prior = null, focused = 0, parses = 0;
   const react = {
     useMemo: fn => fn(), useRef: () => prior ??= { current: null },
     useLayoutEffect: fn => fn(), useSyncExternalStore: (_subscribe, read) => read(),
   };
   const originalRequire = mod.require.bind(mod);
-  mod.require = name => name === 'react' ? react : name.endsWith('/terminal-screen') ? {
+  mod.require = name => name === 'react' ? react : name.endsWith('/terminal-screen') ? screenService ?? {
     readScreen: id => screens.get(id) ?? null,
     subscribeScreen: (id, fn) => {
       watchers.set(id, fn);
       if (screens.has(id)) fn(screens.get(id));
       return () => { if (watchers.get(id) === fn) watchers.delete(id); };
     },
-  } : name.endsWith('/agent-screen') ? require('../src/features/agents/agent-screen.ts') : name.endsWith('/cli-panel') ? require('../src/features/reading/cli-panel.ts') : originalRequire(name);
+  } : name.endsWith('/agent-screen') ? { ...require('../src/features/agents/agent-screen.ts'), parseAgentScreen: (...args) => { parses++; return parseAgentScreen(...args); } } : name.endsWith('/cli-panel') ? require('../src/features/reading/cli-panel.ts') : originalRequire(name);
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, filename);
-  t.mock.timers.enable({ apis: ['Date', 'setInterval'] });
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'] });
   const previousWindow = globalThis.window;
-  globalThis.window = { setInterval, clearInterval };
-  t.after(() => { if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow; });
+  globalThis.window = { setInterval, clearInterval, setTimeout, clearTimeout };
+  t.after(() => { mod.exports.pruneReadingCli(new Set()); if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow; });
   const render = (id = 'a', session = 'session') => mod.exports.useReadingCli(id, session, agent, { current: { focus: () => focused++ } }, true);
   const emit = (id, rows) => { screens.set(id, { rows }); watchers.get(id)?.({ rows }); };
-  return { render, emit, tick: ms => t.mock.timers.tick(ms), remount: () => { prior = null; }, focused: () => focused, watchers };
+  return { render, emit, tick: ms => t.mock.timers.tick(ms), remount: () => { prior = null; }, focused: () => focused, watchers, parses: () => parses, prune: () => mod.exports.pruneReadingCli(new Set()) };
 }
+
+test('real Claude bang captures finish on fresh Bash completion evidence, including explicit no-output', t => {
+  const h = rendererHarness(t, 'claude');
+  h.emit('a', fixture('claude-2-1-302-start')); let id = h.render().begin('!echo BANG_CAPTURE_OK');
+  h.emit('a', fixture('claude-bang-typed')); assert.equal(h.render().confirmInput(id), true); h.render().submitted(id);
+  h.emit('a', fixture('claude-bang-running')); h.tick(1000);
+  assert.equal(h.render().busy, true); assert.equal(h.render().panel.done, undefined);
+  h.emit('a', fixture('claude-bang-output')); h.tick(400);
+  assert.deepEqual(h.render().panel, { command: '!echo BANG_CAPTURE_OK', rows: ['BANG_CAPTURE_OK'], done: true });
+  id = h.render().begin('!true'); h.emit('a', fixture('claude-bang-empty-typed'));
+  assert.equal(h.render().confirmInput(id), true); h.render().submitted(id);
+  h.emit('a', fixture('claude-bang-empty-running')); h.tick(1200); assert.equal(h.render().busy, true);
+  h.emit('a', fixture('claude-bang-empty-done')); h.tick(399); assert.equal(h.render().busy, true);
+  h.tick(1); assert.deepEqual(h.render().panel, { command: '!true', rows: [], done: true });
+});
+
+test('old identical Bash markers and idle alone never confirm another bang execution', t => {
+  const h = rendererHarness(t, 'claude'), done = fixture('claude-bang-empty-done');
+  h.emit('a', done); h.render().begin('!true'); h.emit('a', done.map(row => row.replace('Local probe.', 'A different model reply.'))); h.tick(10000);
+  assert.equal(h.render().feedback, 'recovery'); assert.equal(h.render().panel.done, undefined);
+  h.render().close(); h.emit('a', input('claude')); const id = h.render().begin('!unknown');
+  h.emit('a', input('claude', '!unknown')); assert.equal(h.render().confirmInput(id), true); h.render().submitted(id);
+  h.emit('a', input('claude')); h.tick(10000);
+  assert.equal(h.render().feedback, 'recovery'); assert.equal(h.render().panel.done, undefined);
+});
+
+test('Bash completion and subsequent model work have independent lifecycles', t => {
+  const h = rendererHarness(t, 'claude'), working = fixture('claude-bang-empty-model-working');
+  assert.equal(claudeAtWork('claude', working), true); assert.equal(isCliIdle('claude', working, inspect('claude', working)), false);
+  h.emit('a', fixture('claude-bang-output')); const id = h.render().begin('!true');
+  h.emit('a', fixture('claude-bang-empty-typed')); assert.equal(h.render().confirmInput(id), true); h.render().submitted(id);
+  h.emit('a', working); h.tick(400);
+  assert.deepEqual(h.render().panel, { command: '!true', rows: [], done: true });
+});
+
+for (const agent of ['claude', 'codex']) {
+  test(agent + ': no screen starts visible pending feedback, recovers within budget and accepts late output', t => {
+    const h = rendererHarness(t, agent);
+    h.render().begin('/status');
+    assert.deepEqual(h.render().panel, { command: '/status', rows: [] });
+    assert.equal(h.render().feedback, 'waiting'); assert.equal(h.render().interactive, false);
+    h.tick(9999); assert.equal(h.render().feedback, 'waiting');
+    h.tick(1); assert.equal(h.render().feedback, 'recovery'); assert.equal(h.render().panel.done, undefined);
+    const count = h.parses(); h.tick(60000); assert.equal(h.parses(), count, 'recovery stops timer work');
+    h.emit('a', ['Earlier answer must stay out', ...input(agent)]);
+    assert.deepEqual(h.render().panel.rows, [], 'the first late input screen is only a baseline');
+    const echo = agent === 'claude' ? '❯ /status' : '/status';
+    h.emit('a', ['Earlier answer must stay out', echo, '  NEW RESULT', ...input(agent)]);
+    assert.deepEqual(h.render().panel.rows, ['  NEW RESULT']);
+    h.tick(400); assert.equal(h.render().busy, false);
+    assert.deepEqual(h.render().panel.rows, ['  NEW RESULT']);
+  });
+
+  test(agent + ': unchanged redraws cannot reuse an old identical result or reparse on every tick', t => {
+    const h = rendererHarness(t, agent), echo = agent === 'claude' ? '❯ /status' : '/status';
+    const before = [echo, '  SAME RESULT', ...input(agent)];
+    h.emit('a', before); h.render().begin('/status');
+    const firstId = h.render().commandId;
+    for (let index = 0; index < 30; index++) { h.emit('a', [...before]); h.tick(100); }
+    assert.deepEqual(h.render().panel.rows, []); assert.equal(h.render().busy, true);
+    const count = h.parses(); h.tick(7000); assert.equal(h.parses(), count);
+    assert.equal(h.render().feedback, 'recovery');
+    const repeated = [echo, '  SAME RESULT', echo, '  SAME RESULT', ...input(agent)];
+    h.emit('a', repeated); h.tick(400);
+    assert.deepEqual(h.render().panel.rows, ['  SAME RESULT']); assert.equal(h.render().busy, false);
+    h.render().begin('/status'); assert.notEqual(h.render().commandId, firstId);
+    assert.deepEqual(h.render().panel.rows, [], 'repeated command starts fresh feedback');
+  });
+
+  test(agent + ': streaming resets settling and command/session disposal rejects late callbacks', t => {
+    const h = rendererHarness(t, agent), echo = agent === 'claude' ? '❯ /status' : '/status';
+    h.emit('a', input(agent)); h.render().begin('/status');
+    const old = h.watchers.get('a');
+    h.emit('a', [echo, '  first', ...input(agent)]); h.tick(300);
+    h.emit('a', [echo, '  final', ...input(agent)]); h.tick(399);
+    assert.equal(h.render().busy, true); assert.deepEqual(h.render().panel.rows, ['  final']);
+    h.tick(1); assert.equal(h.render().busy, false);
+    h.render().begin('/config'); old({ rows: [echo, '  STALE RESULT', ...input(agent)] });
+    assert.equal(h.render().panel.command, '/config'); assert.deepEqual(h.render().panel.rows, []);
+    const previous = h.watchers.get('a');
+    h.render('a', 'new-pty'); previous({ rows: fixture(agent + '-model-menu') });
+    h.tick(30000); assert.equal(h.render('a', 'new-pty').panel, null);
+    h.render('a', 'new-pty').begin('/status'); h.prune();
+    const count = h.parses(); h.tick(30000); assert.equal(h.watchers.size, 0); assert.equal(h.parses(), count);
+  });
+
+  test(agent + ': a command leaving the input without any output or setting change is unconfirmed, not successful', t => {
+    const h = rendererHarness(t, agent);
+    h.emit('a', input(agent)); h.render().begin('/quiet');
+    h.emit('a', input(agent, '/quiet')); h.emit('a', input(agent)); h.tick(10000);
+    assert.equal(h.render().feedback, 'recovery'); assert.equal(h.render().busy, true);
+    assert.equal(h.render().panel.done, undefined); assert.deepEqual(h.render().panel.rows, []);
+  });
+
+  test(agent + ': captured dialogs remain visible during redraws and expose recovery without losing their contents', t => {
+    const h = rendererHarness(t, agent), command = agent === 'claude' ? '/usage' : '/plugins';
+    h.emit('a', agent === 'codex' ? fixture('codex-plugins-view-before') : input(agent)); h.render().begin(command);
+    const rows = fixture(agent === 'claude' ? 'claude-usage-working' : 'codex-plugins-view');
+    h.emit('a', rows);
+    const shown = h.render().panel.rows;
+    assert.ok(shown.length); assert.equal(h.render().interactive, true);
+    h.tick(10000); assert.equal(h.render().interactive, true, 'a real dialog may wait for the reader without timing out');
+    assert.equal(h.render().feedback, undefined);
+    h.emit('a', []); assert.deepEqual(h.render().panel.rows, shown);
+    assert.equal(h.render().interactive, false, 'a disappearing dialog cannot take keys through its old card');
+    h.tick(10000); assert.equal(h.render().feedback, 'recovery'); assert.deepEqual(h.render().panel.rows, shown);
+    h.emit('a', rows); assert.equal(h.render().interactive, true);
+    assert.equal(h.render().feedback, undefined);
+  });
+}
+
+test('Codex 0.163 captured permission dialog has current popup contents and a safe Escape; model picker keeps its own card', t => {
+  const h = rendererHarness(t, 'codex');
+  h.emit('a', fixture('codex-0-163-status')); h.render().begin('/permissions');
+  const rows = fixture('codex-0-163-permissions');
+  h.emit('a', rows);
+  assert.equal(h.render().interactive, true);
+  assert.ok(h.render().panel.rows.some(row => row.includes('Update Model Permissions')));
+  assert.ok(h.render().panel.rows.every(row => !row.includes('Model provider:') && !row.includes('Session:')));
+  assert.equal(cliCloseKey('codex', rows, inspect('codex', rows), '/permissions'), '\x1b');
+  h.render().begin('/model'); h.emit('a', fixture('codex-0-163-model'));
+  assert.equal(h.render().panel, null); assert.equal(h.render().busy, true);
+  h.render().begin('/memories'); h.emit('a', fixture('codex-0-163-memories'));
+  assert.equal(h.render().panel, null, 'the overlaid choice takes priority over old status content');
+  const memoryRows = fixture('codex-0-163-memories');
+  const memoryOutput = extractCliPanelRows('codex', memoryRows, inspect('codex', memoryRows), '/memories');
+  assert.ok(memoryOutput.some(row => row.includes('Enable memories?')));
+  assert.ok(memoryOutput.every(row => !/Model provider:|Token usage:|Session:|\/status/.test(row)));
+});
+
+test('fresh Claude 2.1.302 captures show status and config promptly and keep safe Escape available', t => {
+  const h = rendererHarness(t, 'claude');
+  for (const name of ['status', 'config']) {
+    h.emit('a', fixture('claude-2-1-302-start')); h.render().begin('/' + name);
+    const rows = fixture('claude-2-1-302-' + name);
+    h.emit('a', rows);
+    assert.ok(h.render().panel.rows.some(row => row.includes(name === 'status' ? 'Version:' : 'Search settings')));
+    assert.equal(h.render().interactive, true);
+    assert.equal(cliCloseKey('claude', rows, inspect('claude', rows), '/' + name), '\x1b');
+    h.tick(15000); assert.equal(h.render().interactive, true); assert.equal(h.render().feedback, undefined);
+    h.render().close();
+  }
+});
+
+test('Codex 0.163 identical status results finish when the tracker saw the new command enter and leave the input', t => {
+  const h = rendererHarness(t, 'codex'), rows = fixture('codex-0-163-status');
+  h.emit('a', rows); const id = h.render().begin('/status');
+  h.emit('a', rows.map(row => row.trim() === '› Ask Codex to do anything' ? '› /status' : row));
+  assert.equal(h.render().confirmInput(id), true); h.render().submitted(id);
+  h.emit('a', rows); h.tick(400);
+  assert.equal(h.render().busy, false);
+  assert.ok(h.render().panel.rows.some(row => row.includes('OpenAI Codex (v0.163.0)')));
+  assert.equal(h.render().panel.rows.filter(row => row.includes('OpenAI Codex')).length, 1, 'one latest result, not all earlier cards');
+});
+
+// Real registerScreen/readScreen implementation with an in-memory xterm surface. Its 100 ms publication can drop
+// the whole typed -> idle transition; no GUI, PTY, screen-shape assumptions or real sessions are involved.
+function coalescedTerminal(t, screenService, initial) {
+  let rows = initial, parsed;
+  const terminal = { get rows() { return rows.length; }, buffer: { active: { baseY: 0, getLine: index => ({ translateToString: () => rows[index] ?? '' }) } },
+    onWriteParsed: fn => { parsed = fn; return { dispose() {} }; }, onResize: () => ({ dispose() {} }) };
+  const unregister = screenService.registerScreen('a', terminal);
+  t.after(unregister);
+  return { draw(next) { rows = next; parsed(); } };
+}
+
+for (const agent of ['claude', 'codex']) {
+  test(agent + ': exact live input receipt survives a missed intermediate producer publication through four repeats and the next command', t => {
+    const service = require('../src/features/terminal/terminal-screen.ts');
+    const h = rendererHarness(t, agent, service);
+    const idle = fixture(agent === 'codex' ? 'codex-0-163-status' : 'claude-2-1-302-start');
+    const result = fixture(agent === 'codex' ? 'codex-0-163-status' : 'claude-2-1-302-status');
+    const terminal = coalescedTerminal(t, service, idle), published = [];
+    const off = service.subscribeScreen('a', screen => published.push(screen.rows)); t.after(off);
+    const typed = command => idle.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ ' : '› ') + command : row);
+    for (let repeat = 0; repeat < 4; repeat++) {
+      terminal.draw(idle); const id = h.render().begin('/status');
+      terminal.draw(typed('/status'));
+      assert.equal(h.render().confirmInput(id), true, 'the live read acknowledges input before the producer publishes');
+      h.render().submitted(id); terminal.draw(result);
+      h.tick(100); h.tick(400);
+      assert.equal(published.some(rows => rows.some(row => row.trim() === (agent === 'claude' ? '❯ /status' : '› /status'))), false);
+      assert.equal(h.render().feedback, undefined); assert.ok(h.render().panel.rows.length);
+      if (agent === 'codex') {
+        assert.equal(h.render().busy, false, 'identical /status finishes within 500 ms, not after an eight-second timer');
+        assert.equal(h.render().panel.rows.filter(row => row.includes('OpenAI Codex')).length, 1);
+      } else assert.equal(h.render().interactive, true);
+      h.render().close();
+    }
+    terminal.draw(idle); const id = h.render().begin('/model');
+    terminal.draw(typed('/model')); assert.equal(h.render().confirmInput(id), true); h.render().submitted(id);
+    terminal.draw(fixture(agent === 'codex' ? 'codex-0-163-model' : 'claude-model-menu')); h.tick(100);
+    assert.equal(h.render().panel, null, 'the next model command reaches its own choice card');
+    assert.equal(h.render().feedback, 'waiting');
+  });
+
+  test(agent + ': exact acknowledgment rejects a mismatched draft, old command token and disposed PTY', t => {
+    const h = rendererHarness(t, agent);
+    h.emit('a', input(agent)); const id = h.render().begin('/status');
+    h.emit('a', input(agent, '/status-extra')); assert.equal(h.render().confirmInput(id), false);
+    h.emit('a', input(agent, '/status')); assert.equal(h.render().confirmInput('older'), false);
+    assert.equal(h.render().confirmInput(id), true);
+    h.render('a', 'replacement'); assert.equal(h.render('a', 'replacement').confirmInput(id), false);
+  });
+
+  test(agent + ': arbitrary unconfirmed commands never become complete merely from exact receipt and idle', t => {
+    const h = rendererHarness(t, agent);
+    const earlier = [agent === 'claude' ? '❯ /unknown-action' : '/unknown-action', '  OLD RESULT'];
+    h.emit('a', [...earlier, ...input(agent)]); const id = h.render().begin('/unknown-action');
+    h.emit('a', [...earlier, ...input(agent, '/unknown-action')]); assert.equal(h.render().confirmInput(id), true); h.render().submitted(id);
+    h.emit('a', [...earlier, ...input(agent)]); h.tick(10000);
+    assert.equal(h.render().busy, true); assert.equal(h.render().feedback, 'recovery');
+    assert.equal(h.render().panel.done, undefined); assert.deepEqual(h.render().panel.rows, [], 'unknown command old results stay out');
+  });
+}
+
+test('Codex repeated status cannot finish from input acknowledgment without an explicit submitted Enter', t => {
+  const h = rendererHarness(t, 'codex'), rows = fixture('codex-0-163-status');
+  h.emit('a', rows); const id = h.render().begin('/status');
+  h.emit('a', rows.map(row => row.trim() === '› Ask Codex to do anything' ? '› /status' : row));
+  assert.equal(h.render().confirmInput(id), true);
+  h.emit('a', rows); h.tick(10000);
+  assert.equal(h.render().busy, true); assert.equal(h.render().feedback, 'recovery');
+  assert.deepEqual(h.render().panel.rows, []);
+});
 
 test('renderer waits for screen output, keeps the finished popup until it is closed, then restores the composer', t => {
   const harness = rendererHarness(t);
@@ -237,7 +492,7 @@ test('a Codex command that prints nothing ends once its footer shows the change,
   assert.equal(done.busy, false, 'not the eight seconds a command that changed nothing is given');
   assert.deepEqual(done.panel, { command: '/fast', rows: [], done: true });
 });
-test('a Codex command that prints and changes nothing still finishes, and says so rather than vanishing', t => {
+test('a Codex command with no observable receipt stays visible for recovery instead of claiming success', t => {
   const { parseAgentScreen: parse } = require('../src/features/agents/agent-screen.ts');
   const { cliFooter } = require('../src/features/reading/cli-panel.ts');
   const screen = ['• Earlier answer', '', ...input('codex')];
@@ -248,7 +503,10 @@ test('a Codex command that prints and changes nothing still finishes, and says s
   harness.tick(7000);
   assert.equal(harness.render().busy, true);
   harness.tick(1200);
-  assert.deepEqual(harness.render().panel, { command: '/quiet', rows: [], done: true });
+  assert.deepEqual(harness.render().panel, { command: '/quiet', rows: [] });
+  harness.tick(1800);
+  assert.equal(harness.render().feedback, 'recovery');
+  assert.equal(harness.render().busy, true);
 });
 test('renderer choice takes priority and a dialog closed without content leaves no popup', t => {
   const harness = rendererHarness(t);
@@ -263,6 +521,7 @@ test('renderer choice takes priority and a dialog closed without content leaves 
 });
 test('renderer popup survives remount, remains terminal-specific and resets for a new PTY session', t => {
   const harness = rendererHarness(t);
+  harness.emit('a', input('claude'));
   harness.render().begin('! dir');
   harness.remount(); // Opening the raw terminal does not stop the command's watcher.
   harness.emit('a', ['❯ ! dir', '  file.txt', ...input('claude')]);
@@ -380,7 +639,7 @@ test('a Codex command waits for output that comes a moment after its input retur
   assert.equal(step(printed, 1350), true, 'output settled');
   assert.deepEqual(command.output, ['│ Model: gpt-6.1-sol │']);
   command = { ...command, output: [], idleSince: null };
-  assert.equal(step(quiet, 2000), false); assert.equal(step(quiet, 8100), true, 'a command that prints nothing ends after several seconds');
+  assert.equal(step(quiet, 2000), false); assert.equal(step(quiet, 8100), false, 'without observable receipt, a wait budget cannot prove completion');
 });
 
 test('a Codex picker drawn under the input (/copy) fills the card and closes with Escape', () => {
@@ -480,19 +739,18 @@ test('the same Codex command twice on a full screen: the new card lands where th
   assert.deepEqual(extractCliOutputRows('codex', again, inspect('codex', again), '/status', twice), card);
   const still = [...third.slice(0, -input('codex', '/status').length), ...input('codex')];
   assert.deepEqual(extractCliOutputRows('codex', still, inspect('codex', still), '/status', twice), []);
-  // A fourth time the screen, all /status cards, reads the same before and after (Codex draws in the alternate screen:
-  // no scrollback tells how far it moved). Once the wait for output is over, the latest card is the result, not
-  // "no output".
+  // A fourth time an identical redraw cannot establish whether another /status ran. Leave it unconfirmed rather
+  // than reporting old cards as new output; the hook provides bounded terminal recovery feedback.
   const run = (screen, before) => {
     let command = { id: 'c', command: '/status', at: 0, observed: true, idleSince: null, output: [], dialog: [], before };
     const step = now => { const next = advanceCliCommand(command, 'codex', screen, inspect('codex', screen), now, true); command = next.command; return next.done; };
     return [step(100), step(600), step(8100), command.output];
   };
-  assert.deepEqual(run(again, cliHistory('codex', again, inspect('codex', again))), [false, false, true, card]);
+  assert.deepEqual(run(again, cliHistory('codex', again, inspect('codex', again))), [false, false, false, []], 'an identical redraw cannot prove another command ran');
   // Not all the screen is that card over again (an answer below an earlier /status): nothing of it is this run's.
   const later = [...still.slice(0, -input('codex').length - 2), '', '• 已切换。', '', '', ...input('codex')];
-  assert.deepEqual(run(later, cliHistory('codex', later, inspect('codex', later))), [false, false, true, []]);
-  assert.deepEqual(run(still, twice), [false, false, true, []], 'the history above the cards is not a card');
+  assert.deepEqual(run(later, cliHistory('codex', later, inspect('codex', later))), [false, false, false, []]);
+  assert.deepEqual(run(still, twice), [false, false, false, []], 'the history above the cards is not a card');
 });
 
 test('a Claude dialog under its edge shows only itself, not an earlier run of the same command above it', () => {
@@ -611,7 +869,7 @@ test('ReadingView closes config after clearing its filter and stops sending Esca
   find(source);
   assert.ok(initializer, 'the view owns the close loop');
   const code = ts.transpileModule('return ' + initializer.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  const bind = new Function('{ readScreen, terminal, parseAgentScreen, cliEscapeSafe, cliCloseKey, cli, hasCliInput, window, setTimeout }', code);
+  const bind = new Function('{ readScreen, terminal, parseAgentScreen, cliEscapeSafe, cliCloseKey, cliDialogShown, cli, hasCliInput, window, setTimeout, sendOwner, mounted }', code);
   const empty = fixture('claude-config-working');
   const filtered = empty.map(row => row.replace('Search settings…', 'motion'));
   const closed = [...empty.slice(0, 2), '  ⏸ manual mode on · esc to interrupt'];
@@ -621,7 +879,7 @@ test('ReadingView closes config after clearing its filter and stops sending Esca
       const writes = [];
       const close = bind({
         readScreen: () => ({ rows: screens[at] }), terminal: { id: 'config-test' },
-        parseAgentScreen, cliEscapeSafe, cliCloseKey, cli: { panel: { rows: empty } }, hasCliInput,
+        parseAgentScreen, cliEscapeSafe, cliCloseKey, cliDialogShown, cli: { panel: { rows: empty } }, hasCliInput, sendOwner: { current: 'session' }, mounted: { current: true },
         window: { agentrix: { writeTerminal: (id, key) => {
           assert.equal(id, 'config-test');
           assert.ok(at < screens.length - 1, 'no Escape after the dialog disappears');
@@ -633,6 +891,21 @@ test('ReadingView closes config after clearing its filter and stops sending Esca
       assert.equal(at, screens.length - 1, 'the dialog closed while Claude kept working');
       assert.deepEqual(writes, Array(screens.length - 1).fill('\x1b'));
     }
+  }
+  for (const agent of ['claude', 'codex']) {
+    for (const rows of [[], ['Unknown screen without a dialog close hint']]) {
+      const writes = [];
+      const close = bind({ readScreen: () => ({ rows }), terminal: { id: 'unknown' }, parseAgentScreen, cliEscapeSafe, cliCloseKey, cliDialogShown, cli: { panel: { rows: [] } }, hasCliInput,
+        sendOwner: { current: 'owner' }, mounted: { current: true }, window: { agentrix: { writeTerminal: (...args) => writes.push(args) } }, setTimeout: resolve => resolve() });
+      assert.equal(await close(agent, '/status'), false);
+      assert.deepEqual(writes, [], 'an unknown screen never receives an arbitrary close key');
+    }
+    const rows = fixture(agent === 'claude' ? 'claude-config-working' : 'codex-0-163-permissions');
+    const sendOwner = { current: 'old-pty' }, writes = [];
+    const close = bind({ readScreen: () => ({ rows }), terminal: { id: 'switch' }, parseAgentScreen, cliEscapeSafe, cliCloseKey, cliDialogShown, cli: { panel: { rows } }, hasCliInput,
+      sendOwner, mounted: { current: true }, window: { agentrix: { writeTerminal: (id, key) => writes.push(key) } }, setTimeout: resolve => { sendOwner.current = 'new-pty'; resolve(); } });
+    assert.equal(await close(agent, '/config'), false);
+    assert.deepEqual(writes, ['\x1b'], 'no close retries can reach a replacement PTY');
   }
 });
 

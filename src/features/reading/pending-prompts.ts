@@ -2,11 +2,32 @@
 export const PENDING_PROMPT_TIMEOUT = 20_000;
 // The reading view keeps 400 entries; the user records seen are bounded well above that.
 const SEEN_LIMIT = 1000;
-type UserRecord = { id: string; role: string; text?: string };
+type UserRecord = { id: string; role: string; text?: string; at?: number; queued?: boolean; images?: string[] };
 export type PendingPrompt = { id: string; role: 'user'; text: string; at: number; sending: boolean; images?: string[] };
 export type PendingPrompts = { sessionId: string | null; prompts: readonly PendingPrompt[]; seen: readonly string[] };
 
 export const normalizePrompt = (text: string) => text.trim().replace(/\s+/g, ' ');
+
+const timely = (prompt: { at: number }, record: UserRecord) => record.at === undefined || record.at >= prompt.at - 500;
+const transcriptMatches = (message: string, record: string) => normalizePrompt(message) === normalizePrompt(record)
+  // conversation.cjs bounds transcript text at 20,000 characters with this exact marker. Unlike an input's
+  // paste summary, it still carries the message's words (verified against the actual queue producer).
+  || (record.length === 20003 && record.endsWith('\n\n…') && normalizePrompt(message).startsWith(normalizePrompt(record.slice(0, 20000))));
+
+// Pair queue records and renderer echoes one-to-one. Raw-terminal sends and reloads have no echo;
+// the transcript still owns a queued card, its timestamp and its position ahead of later sends.
+export function pendingPromptCards(prompts: readonly PendingPrompt[], records: readonly UserRecord[]) {
+  const remaining = [...prompts], queuedIds = new Set<string>();
+  const cards: PendingPrompt[] = [];
+  for (const record of records) {
+    if (!record.queued || record.role !== 'user') continue;
+    const index = remaining.findIndex(prompt => timely(prompt, record) && transcriptMatches(prompt.text, record.text ?? ''));
+    const echo = index >= 0 ? remaining.splice(index, 1)[0] : undefined;
+    const card: PendingPrompt = { ...echo, id: echo?.id ?? record.id, role: 'user', text: echo?.text ?? record.text ?? '', at: record.at ?? echo?.at ?? 0, sending: false, images: record.images ?? echo?.images };
+    cards.push(card); queuedIds.add(card.id);
+  }
+  return { prompts: [...cards, ...remaining], queuedIds };
+}
 // A slash command (/model, /prompts:fix) or shell mode (!ls); a message that starts with a path (/tmp/shot.png, what an
 // SSH project's pasted picture becomes) is a message, not a command whose screen is shown in a popup.
 export const isTypedCommand = (text: string) => (/^\/[^\s/]+(?:\s|$)/.test(text) || text.startsWith('!')) && !/[\r\n]/.test(text);
@@ -27,7 +48,7 @@ export function sameMessage(message: string, draft: string) {
 }
 
 export function createPendingPrompts(sessionId: string | null, entries: readonly UserRecord[] = []): PendingPrompts {
-  return { sessionId, prompts: [], seen: entries.filter(entry => entry.role === 'user').map(entry => entry.id) };
+  return { sessionId, prompts: [], seen: entries.filter(entry => entry.role === 'user' && !entry.queued).map(entry => entry.id).slice(-SEEN_LIMIT) };
 }
 
 export function reconcilePendingPrompts(state: PendingPrompts, sessionId: string | null, entries: readonly UserRecord[], now: number): PendingPrompts {
@@ -35,13 +56,13 @@ export function reconcilePendingPrompts(state: PendingPrompts, sessionId: string
   const seen = new Set(state.seen), prompts = [...state.prompts];
   let changed = false;
   for (const entry of entries) {
-    if (entry.role !== 'user' || seen.has(entry.id)) continue;
+    if (entry.role !== 'user' || entry.queued || seen.has(entry.id)) continue;
     seen.add(entry.id); changed = true;
     // The echo with the same text, or one this record ends with: a prompt Claude put back after an interrupt can
     // precede what was sent.
     const text = normalizePrompt(entry.text ?? '');
-    let index = prompts.findIndex(prompt => normalizePrompt(prompt.text) === text);
-    if (index < 0) index = prompts.findIndex(prompt => text.endsWith(normalizePrompt(prompt.text)));
+    let index = prompts.findIndex(prompt => timely(prompt, entry) && transcriptMatches(prompt.text, entry.text ?? ''));
+    if (index < 0) index = prompts.findIndex(prompt => timely(prompt, entry) && text.endsWith(normalizePrompt(prompt.text)));
     if (index >= 0) prompts.splice(index, 1);
   }
   for (let index = 0; index < prompts.length; index++) {

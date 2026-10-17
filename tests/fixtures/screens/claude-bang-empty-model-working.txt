@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.302
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   C:\work\demo-app
+
+
+! echo BANG_CAPTURE_OK
+  ⎿  BANG_CAPTURE_OK
+
+● Local probe.
+
+✻ Crunched for 2s · done 0:00
+
+! true
+  ⎿  (Bash completed with no output)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+* Manifesting…
+  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits
+                                                                                                              ◐ medium · /effort
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt · ← for agents

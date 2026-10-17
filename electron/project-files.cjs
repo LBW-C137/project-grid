@@ -158,13 +158,16 @@ async function readProjectFile(project, relativePath, pageIndex = 0) {
       if (!chunk.bytesRead) break;
       bytesRead += chunk.bytesRead;
     }
+    // Both adjacent pages move the same boundary forward over a character or CRLF pair.
     const boundary = position => {
       let offset = Math.max(0, Math.min(bytesRead, position - readStart));
       if (encoding === 'utf-8') {
         while (offset < bytesRead && (buffer[offset] & 0xc0) === 0x80) offset++;
+        if (offset > 0 && offset < bytesRead && buffer[offset - 1] === 13 && buffer[offset] === 10) offset++;
       } else if (offset >= 2 && offset + 1 < bytesRead) {
         const unit = i => encoding === 'utf-16le' ? buffer.readUInt16LE(i) : buffer.readUInt16BE(i);
         if (unit(offset) >= 0xdc00 && unit(offset) <= 0xdfff && unit(offset - 2) >= 0xd800 && unit(offset - 2) <= 0xdbff) offset += 2;
+        else if (unit(offset - 2) === 13 && unit(offset) === 10) offset += 2;
       }
       return offset;
     };

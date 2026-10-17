@@ -16,6 +16,8 @@ const { writeHandoff, handoffText, startupNote } = require('./features/agents/ha
 const { remember, roundsOf } = require('./features/agents/project-memory.cjs');
 const { agentSettings } = require('./features/agents/agent-settings.cjs');
 const { UsageMeter, claudeProvider, codexProvider, claudeAccount } = require('./features/agents/agent-usage.cjs');
+const { CodexAccountUsage } = require('./features/agents/codex-account-usage.cjs');
+const codexAccounts = new CodexAccountUsage();
 const { agentCommand } = require('./features/agents/agent-command.cjs');
 const { scrubSkills } = require('./features/agents/skill-privacy.cjs');
 const { setThumbnailer, isGeneratedImage } = require('./conversation.cjs');
@@ -351,6 +353,7 @@ function noteSettings(s, agent, record) {
   const next = agentSettings(s.agentSettings || null, agent, record);
   if (next !== (s.agentSettings || null)) { s.agentSettings = next; scheduleState(); }
   if (s.usage?.apply(record)) scheduleState();
+  if (agent === 'codex' && record?.type === 'session_meta') s.bindUsageAccount?.();
 }
 // A skill step names the skill; what the skill is for comes from its SKILL.md, a moment later.
 function describeActions(s, cwd, actions) {
@@ -400,13 +403,29 @@ function followClaude(project, s, event) {
 // What the activity pane shows of the model route and the tokens spent. Which service a model is reached through is
 // read from this computer's settings; over SSH, Claude's stays unnamed and Codex's is the id its records give.
 function startUsage(project, s, event) {
+  stopUsageAccount(s);
   const usage = s.usage = new UsageMeter(s.agent, { changed: () => { if (s.usage === usage) scheduleState(); } });
+  if (s.agent === 'codex') {
+    let provider;
+    s.bindUsageAccount = () => {
+      if (s.usage !== usage || (s.usageAccount && provider === usage.providerId)) return;
+      s.usageAccount?.dispose(); provider = usage.providerId;
+      s.usageAccount = codexAccounts.watch({ codexHome: event.codexHome || s.codexHome, cwd: event.cwd || project.path,
+        env: s.usageEnv || process.env, provider, remote: project.kind === 'ssh', command: event.command }, account => {
+        if (s.usage === usage && s.codexActive && sessions.get(s.terminalId) === s) { usage.codexAccount(account); scheduleState(); }
+      });
+    };
+    s.bindUsageAccount();
+  }
   if (project.kind === 'ssh') return;
   const named = update => { if (s.usage === usage) { update(); scheduleState(); } };
   if (s.agent === 'claude') {
     void claudeProvider(event.cwd || project.path, claudeConfigDir()).then(provider => named(() => { usage.provider = provider; })).catch(() => {});
     void refreshClaudeAccounts();
   } else void codexProvider(event.codexHome || s.codexHome).then(names => named(() => { usage.names = names; })).catch(() => {});
+}
+function stopUsageAccount(s) {
+  s.bindUsageAccount = null; s.usageAccount?.dispose(); s.usageAccount = null;
 }
 // Claude's plan limits and resets, from Claude Code's own state file, for every local Claude terminal: read when one
 // starts and then twice a minute while any runs (Claude Code refreshes them itself every few minutes).
@@ -421,6 +440,7 @@ async function refreshClaudeAccounts() {
 
 // Restores and the reading-view picker know the id before Claude emits its next prompt hook.
 async function followClaudeSession(project, s, id) {
+  if (project.kind === 'ssh') return false;
   const request = s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
   const cwd = store.findTerminal(s.terminalId)?.record.restore?.cwd || project.path;
   const file = await findClaudeSession(cwd, id);
@@ -456,11 +476,9 @@ function applyActivity(project, s, snapshot) {
       });
     }
   }
-  if (snapshot.state === 'working') store.expectCompletion(project.id);
   if (['complete', 'interrupted'].includes(snapshot.state) && (s.agent === 'claude' || project.kind === 'ssh')) s.promptQueue.finish(snapshot.updatedAt);
   if (snapshot.state === 'complete' && snapshot.turnId) {
     s.lastCompletedAt = snapshot.updatedAt;
-    if (!project.seenEvents.includes(`${snapshot.threadId}:${snapshot.turnId}`)) store.expectCompletion(project.id);
     if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project);
   } else if (snapshot.state === 'interrupted') store.expectCompletion(project.id, false);
   // The round that ended joins the folder's permanent memory (project-memory.cjs), here or over SSH alike. Claude's
@@ -487,6 +505,11 @@ function claudeActivity(project, s, event) {
   if (event.state === 'working') {
     s.claudeLocalCommand = typeof event.prompt === 'string' && isLocalAgentCommand('claude', event.prompt);
     if (s.claudeLocalCommand) return;
+    // UserPromptSubmit is actual input, unlike a polled working snapshot or a Stop callback.
+    if (s.claudePromptEventId !== event.eventId) {
+      s.claudePromptEventId = event.eventId;
+      store.expectCompletion(project.id);
+    }
   } else if (event.state === 'complete' && s.claudeLocalCommand) { s.claudeLocalCommand = false; return; }
   s.needsInput = null;
   const turnId = event.eventId.slice(event.sessionId.length + 1);
@@ -504,7 +527,7 @@ function onEvent(event) {
   if (event.type === 'agent-activity') { claudeActivity(project, s, event); return; }
   if (event.type !== 'turn-complete' && !acceptShellEvent(s, event)) return;
   if (event.type === 'shell-ready' || event.type === 'shell-prompt') {
-    s.needsInput = null; s.agentCommand = null;
+    s.needsInput = null; s.agentCommand = null; stopUsageAccount(s);
     s.claudeResumeId = null; s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
     s.activityMonitor?.stop(); s.activityMonitor = null;
     s.codexActive = false; s.codexActivity = 'unknown'; s.reportedThreadId = null; s.promptQueue.reset();
@@ -520,6 +543,7 @@ function onEvent(event) {
     // says what it does and shows its output; nothing is handed over, followed or restored for it.
     s.agentCommand = agentCommand(event.agent, event.command);
     if (s.agentCommand) {
+      stopUsageAccount(s);
       s.ready = false; s.codexActive = true; s.status = 'codex'; s.error = null; s.codexActivity = 'unknown'; s.agentSettings = null; s.usage = null;
       s.agent = event.agent === 'claude' ? 'claude' : 'codex';
       s.activityMonitor?.stop(); s.activityMonitor = null; s.actions.reset(); s.conversation.reset(); s.promptQueue.reset();
@@ -540,6 +564,8 @@ function onEvent(event) {
     s.error = null;
     s.submissions.reset();
     s.codexActivity = 'unknown'; s.activitySince = Date.now(); s.activityInputAt = 0;
+    s.activityPromptAt = 0; s.claudePromptEventId = null;
+    s.activityClockOffset = Number.isFinite(event.sentAt) ? s.activitySince - event.sentAt : 0;
     if (!keepClaudeHistory) { s.actions.reset(); s.conversation.reset(); s.claudeTranscript = null; s.claudeSessionId = null; }
     s.promptQueue.reset();
     s.agent = event.agent === 'claude' ? 'claude' : 'codex';
@@ -590,7 +616,7 @@ function onEvent(event) {
     store.setRestore(s.terminalId, { terminal: true, codex: true, cwd: event.cwd });
     // Unread completion is independent of session activity. It survives new turns.
   } else if (event.type === 'codex-exited') {
-    s.needsInput = null; s.agentCommand = null;
+    s.needsInput = null; s.agentCommand = null; stopUsageAccount(s);
     s.claudeResumeId = null; s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
     s.activityMonitor?.stop(); s.activityMonitor = null; s.codexActivity = 'unknown';
     s.ready = false;
@@ -630,8 +656,8 @@ async function resumeAfterPrompt(project, session) {
   if (!plan || !session.ready || session.inputDirty) return;
   restorePlans.delete(session.terminalId);
   const restore = store.findTerminal(session.terminalId)?.record.restore;
-  // Claude Code (local projects) resumes its own conversation, continuing an unfinished turn.
-  if (restore?.agent === 'claude' && project.kind !== 'ssh') {
+  // Claude Code resumes its own conversation, here or on the terminal's SSH channel.
+  if (restore?.agent === 'claude') {
     if (!session.claudeAvailable || !plan.codex) return;
     try {
       const command = claudeResumeCommand(restore);
@@ -639,8 +665,9 @@ async function resumeAfterPrompt(project, session) {
       store.expectCompletion(project.id, restore.interrupted === true);
       session.ready = false;
       session.claudeResumeId = restore.threadId || null;
-      session.gate.afterPrompt(command);
-      if (restore.threadId) await followClaudeSession(project, session, restore.threadId);
+      if (project.kind === 'ssh') session.gate.input(command); else session.gate.afterPrompt(command);
+      // Remote SessionStart hooks bind the server transcript; never search this computer for that path.
+      if (restore.threadId && project.kind !== 'ssh') await followClaudeSession(project, session, restore.threadId);
       broadcast();
     } catch (error) { session.error = `恢复会话失败：${error.message}`; broadcast(); }
     return;
@@ -763,6 +790,7 @@ function startTerminal(id) {
   const s = {
     terminal, terminalId: id, projectId: project.id, sessionId, sessionKey, bootstrapFile, status: 'starting', ready: false, shellKind,
     // Command Prompt reports its prompts through markers in its output instead of the event pipe.
+    usageEnv: project.kind === 'ssh' ? null : { ...env },
     prompts: shellKind === 'cmd' ? new PromptMarkers() : null,
     tools: shellKind === 'cmd' ? { codex: onPath('codex', env), claude: onPath('claude', env) } : null,
     titles: new TerminalTitleTracker(), reportedThreadId: null,
@@ -778,7 +806,17 @@ function startTerminal(id) {
     publishConversation(s, change);
     const entry = change.entry;
     // An answer to the agent's own question is not a prompt: it goes on with the round it answered.
-    if (entry?.role === 'user' && !entry.answer && !entry.queued && s.codexActive && entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
+    if (entry?.role === 'user' && !entry.answer && !entry.queued && s.codexActive) {
+      if (entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
+      // Recalled prompts, custom slash commands and command-line prompts are not always visible to the key
+      // tracker. Codex's received user message confirms them. A time watermark excludes history and replays;
+      // working/completion snapshots alone can never grant another alert. Claude has UserPromptSubmit hooks.
+      const at = entry.at + (s.activityClockOffset || 0);
+      if (s.agent === 'codex' && at >= Math.max(s.activitySince || 0, s.activityInputAt || 0) && at > Math.max(s.activityPromptAt || 0, s.lastCompletedAt || 0)) {
+        s.activityPromptAt = at;
+        store.expectCompletion(project.id);
+      }
+    }
   });
   sessions.set(id, s);
   store.setRestore(id, { terminal: true, ...(restorePlans.has(id) ? {} : { codex: false }) });
@@ -803,6 +841,7 @@ function startTerminal(id) {
         if (s.codexActive) { s.codexActivity = 'unknown'; s.activityInputAt = 0; if (wholeThread(threadId)) store.setRestore(id, { threadId }); void s.activityMonitor?.poll(); }
       }
     }
+    s.usageAccount?.output(data);
     s.gate.output(data);
     s.chunks.push(data); s.bytes += data.length; s.pending += data;
     while (s.bytes > 1024 * 1024 && s.chunks.length > 1) s.bytes -= s.chunks.shift().length;
@@ -812,6 +851,7 @@ function startTerminal(id) {
   terminal.onExit(({ exitCode }) => {
     if (sessions.get(id) !== s) return;
     flush();
+    stopUsageAccount(s);
     s.status = 'exited'; s.ready = false; s.codexActive = false;
     s.activityMonitor?.stop(); s.activityMonitor = null; s.codexActivity = 'unknown';
     restorePlans.delete(id);
@@ -828,6 +868,7 @@ function disposeTerminal(id) {
   const s = sessions.get(id);
   if (!s) return;
   sessions.delete(id);
+  stopUsageAccount(s);
   clearTimeout(s.flushTimer); clearTimeout(s.actionTimer); clearTimeout(s.conversationTimer);
   for (const timer of s.submissionPolls || []) clearTimeout(timer);
   s.activityMonitor?.stop(); s.gate.dispose(); s.promptQueue.reset();
@@ -1164,6 +1205,8 @@ app.on('before-quit', event => {
   voiceManager?.close(); fileOperations?.cancel();
   quitting = true;
   updateManager?.dispose();
+  codexAccounts.dispose();
+  clearInterval(claudeAccountTimer);
   clearTimeout(stateTimer);
   for (const id of sessions.keys()) disposeTerminal(id);
   sshAuth?.close();

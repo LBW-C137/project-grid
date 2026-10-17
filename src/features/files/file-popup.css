@@ -10,6 +10,8 @@
 .file-popup-head strong { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 600 13px var(--font-ui); color: var(--ink, #f2f7fc); }
 .file-popup-head small { font-size: 11px; }
 .file-popup-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.file-popup-pagination { flex: none; color: var(--ink-secondary, #b9c8d8); border-color: var(--card-line, rgba(255, 255, 255, .13)); }
+.file-popup-pagination input { color: var(--ink, #f2f7fc); background: var(--glass-solid, rgba(14, 20, 30, .94)); border-color: var(--card-line, rgba(255, 255, 255, .13)); font: inherit; }
 .file-popup-picture { display: grid; place-items: center; min-height: 0; overflow: hidden; background: rgba(0, 0, 0, .28); user-select: none; }
 .file-popup-picture img { display: block; max-width: calc(100vw - 64px); max-height: calc(100vh - 124px); object-fit: contain; }
 .file-popup-picture.is-larger { cursor: zoom-in; }

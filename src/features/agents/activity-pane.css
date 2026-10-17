@@ -27,9 +27,6 @@
 .activity-prompts li.is-working { gap: 8px; padding: 12px 14px; }
 .activity-prompts li.is-working .activity-prompt-state { font-size: 13px; font-weight: 600; color: var(--flow-ok); }
 .activity-prompts li.is-working .activity-prompt-state svg { color: var(--flow-ok); }
-.activity-progress { position: relative; height: 6px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, .1); }
-.activity-progress i { position: absolute; inset: 0 auto 0 0; width: 45%; border-radius: inherit; background: var(--flow-ok); animation: activity-progress 2.2s cubic-bezier(.45, 0, .25, 1) infinite; }
-@keyframes activity-progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(230%); } }
 .activity-task-quiet { flex: 1; min-height: 0; overflow: hidden; margin: 0 14px; font-size: 12.5px; line-height: 1.6; color: var(--flow-muted); overflow-wrap: anywhere; }
 
 /* Agent › service › model, then how the model runs. */
@@ -80,8 +77,6 @@
 .activity-token-row small { grid-column: 1 / -1; font-size: 11px; line-height: 1.6; color: var(--flow-faint); font-variant-numeric: tabular-nums; }
 .activity-tokens + .activity-note { padding-top: 0; }
 .activity-empty { margin: 0; padding: 12px 14px; font-size: 12px; line-height: 1.7; color: var(--flow-muted); }
-:root[data-motion="off"] .activity-progress i { width: 100%; opacity: .5; }
-@media (prefers-reduced-motion: reduce) { :root[data-motion="system"] .activity-progress i { width: 100%; opacity: .5; } }
 
 /* A limit reset is an emergency stop: a glossy red dome sunk in a gunmetal bezel (two screws), ringed with yellow and
    black hazard stripes; its label under it, how many are left beside it. The dome brightens under the pointer and sinks

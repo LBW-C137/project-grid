@@ -83,7 +83,7 @@ jobs:
         run: npm ci --no-audit --no-fund || { sleep 10; npm ci --no-audit --no-fund; }
 
       - name: Install Codex CLI for offline startup checks
-        run: npm install --global @openai/codex@0.154.0 --no-audit --no-fund
+        run: npm install --global @openai/codex@0.163.0 --no-audit --no-fund
 
       - name: Run unit and integration tests
         run: npm test
@@ -152,6 +152,9 @@ jobs:
       - name: Verify reading commands, CLI keys and permission handoff
         run: node scripts/retry.mjs npm run test:reading -- --packaged
 
+      - name: Verify agent hierarchy, queued messages, paged popups and slow autosave
+        run: node scripts/retry.mjs node scripts/reading-hierarchy-smoke.mjs --packaged
+
       - name: Create checksum and build notes
         run: |
           $version = '${{ steps.version.outputs.version }}'
@@ -203,6 +206,7 @@ jobs:
             .test-output/desktop-*/*.png
             .test-output/sessions-*/*.png
             .test-output/workspace-*/*.png
+            .test-output/reading-hierarchy-*/*.png
             .test-output/focus-motion-*/*.png
             .test-output/editor-terminals-*/*.png
             .test-output/themes-markdown-*/*.png
@@ -523,12 +527,11 @@ jobs:
 
           ## Changes in $RELEASE_VERSION
 
-          - Project Grid is renamed Agentrix everywhere: window, tray, menus, installers (Agentrix-Setup-<version>-x64.exe and the macOS and Linux packages), the Linux executable, the app protocol, shell integration and docs. The Windows app id stays the same so the installer replaces the old app in place and updates keep working.
-          - On first start the old "Project Grid" profile (and "Project Grid Dev") is renamed to "Agentrix"; while the old app still holds it, the projects, settings, summaries and voice models are copied instead. Start menu and desktop shortcuts named Project Grid that belong to this app are replaced by Agentrix ones in the same places.
-          - Reading view performance: long answers (over 4,000 characters) are parsed in a worker with a 2-second limit and fall back to plain text instead of freezing; huge records are cut before their wrappers are stripped; an answer streamed many times in one batch is sent once; pasted and generated pictures travel as 640-pixel JPEG copies; Codex direct reads large responses without rescanning and resumes only the latest 400 items.
-          - Codex image generation: a finished image_gen item shows its saved picture in the reading view (terminal and direct modes) with the revised prompt; a click opens the file, and only files under a generated_images folder can be opened that way.
-          - A Claude dialog opened while Claude is working (its spinner line stays above the dialog) is now recognised by its Esc hint, so the next slash command closes it first instead of typing into it.
-          - Adding a local project no longer opens a terminal. Its card offers Claude Code and Codex with "Start fresh" or "Continue history": Claude resumes its latest conversation in the folder with --resume, Codex resumes the latest rollout started in that folder (never another project's newer one). "Just a terminal" remains for other CLIs; SSH projects still connect through their terminal first.
+          - Reading view groups skills and commands under their agent turn, preserves expanded groups in long conversations, and uses official OpenAI and Claude marks. File-tree icons keep their updated style.
+          - Slash commands show immediate feedback, confirm terminal input before submission, and offer terminal recovery for slow responses. Queued terminal messages remain visible.
+          - The backend refreshes remaining reset credits for supported local Codex accounts. Task cards retain their processing status without the animated progress bar.
+          - Autosave preserves edits made while a save is running, paged edits retain line endings, and file popups support loading subsequent pages.
+          - Fix remote Claude resume, copying same-named files from different folders, and completion notifications being rearmed by background callbacks.
 
           Commit: $GITHUB_SHA
           Build: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID

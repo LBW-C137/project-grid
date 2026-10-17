@@ -1,14 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { readingMarked } from './markdown-escape';
 import createDOMPurify from 'dompurify';
-import { ArrowDown, CaretDown, CaretUp, CheckCircle, FileText, Globe, Image as ImageIcon, MagnifyingGlass, PaperPlaneRight, PencilSimple, Plugs, Question, Robot, Sparkle, Stop, TerminalWindow, User as UserIcon, Wrench, X, XCircle, type Icon } from '@phosphor-icons/react';
+import { ArrowDown, CaretDown, CaretUp, CheckCircle, FileText, Globe, Image as ImageIcon, MagnifyingGlass, PaperPlaneRight, PencilSimple, Plugs, Robot, Sparkle, Stop, TerminalWindow, User as UserIcon, Wrench, X, XCircle, type Icon } from '@phosphor-icons/react';
 import type { AgentCommand, ConversationEntry, ProjectTerminal } from '../../shared/types';
 import { actionText, stepVerb } from '../agents/action-text';
+import { CodexLogo } from '../agents/AgentBrandIcon.ts';
 import { dictateInto } from '../voice/voice-input';
 import { createDictationSend } from './dictation-send';
 import { readScreen, useScreen } from '../terminal/terminal-screen';
 import { parseAgentScreen } from '../agents/agent-screen';
-import { cliCloseKey, cliDialogShown, cliEscapeSafe, cliFooter, cliHistory, cliInputDraft, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
+import { cliCloseKey, cliDialogShown, cliEscapeSafe, cliFooter, cliHistory, cliInputDraft, commandInputText, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
 import { ReadingQuestion } from './ReadingQuestion';
@@ -26,17 +27,17 @@ import { setChoiceVisible } from './reading-mode';
 import { isTyping, markTyping } from './typing';
 import { useStickToBottom } from './useStickToBottom';
 import { conversationKey, useReadingConversation } from './useReadingConversation';
-import { blocks, useVisibleTail } from './useVisibleTail';
+import { blocks, conversationTurns, useVisibleTail } from './useVisibleTail';
 import './reading.css';
 import './reading-flow.css';
 import { currentLanguage, t } from '../../shared/i18n';
 import { useMentions } from './useMentions';
 import { parseMarkdown, parsedMarkdown } from './markdown-parse';
 import { MentionPalette } from './MentionPalette';
-import { isTypedCommand, sameMessage, type PendingPrompt } from './pending-prompts';
+import { isTypedCommand, pendingPromptCards, sameMessage, type PendingPrompt } from './pending-prompts';
 import { usePendingPrompts } from './usePendingPrompts';
 import { PendingPromptEntries, UserImages, UserMessage } from './PendingPromptEntries';
-import { ClaudeSpark, stepTime, TimelineStep } from './Timeline';
+import { AgentTurnItem, ClaudeSpark, stepTime, TimelineStep } from './Timeline';
 import { AgentSettingsTag } from './AgentSettingsTag';
 import { AgentCommandRun } from './AgentCommandRun';
 import { FileCards, previewable } from './FileCards';
@@ -127,9 +128,8 @@ function GeneratedImage({ src, path, prompt }: { src: string; path: string; prom
   </figure>;
 }
 
-// A reply, a card on the timeline beside the agent's own mark (Claude's ✻, Codex's), with the local pictures, pages and
-// videos it names shown under it (the agents are told they can show one this way: reading-note.cjs). The first reply
-// after your message names the agent in the step's head line.
+// A reply card inside its agent's turn, with the local pictures, pages and videos it names shown under it
+// (the agents are told they can show one this way: reading-note.cjs).
 function AssistantReply({ entry, agent, projectId, onError }: { entry: ConversationEntry; agent: 'claude' | 'codex'; projectId: string; onError: (message: string) => void }) {
   const named = useMemo(() => entry.text ? replyFiles(entry.text) : [], [entry.text]);
   return <div className={`reading-assistant is-${agent}`}>{entry.text ? <Markdown text={entry.text} /> : null}
@@ -137,7 +137,7 @@ function AssistantReply({ entry, agent, projectId, onError }: { entry: Conversat
       {entry.generated && entry.images?.[0] && <GeneratedImage src={entry.images[0]} {...entry.generated} />}</div>;
 }
 // The agent's mark on its replies' nodes.
-const AgentMark = ({ agent }: { agent: 'claude' | 'codex' }) => agent === 'claude' ? <ClaudeSpark /> : <Robot size={16} weight="bold" />;
+const AgentMark = ({ agent }: { agent: 'claude' | 'codex' }) => agent === 'claude' ? <ClaudeSpark /> : <CodexLogo />;
 
 // Where a generated picture will appear: a bar that keeps moving and the seconds so far, so a picture that takes
 // half a minute does not look stuck.
@@ -235,14 +235,15 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     if (!hidden || !conversationEntries.length || conversationEntries.some(entry => hidden.has(entry.id))) return;
     cleared.delete(conversationKey(terminal.id, terminal.sessionId)); setHidden(undefined);
   }, [conversationEntries, hidden]);
-  // Messages Claude Code holds in its queue until it takes them up are no messages yet: they only tell that one sent from
-  // here has reached it and waits there.
-  const queue = useMemo(() => conversationEntries.filter(entry => entry.queued), [conversationEntries]);
   const entries = useMemo(() => conversationEntries.filter(entry => !entry.queued && !hidden?.has(entry.id)), [conversationEntries, hidden]);
   const { pending, echo, cancelEcho } = usePendingPrompts(terminal.id, terminal.sessionId, entries);
-  const queued = (prompt: PendingPrompt) => queue.some(entry => sameMessage(prompt.text, entry.text ?? ''));
-  const visibleEntries = useMemo(() => [...entries, ...pending], [entries, pending]);
+  // Queued records wait after the active turn, with or without a renderer echo. They never start a new agent turn.
+  const cards = useMemo(() => pendingPromptCards(pending, conversationEntries.filter(entry => !hidden?.has(entry.id))), [pending, conversationEntries, hidden]);
+  const queued = (prompt: PendingPrompt) => cards.queuedIds.has(prompt.id);
+  const visibleEntries = useMemo(() => [...entries, ...cards.prompts], [entries, cards]);
   const sendSession = useRef(terminal.sessionId); sendSession.current = terminal.sessionId;
+  const sendOwner = useRef(conversationKey(terminal.id, terminal.sessionId)); sendOwner.current = conversationKey(terminal.id, terminal.sessionId);
+  const deliveryEpoch = useRef(0);
   const visibleScreen = useScreen(terminal.id);
   const screen = useMemo(() => parseAgentScreen(terminal.agent === 'claude' ? 'claude' : 'codex', visibleScreen?.rows ?? []), [terminal.agent, visibleScreen]);
   // The CLI signing in before its input exists (a link to open, a code to paste): a popup, never a stuck welcome.
@@ -355,12 +356,15 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const agent = terminal.agent === 'claude' ? 'Claude Code' : 'Codex';
   const grouped = useMemo(() => blocks(entries), [entries]);
   const tail = useVisibleTail(grouped, conversation, scroller, stuck, holdPosition);
+  const turns = useMemo(() => conversationTurns(grouped, tail.earlier), [grouped, tail.earlier]);
   // One message at a time: a second Enter while the first is still being pasted waits for nothing and sends nothing.
   const send = async (text = draft.trim(), own = true) => {
     if (own) dictationSend.cancel();
     if (sending.current) return;
+    deliveryEpoch.current++;
     sending.current = true;
-    try { await deliver(text, own); } catch (error) { if (mounted.current) onError(String(error)); } finally { sending.current = false; }
+    const owner = sendOwner.current;
+    try { await deliver(text, own); } catch (error) { if (mounted.current && sendOwner.current === owner) onError(String(error)); } finally { if (sendOwner.current === owner) sending.current = false; }
   };
   // Closes what a command left open and waits for the CLI's input to come back. Keys typed while a dialog is still
   // open land in it: Enter on Claude's /config switches the selected setting, and the dialog stays on its old tab
@@ -368,40 +372,69 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   // untilInput: also wait for the input to come back (a message is typed next); putting a popup away needs only the
   // dialog gone.
   const closeDialog = async (agent: 'claude' | 'codex', command?: string, untilInput = true) => {
+    const owner = sendOwner.current;
+    let opened = false;
     const look = (first = false) => {
+      if (!mounted.current || sendOwner.current !== owner) return { key: null, closed: false };
       const current = readScreen(terminal.id);
-      if (!current) return { key: null, closed: true };
+      if (!current) return { key: null, closed: false };
       const parsed = parseAgentScreen(agent, current.rows);
       // A dialog's own bottom hint makes Escape safe even while Claude works; once it disappears, stop pressing it.
       const safe = cliEscapeSafe(agent, current.rows);
-      const key = safe ? cliCloseKey(agent, current.rows, parsed, first ? command : undefined, cli.panel?.rows) : null;
-      return { key, closed: !key && (!untilInput || hasCliInput(agent, current.rows, parsed) || !safe) };
+      const proposed = safe ? cliCloseKey(agent, current.rows, parsed, first ? command : undefined, cli.panel?.rows) : null;
+      const candidate = proposed === '\x1b' && !cliDialogShown(agent, current.rows, parsed) ? null
+        : proposed === 'q' && !/\bq close\b/i.test(current.rows.filter(row => row.trim()).at(-1) ?? '') ? null : proposed;
+      // Ctrl+C can interrupt a model turn or exit Codex. A side conversation needs terminal recovery, not a guess.
+      const key = candidate === '\x03' ? null : candidate;
+      if (key) opened = true;
+      return { key, closed: !candidate && (hasCliInput(agent, current.rows, parsed) || (opened && !safe && !cliDialogShown(agent, current.rows, parsed))) };
     };
     let state = look(true);
-    if (!state.key) return true;
+    if (!state.key) return state.closed;
     for (let attempt = 0; attempt < 3; attempt++) {
+      if (!mounted.current || sendOwner.current !== owner) return false;
       if (state.key) window.agentrix.writeTerminal(terminal.id, state.key);
-      for (let waited = 0; waited < 900 && !(state = look()).closed; waited += 50) await new Promise(resolve => setTimeout(resolve, 50));
-      if (state.closed) { await new Promise(resolve => setTimeout(resolve, 60)); return true; }
+      for (let waited = 0; waited < 900 && mounted.current && sendOwner.current === owner && !(state = look()).closed; waited += 50) await new Promise(resolve => setTimeout(resolve, 50));
+      if (state.closed) { if (untilInput) await new Promise(resolve => setTimeout(resolve, 60)); return true; }
     }
     return false;
   };
-  // Escape (or a click beside it) with a command's popup open puts it away at once and closes what the command opened
-  // (a dialog, a pager, a side conversation) rather than interrupting the round, pressing again while the dialog only
-  // left an inner mode (Claude's /config search). Putting it away never asks anything of the reader: a dialog still
-  // open (one that ignores Escape while it loads) is remembered and closed before the next message is typed.
-  // A popup being put away closes its dialog in the background; a message sent meanwhile waits for that, so its keys
-  // never land in the dialog still closing.
+  // Close only a verified dialog. Loading/unknown screens keep a recovery card; closing must never interrupt a
+  // model turn or forget a dialog that can still take the next message's keys.
   const closing = useRef<Promise<void> | null>(null);
+  const confirmIdle = async (agent: 'claude' | 'codex') => {
+    const owner = sendOwner.current, epoch = deliveryEpoch.current;
+    const idle = () => { const current = readScreen(terminal.id); return !!current && isCliIdle(agent, current.rows, parseAgentScreen(agent, current.rows)); };
+    if (!idle()) return false;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return mounted.current && sendOwner.current === owner && deliveryEpoch.current === epoch && idle();
+  };
+  useLayoutEffect(() => { deliveryEpoch.current++; leftOpen.current = null; closing.current = null; lastCommand.current = null; sending.current = false; }, [terminal.id, terminal.sessionId]);
   const closeCommand = async () => {
+    if (closing.current) return closing.current;
+    deliveryEpoch.current++;
+    const owner = sendOwner.current, epoch = deliveryEpoch.current;
     const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', command = cli.panel?.command ?? '', current = readScreen(terminal.id), busy = cli.busy;
+    if (!busy && command.trim().startsWith('!') && current) {
+      const screen = parseAgentScreen(agentKind, current.rows);
+      if (!screen.choice && screen.overlay === 'none' && hasCliInput(agentKind, current.rows, screen) && !cliDialogShown(agentKind, current.rows, screen)) {
+        leftOpen.current = null; cli.close(); return; // A finished Bash result closes locally, without interrupting a model reply.
+      }
+    }
     const key = busy && current ? cliCloseKey(agentKind, current.rows, parseAgentScreen(agentKind, current.rows), command, cli.panel?.rows) : null;
-    cli.close();
     // Still in the CLI's input (Claude holds a command there while its hooks run): its dialog may open after this, so
     // the next message looks for it first.
-    if (!key) { if (busy) leftOpen.current = command; return; }
-    if (key === '\x03') { window.agentrix.writeTerminal(terminal.id, key); return; }
-    const work = closeDialog(agentKind, command, false).then(closed => { leftOpen.current = closed ? null : command; });
+    if (!key && current) {
+      const idle = await confirmIdle(agentKind);
+      if (sendOwner.current !== owner || deliveryEpoch.current !== epoch) return;
+      if (idle) { leftOpen.current = null; cli.close(); return; }
+    }
+    if (!key || key === '\x03') { leftOpen.current = command; cli.recover(); return; }
+    const work = closeDialog(agentKind, command, false).then(closed => {
+      if (sendOwner.current !== owner) return;
+      leftOpen.current = closed ? null : command;
+      if (closed) cli.close(); else cli.recover();
+    });
     closing.current = work;
     await work.finally(() => { if (closing.current === work) closing.current = null; });
   };
@@ -414,6 +447,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     const text = pictures.length ? (isTypedCommand(words) ? [words, ...pictures] : [...pictures, words]).filter(Boolean).join(' ') : words;
     if (inputBlocked || (!text && !attached.length) || !terminal.sessionId) return;
     const typed = isTypedCommand(text), sessionId = terminal.sessionId, agentKind = terminal.agent === 'claude' ? 'claude' : 'codex';
+    const owner = sendOwner.current, epoch = deliveryEpoch.current;
     if (closing.current) await closing.current;
     if (!typed) await settleCommand(agentKind);
     // A command's dialog still open (Claude's /usage, /config) would take this message's keys and Enter: close it first,
@@ -423,15 +457,25 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     const before = readScreen(terminal.id);
     const side = !!cli.panel && isSideConversation(agentKind, cli.panel.command, [...cli.panel.rows, ...before?.rows ?? []]);
     const stray = !side && !!before && cliDialogShown(agentKind, before.rows, parseAgentScreen(agentKind, before.rows));
-    if (cli.panel && !cli.busy) cli.close();
-    if ((cli.busy || leftOpen.current !== null || stray) && !side) {
+    let busy = cli.busy;
+    if (cli.busy && !side && !stray) {
+      const idle = await confirmIdle(agentKind);
+      if (sendOwner.current !== owner || deliveryEpoch.current !== epoch) return;
+      if (!idle) {
+        leftOpen.current = cli.panel?.command ?? '';
+        cli.recover(); onError(t('命令的对话框没有关闭，请在终端中关闭后再发送。')); return;
+      }
+      cli.close(); leftOpen.current = null; busy = false;
+    }
+    if (cli.panel && !busy) cli.close();
+    if ((busy || leftOpen.current !== null || stray) && !side) {
       const command = cli.panel?.command ?? leftOpen.current ?? undefined;
+      if (!await closeDialog(agentKind, command)) { if (mounted.current && sendOwner.current === owner) { leftOpen.current = command ?? ''; cli.recover(); onError(t('命令的对话框没有关闭，请在终端中关闭后再发送。')); } return; }
       cli.close(); leftOpen.current = null;
-      if (!await closeDialog(agentKind, command)) { if (mounted.current) onError(t('命令的对话框没有关闭，请在终端中关闭后再发送。')); return; }
       // A picker it closed leaves the window a moment later.
       for (let waited = 0; choiceVisible.current && waited < 600; waited += 50) await new Promise(resolve => setTimeout(resolve, 50));
     }
-    if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
+    if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId || sendOwner.current !== owner || deliveryEpoch.current !== epoch) return;
     if (usesSessionPicker(terminal, text, remote)) {
       choiceVisible.current = true; restoreComposer.current = document.activeElement === input.current;
       if (own) edit('');
@@ -442,6 +486,8 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     const now = readScreen(terminal.id), parsedNow = typed && now ? parseAgentScreen(agentKind, now.rows) : null;
     const shown = now && parsedNow ? cliHistory(agentKind, now.rows, parsedNow) : undefined;
     const footer = now && parsedNow && isCliIdle(agentKind, now.rows, parsedNow) ? cliFooter(parsedNow) : undefined;
+    const name = text.split(/\s/)[0], listed = commands.find(command => command.name === name);
+    const inConversation = typed && (listed?.view === 'reading' && !(agentKind === 'codex' && name === '/side') || agentKind === 'codex' && name === '/resume');
     const pendingId = text && !typed && !side ? echo(text, attached) : null;
     if (pendingId) toBottom();
     // Text left in the CLI's own input would be sent along with this message. An earlier message of ours whose Enter
@@ -460,8 +506,10 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     }
     if (left && pending.some(prompt => sameMessage(prompt.text, left))) { window.agentrix.writeTerminal(terminal.id, '\r'); await submitted(agentKind, left); }
     else if (left) await clearInput(agentKind);
+    if (!mounted.current || sendOwner.current !== owner || deliveryEpoch.current !== epoch) return;
+    let commandId: string | undefined;
     if (text) {
-      if (typed) { lastCommand.current = { text, at: Date.now() }; window.agentrix.writeTerminal(terminal.id, text); }
+      if (typed) { if (!inConversation) commandId = cli.begin(text, shown, footer); lastCommand.current = { text, at: Date.now() }; window.agentrix.writeTerminal(terminal.id, text); }
       else {
         const pasted = await window.agentrix.pasteTerminal(terminal.id, text, terminal.sessionId);
         if (!pasted.ok) {
@@ -475,26 +523,30 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       remember();
     }
     toBottom();
-    if (text) await new Promise(resolve => setTimeout(resolve, typed ? 150 : 400));
-    if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId) return;
+    if (typed) {
+      if (!await commandReady(agentKind, text, owner, epoch)) {
+        if (mounted.current && sendOwner.current === owner && deliveryEpoch.current === epoch) { if (!inConversation) cli.recover(); else onError(t('尚未确认命令完成。请切换到终端检查，避免重复执行。')); }
+        return;
+      }
+    } else if (text) await new Promise(resolve => setTimeout(resolve, 400));
+    if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId || sendOwner.current !== owner || deliveryEpoch.current !== epoch) return;
+    if (typed && (commandId ? !cli.confirmInput(commandId) : inputDraft(agentKind) !== commandInputText(text))) { if (!inConversation) cli.recover(); return; }
     // A command whose result comes in the conversation (/init, /review, a skill or a saved prompt) gets no popup: the
     // reading view shows its round as it goes. Codex's /side is a conversation of its own and keeps its popup. Codex's
     // resume list shows as a choice of its own.
-    const name = text.split(/\s/)[0], listed = commands.find(command => command.name === name);
-    const inConversation = typed && (listed?.view === 'reading' && !(agentKind === 'codex' && name === '/side') || agentKind === 'codex' && name === '/resume');
-    if (typed && !inConversation) cli.begin(text, shown, footer);
     if (clears(terminal.agent, text)) { const ids = new Set(conversationEntries.map(entry => entry.id)); cleared.set(conversation, ids); setHidden(ids); }
     window.agentrix.writeTerminal(terminal.id, '\r');
+    if (commandId) cli.submitted(commandId);
     if (text && !typed) await submitted(agentKind, text);
-    else if (typed) void commandSubmitted(agentKind, text, sessionId);
   };
   // A message sent right after a command waits for that command to settle (at most three seconds): to open its dialog or
   // picker, which the message then puts away, or to finish. Claude holds a command in its input while its hooks run and
   // opens the dialog a moment later; a message typed into that moment lands under the dialog and stays unsent.
   const lastCommand = useRef<{ text: string; at: number } | null>(null);
   const settleCommand = async (agent: 'claude' | 'codex') => {
-    const last = lastCommand.current;
+    const last = lastCommand.current, owner = sendOwner.current;
     for (let steady = 0; last && Date.now() - last.at < 3000 && steady < 3;) {
+      if (!mounted.current || sendOwner.current !== owner) return;
       const current = readScreen(terminal.id), parsed = current ? parseAgentScreen(agent, current.rows) : null;
       const holding = !!current && !!parsed && sameMessage(last.text, cliInputDraft(agent, current.rows, parsed));
       const settled = !!current && !!parsed && !holding && (!!parsed.choice || !!cliCloseKey(agent, current.rows, parsed, last.text) || isCliIdle(agent, current.rows, parsed));
@@ -504,31 +556,35 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   };
   // What is typed in the CLI's own input right now.
   const inputDraft = (agent: 'claude' | 'codex') => { const current = readScreen(terminal.id); return current ? cliInputDraft(agent, current.rows, parseAgentScreen(agent, current.rows)) : ''; };
+  const commandReady = async (agent: 'claude' | 'codex', text: string, owner: string, epoch: number) => {
+    let previous: string[] | undefined, draft = '';
+    for (let waited = 0; waited <= 2000; waited += 25) {
+      if (!mounted.current || choiceVisible.current || sendOwner.current !== owner || deliveryEpoch.current !== epoch) return false;
+      const current = readScreen(terminal.id);
+      if (current && (!previous || current.rows.length !== previous.length || current.rows.some((row, index) => row !== previous![index]))) {
+        previous = current.rows;
+        draft = cliInputDraft(agent, current.rows, parseAgentScreen(agent, current.rows));
+      }
+      if (draft === commandInputText(text)) return true;
+      if (waited < 2000) await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    return false;
+  };
   // Ctrl+U clears a row of the CLI's input: Claude Code clears only the visual row of a long draft wrapped over several,
   // so it is pressed again until the input is empty (a few more than the rows, at most).
   const clearInput = async (agent: 'claude' | 'codex') => {
-    for (let tries = 0; tries < 30 && inputDraft(agent); tries++) { window.agentrix.writeTerminal(terminal.id, '\x15'); await new Promise(resolve => setTimeout(resolve, 80)); }
+    const owner = sendOwner.current;
+    for (let tries = 0; tries < 30 && mounted.current && sendOwner.current === owner && inputDraft(agent); tries++) { window.agentrix.writeTerminal(terminal.id, '\x15'); await new Promise(resolve => setTimeout(resolve, 80)); }
   };
   // A message is sent once it has left the CLI's input. An Enter the CLI did not take (it arrived while the CLI was
   // busy redrawing, compacting or taking the paste) leaves it there: Enter again, a few times.
   const submitted = async (agent: 'claude' | 'codex', text: string) => {
+    const owner = sendOwner.current;
     for (let attempt = 0; attempt < 3; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 700));
-      if (!mounted.current || choiceVisible.current || !sameMessage(text, inputDraft(agent))) return;
+      if (!mounted.current || sendOwner.current !== owner || choiceVisible.current || !sameMessage(text, inputDraft(agent))) return;
       window.agentrix.writeTerminal(terminal.id, '\r');
     }
-  };
-  // A command still sitting in the CLI's input after its Enter (one that arrived while the CLI redrew) is entered again,
-  // slowly, since Claude keeps a command there for a moment while its hooks run. One that never leaves is reported,
-  // and its popup put away, rather than waited on for good.
-  const commandSubmitted = async (agent: 'claude' | 'codex', text: string, sessionId: string) => {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 1600));
-      if (!mounted.current || choiceVisible.current || sendSession.current !== sessionId || inputDraft(agent).trim() !== text.trim()) return;
-      if (attempt === 0) window.agentrix.writeTerminal(terminal.id, '\r');
-    }
-    cli.close();
-    onError(t('{command} 没有发出去，还留在它的输入框里。', { command: text.split(/\s/)[0] }));
   };
   const sendRef = useRef(send); sendRef.current = send;
   const [dictationSend] = useState(() => createDictationSend(() => { void sendRef.current(); }, setSendingSoon));
@@ -546,8 +602,10 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     return () => window.removeEventListener('agentrix:command', take);
   }, [terminal.id]);
   // The safety net: a message no record has shown once its echo timed out, while the agent sits idle, is sent again
-  // (twice at most). A user record that came in after it, even worded differently, means it arrived.
-  const resent = useRef(new Map<string, number>());
+  // (twice at most). Only the pending-prompt reconciler can acknowledge a matching, newly observed record.
+  const retries = useRef({ conversation, counts: new Map<string, number>() });
+  if (retries.current.conversation !== conversation) retries.current = { conversation, counts: new Map() };
+  const resent = retries.current.counts;
   const [idleSince, setIdleSince] = useState(() => Date.now()), [, setTick] = useState(0);
   useEffect(() => { if (!working) setIdleSince(Date.now()); }, [working]);
   // A message in Claude Code's queue has arrived: it is taken up when the current step is done, never sent again.
@@ -557,15 +615,14 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     const wait = idleSince + 5000 - Date.now();
     if (wait > 0) { const timer = setTimeout(() => setTick(tick => tick + 1), wait + 50); return () => clearTimeout(timer); }
     for (const prompt of stalled) {
-      if (entries.some(entry => entry.role === 'user' && entry.at >= prompt.at - 500)) { cancelEcho(prompt.id); continue; }
-      const tries = resent.current.get(prompt.text) ?? 0;
+      const tries = resent.get(prompt.text) ?? 0;
       if (tries >= 2 || sending.current) continue;
-      resent.current.set(prompt.text, tries + 1);
+      resent.set(prompt.text, tries + 1);
       cancelEcho(prompt.id); void sendRef.current(prompt.text, false);
       break;
     }
   });
-  const undelivered = (prompt: PendingPrompt) => idle && !prompt.sending && !queued(prompt) && (resent.current.get(prompt.text) ?? 0) >= 2;
+  const undelivered = (prompt: PendingPrompt) => idle && !prompt.sending && !queued(prompt) && (resent.get(prompt.text) ?? 0) >= 2;
   const resend = (prompt: PendingPrompt) => { cancelEcho(prompt.id); void send(prompt.text, false); };
   // Dictation into this terminal lands here while the reading view shows: the words appear at the cursor as
   // soon as they are recognised. Enter (or the shortcut again) allows a second to edit before sending normally.
@@ -670,38 +727,46 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       {!screen.choice && <button type="button" className="text-button" onClick={onShowTerminal}>{t('切换到终端')}</button>}</div>
     : working || pending.some(prompt => prompt.sending) ? <WorkingLine key={terminal.sessionId} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} label={terminal.action ? t('正在{step}', { step: actionText(terminal.action) }) : t('{agent} 正在思考', { agent })} />
     : null;
-  let body: ReactNode;
+  const kind = terminal.agent === 'claude' ? 'claude' : 'codex';
+  const statusRunning = working || pending.some(prompt => prompt.sending);
+  let body: ReactNode, statusInTurn = false;
   // A run of the CLI that is no conversation (codex update): what it does and what it prints, no message box.
   if (terminal.agentCommand) body = <AgentCommandRun agent={terminal.agent === 'claude' ? 'claude' : 'codex'} command={terminal.agentCommand} rows={visibleScreen?.rows ?? []} onShowTerminal={onShowTerminal} />;
-  else if (!entries.length && !pending.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} commands={commands} complete={complete} disabled={inputBlocked}
+  else if (!entries.length && !cards.prompts.length) body = <ReadingWelcome agent={terminal.agent === 'claude' ? 'claude' : 'codex'} commands={commands} complete={complete} disabled={inputBlocked}
     screen={screen} starting={welcomeIsStarting} />;
   else {
-    const kind = terminal.agent === 'claude' ? 'claude' : 'codex';
-    // Unnamed steps leave out a time the step before showed; the first reply after your message names the agent.
-    let shownTime = '', afterUser = true;
-    const agentName = kind === 'claude' ? 'Claude Code' : 'Codex';
     body = <>
       {tail.earlier > 0 && <button type="button" className="text-button reading-earlier" onClick={tail.showEarlier}>{t('显示更早的对话（{count}）', { count: tail.earlier })}</button>}
-      {tail.visible.map((block, index) => {
-        const at = block.kind === 'tools' ? block.entries[0]?.at : block.entry.at, time = stepTime(at), showTime = time !== shownTime;
-        shownTime = time;
-        if (block.kind === 'tools') {
-          const Lead = STEP_ICONS[block.entries[0]?.tool?.kind ?? 'other'];
-          const state = block.entries.some(entry => !entry.tool?.done) ? 'running' : block.entries.some(entry => entry.tool?.failed) ? 'failed' : null;
-          return <TimelineStep key={block.id} at={at} showTime={showTime} kind="tools" state={state} mark={<Lead size={15} weight="bold" />}>
-            <ToolGroup entries={block.entries} live={index === tail.visible.length - 1} projectId={projectId} onError={onError} />
+      {turns.map((turn, index) => {
+        if (turn.kind === 'user') {
+          return <TimelineStep key={turn.entry.id} at={turn.entry.at} kind="user" who={t('你')} mark={<UserIcon size={15} weight="fill" />}>
+            <div className={`reading-user${turn.entry.answer ? ' is-answer' : ''}`}>
+              {turn.entry.answer && <span className="reading-user-label">{t('你回答了它的问题')}</span>}<UserMessage text={turn.entry.text || ''} images={turn.entry.images} /></div>
           </TimelineStep>;
         }
-        if (block.entry.role === 'user') {
-          afterUser = true;
-          return <TimelineStep key={block.entry.id} at={at} showTime={showTime} kind="user" who={t('你')} mark={<UserIcon size={15} weight="fill" />}>
-            <div className={`reading-user${block.entry.answer ? ' is-answer' : ''}`}>
-              {block.entry.answer && <span className="reading-user-label">{t('你回答了它的问题')}</span>}<UserMessage text={block.entry.text || ''} images={block.entry.images} /></div>
-          </TimelineStep>;
-        }
-        const named = afterUser; afterUser = false;
-        return <TimelineStep key={block.entry.id} at={at} showTime={showTime} kind="agent" agent={kind} who={named ? agentName : undefined} mark={<AgentMark agent={kind} />}>
-          <AssistantReply entry={block.entry} agent={kind} projectId={projectId} onError={onError} />
+        const liveStatus = index === turns.length - 1 && pending.every(queued) ? status : null;
+        if (liveStatus) statusInTurn = true;
+        const tools = turn.blocks.flatMap(block => block.kind === 'tools' ? block.entries : []);
+        const state = (liveStatus && statusRunning) || tools.some(entry => !entry.tool?.done) ? 'running' : tools.some(entry => entry.tool?.failed) ? 'failed' : null;
+        let shownTime = stepTime(turn.at);
+        return <TimelineStep key={turn.id} at={turn.at} kind="agent" agent={kind} who={agent} state={state} mark={<AgentMark agent={kind} />}>
+          <div className="reading-turn">
+            {turn.blocks.map(block => {
+              const at = block.kind === 'tools' ? block.entries[0]?.at : block.entry.at, time = stepTime(at), showTime = time !== shownTime;
+              shownTime = time;
+              if (block.kind === 'tools') {
+                const Lead = STEP_ICONS[block.entries[0]?.tool?.kind ?? 'other'];
+                const state = block.entries.some(entry => !entry.tool?.done) ? 'running' : block.entries.some(entry => entry.tool?.failed) ? 'failed' : null;
+                return <AgentTurnItem key={block.id} at={at} showTime={showTime} kind="tools" state={state} mark={<Lead size={12} weight="bold" />}>
+                  <ToolGroup entries={block.entries} live={block === tail.visible.at(-1)} projectId={projectId} onError={onError} />
+                </AgentTurnItem>;
+              }
+              return <AgentTurnItem key={block.entry.id} at={at} showTime={showTime} kind="message">
+                <AssistantReply entry={block.entry} agent={kind} projectId={projectId} onError={onError} />
+              </AgentTurnItem>;
+            })}
+            {liveStatus}
+          </div>
         </TimelineStep>;
       })}
     </>;
@@ -715,10 +780,12 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     if (link) { event.preventDefault(); const href = link.getAttribute('href') || ''; if (href) onOpenLink(href); }
   }}>
     <div className="reading-scroll-area">
-      <div className="reading-scroll" ref={scroller} tabIndex={0}><div className="reading-content" ref={content} style={{ visibility: entries.length && !ready ? 'hidden' : undefined }}>{body}<PendingPromptEntries prompts={pending} queued={queued} undelivered={undelivered} onResend={resend} onDiscard={prompt => cancelEcho(prompt.id)} />
-        {status && <TimelineStep at={null} kind="working" state={working ? 'running' : null} agent={working ? terminal.agent === 'claude' ? 'claude' : 'codex' : null} mark={working ? <AgentMark agent={terminal.agent === 'claude' ? 'claude' : 'codex'} /> : <Question size={15} weight="bold" />}>{status}</TimelineStep>}</div></div>
+      <div className="reading-scroll" ref={scroller} tabIndex={0}><div className="reading-content" ref={content} style={{ visibility: entries.length && !ready ? 'hidden' : undefined }}>{body}<PendingPromptEntries prompts={cards.prompts} queued={queued} undelivered={undelivered} onResend={resend} onDiscard={prompt => cancelEcho(prompt.id)} />
+        {status && !statusInTurn && <TimelineStep at={pending.at(-1)?.at ?? entries.at(-1)?.at} kind="agent" who={agent} state={statusRunning ? 'running' : null} agent={kind} mark={<AgentMark agent={kind} />}>{status}</TimelineStep>}</div></div>
       {signIn && <ReadingSignIn agent={terminal.agent === 'claude' ? 'claude' : 'codex'} screen={signIn} terminalId={terminal.id} projectId={projectId} onError={onError} />}
-      {!screen.choice && !sessionsOpen && !signIn && cli.panel && <ReadingCliPanel command={cli.panel.command} rows={cli.panel.rows} done={!!cli.panel.done} terminalId={terminal.id} onClose={() => { void closeCommand(); input.current?.focus(); }} onShowTerminal={onShowTerminal} />}
+      {!screen.choice && !sessionsOpen && !signIn && cli.panel && <ReadingCliPanel key={`${conversation}:${cli.commandId ?? cli.panel.command}`} command={cli.panel.command} rows={cli.panel.rows} done={!!cli.panel.done} feedback={cli.feedback} interactive={cli.interactive} terminalId={terminal.id}
+        onWrite={key => { if (!mounted.current || sendOwner.current !== conversation) return false; const current = readScreen(terminal.id); if (!current || !cliDialogShown(kind, current.rows, parseAgentScreen(kind, current.rows))) { cli.recover(); return false; } window.agentrix.writeTerminal(terminal.id, key); return true; }}
+        onClose={() => { void closeCommand(); }} onShowTerminal={onShowTerminal} />}
       {!stuck && <div className="reading-latest">
         {unseen > 0 && <span className="reading-unseen" role="status">{t('{count} 条新消息', { count: unseen })}</span>}
         <button type="button" className="icon-button reading-jump" title={t('跳到最新消息')} aria-label={t('跳到最新消息')} onClick={() => toBottom('smooth')}><ArrowDown size={18} /></button>

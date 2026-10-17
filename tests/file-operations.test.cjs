@@ -77,3 +77,61 @@ test('mutations reject escaping links and deleting a link preserves its target',
   await service.remove(project, ['external']);
   assert.equal(await fs.readFile(path.join(outside, 'keep.txt'), 'utf8'), 'KEEP');
 });
+
+function remoteFiles(service, entries, onRead = () => {}) {
+  service.remote = () => ({ ready: Promise.resolve(), info: { root: '/srv/project' }, request: async (op, args) => {
+    const entry = entries[args.path];
+    if (!entry) throw new Error(`Missing fixture: ${args.path}`);
+    if (op === 'stat') return { size: typeof entry === 'string' ? Buffer.byteLength(entry) : 0,
+      file: typeof entry === 'string', directory: Array.isArray(entry), link: entry.link === true };
+    if (op === 'read') {
+      await onRead(args.path);
+      return Buffer.from(entry).subarray(args.offset, args.offset + args.length).toString('base64');
+    }
+    if (op === 'directory') return { entries: entry.map(name => ({ name, path: `${args.path}/${name}`, kind: entries[`${args.path}/${name}`]?.link === true ? 'link' : 'file' })), nextOffset: null };
+    throw new Error(`Unexpected request: ${op}`);
+  } });
+}
+
+test('SSH copy isolates equal basenames, preserves folder contents and pastes both selections under their actual names', async t => {
+  const { project, service, getClipboard } = await fixture(t);
+  service.move = fs.rename;
+  remoteFiles(service, { 'a/index.ts': 'A', 'b/index.ts': 'B',
+    'left/assets': ['child.txt'], 'left/assets/child.txt': 'LEFT',
+    'right/assets': ['child.txt'], 'right/assets/child.txt': 'RIGHT' });
+  const result = await service.copy({ id: 'remote', kind: 'ssh' }, ['a/index.ts', 'b/index.ts', 'left/assets', 'right/assets', 'left/assets/child.txt']);
+  assert.deepEqual(result, { count: 4 });
+  const files = getClipboard();
+  assert.deepEqual(files.map(file => path.basename(file)), ['index.ts', 'index.ts', 'assets', 'assets']);
+  assert.equal(new Set(files.map(file => path.dirname(file))).size, 4);
+  assert.equal(await fs.readFile(files[0], 'utf8'), 'A'); assert.equal(await fs.readFile(files[1], 'utf8'), 'B');
+  assert.equal(await fs.readFile(path.join(files[2], 'child.txt'), 'utf8'), 'LEFT');
+  assert.equal(await fs.readFile(path.join(files[3], 'child.txt'), 'utf8'), 'RIGHT');
+  const pasted = await service.paste(project, '');
+  assert.deepEqual(pasted.pasted, ['index.ts', 'index - 副本.ts', 'assets', 'assets - 副本']);
+  assert.equal(await fs.readFile(path.join(project.path, 'index.ts'), 'utf8'), 'A');
+  assert.equal(await fs.readFile(path.join(project.path, 'index - 副本.ts'), 'utf8'), 'B');
+  assert.equal(await fs.readFile(path.join(project.path, 'assets/child.txt'), 'utf8'), 'LEFT');
+  assert.equal(await fs.readFile(path.join(project.path, 'assets - 副本/child.txt'), 'utf8'), 'RIGHT');
+});
+
+test('SSH copy removes the full staging batch on failure, cancellation, supersession and clipboard failure', async t => {
+  for (const failure of ['read', 'cancel', 'superseded', 'clipboard', 'link', 'nested-link']) {
+    const { service } = await fixture(t);
+    let clipboardCalls = 0;
+    service.clipboard = async () => { clipboardCalls++; if (failure === 'clipboard') throw new Error('clipboard unavailable'); };
+    remoteFiles(service, { 'a/index.ts': 'A', 'b/index.ts': failure === 'link' ? { link: true } : 'B',
+      folder: ['link'], 'folder/link': { link: true } }, async relative => {
+      if (relative !== 'b/index.ts') return;
+      if (failure === 'read') throw new Error('transfer failed');
+      if (failure === 'cancel') service.cancel(); // even after the last chunk, before clipboard commit
+      if (failure === 'superseded') service.clipboardWrites.reserve(); // newer text/image copy intent
+    });
+    const copying = service.copy({ id: 'remote', kind: 'ssh' }, ['a/index.ts', failure === 'nested-link' ? 'folder' : 'b/index.ts']);
+    if (failure === 'superseded') assert.deepEqual(await copying, { count: 0, superseded: true });
+    else await assert.rejects(copying, /transfer failed|取消|clipboard unavailable|链接/);
+    assert.equal(clipboardCalls, failure === 'clipboard' ? 1 : 0, failure);
+    assert.deepEqual(await fs.readdir(service.cacheRoot), [], failure);
+    assert.equal(service.busy, null);
+  }
+});
