@@ -42,13 +42,13 @@ const nativeWindowsOS = powershellModules ? Object.fromEntries([
   'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL', 'PROCESSOR_REVISION',
   'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP',
 ].flatMap(key => process.env[key] === undefined ? [] : [[key, process.env[key]]])) : {};
-const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '', ...nativeWindowsOS,
+const safeEnv = (home, nativeShell = false) => ({ SystemRoot: process.env.SystemRoot || '', ...nativeWindowsOS,
   PATH: powershellModules ? [path.dirname(home), path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'),
     path.dirname(process.execPath), path.dirname(powershellModules)].join(path.delimiter) : process.env.PATH || process.env.Path || '',
   PATHEXT: '.COM;.EXE;.BAT;.CMD',
   ...(powershellModules ? { PSModulePath: powershellModules } : {}),
   ...(powershellModules ? { PSModuleAnalysisCachePath: path.join(home, 'ModuleAnalysisCache') } : {}),
-  HOME: home, USERPROFILE: nativeProfile || home, HOMEDRIVE: nativeDrive || 'C:',
+  ...(powershellModules && nativeShell ? {} : { HOME: home }), USERPROFILE: nativeProfile || home, HOMEDRIVE: nativeDrive || 'C:',
   HOMEPATH: nativeProfile ? nativeProfile.slice(nativeDrive.length) : '\\Users\\fixture', CODEX_HOME: path.join(home, '.codex') });
 
 test('PowerShell and the cmd agent shim classify complete argv and forward it unchanged to an offline executable',
@@ -125,7 +125,7 @@ function global:Send-AgentrixEvent {
   if ($Type -eq 'codex-started') { Write-Output ('SCOPE=' + $AccountLaunch); Write-Output ('COMMAND=' + $Command) }
 }
 if ($env:QUOTA_CHANGE -eq 'profile') { $env:CODEX_PROFILE = 'fixture' }
-if ($env:QUOTA_CHANGE -eq 'home') { $env:CODEX_HOME = Join-Path $env:HOME 'other' }
+if ($env:QUOTA_CHANGE -eq 'home') { $env:CODEX_HOME = Join-Path ([IO.Path]::GetDirectoryName($env:CODEX_HOME)) 'other' }
 $caseArgs = ConvertFrom-Json $env:QUOTA_EXPECTED
 ${phase('codex-before')}
 codex @caseArgs
@@ -133,7 +133,7 @@ ${phase('codex-after')}
 if ($global:LASTEXITCODE -ne 3) { exit 9 }
 `);
     for (const [i, item] of cases.entries()) {
-      const env = { ...safeEnv(home), AGENTRIX_BOOTSTRAP: bootstrap, QUOTA_INTEGRATION: probeIntegration,
+      const env = { ...safeEnv(home, true), AGENTRIX_BOOTSTRAP: bootstrap, QUOTA_INTEGRATION: probeIntegration,
         QUOTA_EXE: exe, QUOTA_EXPECTED: JSON.stringify(item.args), QUOTA_CHANGE: item.change || '' };
       env.AGENTRIX_ACCOUNT_BASELINE = JSON.stringify(accountEnvironment(env));
       const result = await exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
@@ -145,7 +145,7 @@ if ($global:LASTEXITCODE -ne 3) { exit 9 }
       assert.ok(result.stdout.includes(`COMMAND=${command}`), `first-word detection case ${i}`);
     }
     // Execute cmd's actual shim and real event serialization, using only the fixture executable/pipe.
-    const env = { ...safeEnv(home), PATH: root + path.delimiter + safeEnv(home).PATH,
+    const env = { ...safeEnv(home, true), PATH: root + path.delimiter + safeEnv(home, true).PATH,
       AGENTRIX_BOOTSTRAP: bootstrap, QUOTA_EXPECTED: JSON.stringify(['-m', 'gpt-test']) };
     env.AGENTRIX_ACCOUNT_BASELINE = JSON.stringify(accountEnvironment(env));
     const result = await exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
