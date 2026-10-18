@@ -27,7 +27,7 @@ for (const directory of [projects[0].path, ssh.project]) {
   await fs.writeFile(path.join(directory, 'note.txt'), '普通文本打开即可编辑');
 }
 // These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { terminalRenderer: 'dom', autoSave: false, notifications: false, restoreSessions: false, closeToTray: false } }));
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { language: 'zh', terminalRenderer: 'dom', autoSave: false, notifications: false, restoreSessions: false, closeToTray: false } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: profile, AGENTRIX_TEST_SSH_CONFIG: ssh.configFile }; delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 const packaged = process.argv.includes('--packaged');
 let app, page;

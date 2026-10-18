@@ -181,7 +181,7 @@ test('saved forest and other theme choices survive loading and unrelated setting
 });
 
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { startView: 'decisions', fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', focusAnimation: 'smooth', theme: 'daylight', language: 'zh', surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', notifications: true, sound: false, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice' });
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { startView: 'decisions', fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', focusAnimation: 'smooth', theme: 'daylight', language: 'en', surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', notifications: true, sound: false, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice' });
   // The spoken notice is gone: its old settings are dropped.
   const old = cleanSettings({ announce: true, announcePhrase: '{项目}', summary: { mode: 'local' } });
   assert.equal('announce' in old || 'announcePhrase' in old || 'summary' in old, false);
@@ -189,7 +189,7 @@ test('settings reject invalid layout and font values', () => {
   assert.equal(cleanSettings({ voiceModel: 'toString' }).voiceModel, 'sensevoice', 'only a listed recognizer can be chosen');
   assert.equal(cleanSettings({ surface: 'solid' }).surface, 'solid'); assert.equal(cleanSettings({ surface: 'paper' }).surface, 'glass');
   assert.equal(cleanSettings({ terminalRenderer: 'dom' }).terminalRenderer, 'dom'); assert.equal(cleanSettings({ terminalRenderer: 'canvas' }).terminalRenderer, 'gpu');
-  assert.equal(cleanSettings({ language: 'fr' }).language, 'zh');
+  assert.equal(cleanSettings({ language: 'fr' }).language, 'en');
   assert.equal(cleanSettings({ shell: 'cmd' }).shell, 'cmd');
   assert.equal(cleanSettings({ shell: 'zsh' }).shell, 'zsh'); assert.equal(cleanSettings({ shell: 'bash' }).shell, 'bash');
   assert.equal(cleanSettings({ shell: 'bash -c evil' }).shell, 'powershell', 'only a known shell name');

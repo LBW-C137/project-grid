@@ -47,6 +47,15 @@ An approval only shows after the model asks for a tool. Never use the real sign-
 
 ## Lessons
 
+- Permission text identifies a screen's content, never a unique approval request. Test Claude Code and Codex with a
+  mounted old card, A → B → identical A, including B hidden inside one transport batch. Observe parsed transitions
+  before the UI throttle and invalidate captured actions on raw output, input and lifecycle changes. Bind each action
+  to its terminal session and observation epoch, and check every delayed key again at the actual local PTY write.
+  Never queue approval keys behind InputGate, refresh a captured ticket to the newest screen, or call a local epoch a
+  native CLI request ID. SSH needs a guarded remote write; until then route card approvals to the terminal. Keep the
+  limits explicit in both READMEs. Verify `node --test tests/approval-aba.test.cjs` plus an isolated native probe that
+  asserts zero stale Enter writes and exactly one newly reviewed confirmation for both agents.
+
 - An offline CLI fixture must retain the command's real output or error above its next empty input. Clearing it before
   the screen publisher observes it erases completion evidence. Test the final coalesced frame and keep empty idle alone
   insufficient for success. Capture the input row after drawing the full frame: bottom-of-screen scrolling can move it.

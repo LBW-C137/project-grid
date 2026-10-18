@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
-const { HISTORY_WINDOW, LIVE_READ_LIMIT, transcriptWindow } = require('../electron/transcript-window.cjs');
+const { HISTORY_WINDOW, LIVE_READ_LIMIT, transcriptWindow, codexMetadata } = require('../electron/transcript-window.cjs');
 const { TranscriptTail } = require('../electron/agent-actions.cjs');
 const { CodexActivityReader } = require('../electron/codex-activity.cjs');
 const { records, sessionMeta } = require('../electron/session-files.cjs');
@@ -30,6 +30,21 @@ test('the history window uses bytes and preserves files at or below 8 MiB', () =
   assert.deepEqual(transcriptWindow(HISTORY_WINDOW + 123), { offset: 123, skipping: true });
 });
 
+test('scope recovery reads at most 1 MiB and rejects missing, oversized, malformed and mismatched first records', async () => {
+  for (const text of ['', '{broken}\n', line({ type: 'event_msg', payload: { model_provider: 'openai' } }),
+    line({ type: 'session_meta', payload: { id: 'other', model_provider: 'openai' } }),
+    line({ type: 'session_meta', payload: { id: 'thread', padding: 'x'.repeat(1024 * 1024), model_provider: 'openai' } })]) {
+    let requested = 0;
+    const file = { async read(buffer, offset, length, position) {
+      requested += length; assert.equal(position, 0);
+      const source = Buffer.from(text), bytesRead = Math.min(length, source.length);
+      source.copy(buffer, offset, 0, bytesRead); return { bytesRead };
+    } };
+    assert.equal(await codexMetadata(file, 'thread'), null);
+    assert.equal(requested, 1024 * 1024);
+  }
+});
+
 for (const kind of ['Claude', 'Codex']) {
   async function fixture(t) {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-window-'));
@@ -52,8 +67,9 @@ for (const kind of ['Claude', 'Codex']) {
     const parse = JSON.parse, parsed = [];
     t.mock.method(JSON, 'parse', text => { parsed.push(text); return parse(text); });
     await f.read();
-    assert.deepEqual(f.seen.map(record => record.n), data.ids);
-    assert.equal(parsed.length, data.ids.length, 'no record before the window or cut fragment is JSON-parsed');
+    assert.deepEqual(f.seen.filter(record => record.type !== 'session_meta').map(record => record.n), data.ids);
+    assert.equal(parsed.length, data.ids.length + (kind === 'Codex' ? 1 : 0), 'only Codex scope metadata is recovered before the window; never the cut fragment');
+    if (kind === 'Codex') assert.deepEqual(f.seen[0], { type: 'session_meta', payload: { model_provider: null, cwd: f.home } });
     assert.deepEqual(f.history, [false, true]);
     assert.equal(f.reader.historyPending, false);
     assert.equal(f.reader.offset, Buffer.byteLength(data.text));
@@ -95,13 +111,13 @@ for (const kind of ['Claude', 'Codex']) {
     await fs.writeFile(f.filename, initial.text); await f.read();
     const truncated = largeFile(f.meta, 'truncated');
     await fs.writeFile(f.filename, truncated.text); f.seen.length = 0; await f.read();
-    assert.deepEqual(f.seen.map(record => record.n), truncated.ids);
+    assert.deepEqual(f.seen.filter(record => record.type !== 'session_meta').map(record => record.n), truncated.ids);
     assert.deepEqual(f.history, [false, true, false, true]);
     await fs.rename(f.filename, `${f.filename}.old`);
     ino += 1n;
     const rotated = largeFile(f.meta + sizedLine('excluded', 4 * 1024 * 1024), 'rotated');
     await fs.writeFile(f.filename, rotated.text); f.seen.length = 0; await f.read();
-    assert.deepEqual(f.seen.map(record => record.n), rotated.ids);
+    assert.deepEqual(f.seen.filter(record => record.type !== 'session_meta').map(record => record.n), rotated.ids);
     assert.deepEqual(f.history, [false, true, false, true, false, true]);
   });
 }

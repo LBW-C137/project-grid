@@ -21,7 +21,7 @@ await fs.writeFile(path.join(output, 'external', 'external.txt'), 'PASTE_IN_CONT
 await fs.mkdir(path.join(output, 'external', '外部文件夹'));
 await fs.writeFile(path.join(output, 'external', '外部文件夹', 'nested.txt'), 'NESTED_PASTE_CONTENT');
 await fs.mkdir(path.join(project.path, '目标目录'));
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { notifications: false, closeToTray: false, guideVersion: '0.5.0' } }));
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { language: 'zh', notifications: false, closeToTray: false, guideVersion: '0.5.0' } }));
 const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
 const speech = path.join(output, 'speech.wav');
 try { await exec(powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'scripts/voice-fixture.ps1'), '-Destination', speech], { windowsHide: true }); }

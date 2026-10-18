@@ -5,6 +5,8 @@ $OutputEncoding = [Console]::OutputEncoding
 . (Join-Path $PSScriptRoot 'refresh-path.ps1')
 $global:AgentrixSession = Get-Content -LiteralPath $env:AGENTRIX_BOOTSTRAP -Raw -Encoding UTF8 | ConvertFrom-Json
 $global:AgentrixEventSequence = 0
+$global:AgentrixAccountBaseline = $env:AGENTRIX_ACCOUNT_BASELINE
+Remove-Item Env:AGENTRIX_ACCOUNT_BASELINE -ErrorAction SilentlyContinue
 # agent.ps1 (Command Prompt terminals) loads only the codex and claude wrappers below and keeps its own directory.
 $global:AgentrixAgentOnly = $env:AGENTRIX_AGENT_ONLY -eq '1'
 if (-not $global:AgentrixAgentOnly) { Set-Location -LiteralPath $global:AgentrixSession.projectPath }
@@ -51,7 +53,7 @@ function global:ConvertTo-AgentrixArgument {
 }
 
 function global:Send-AgentrixEvent {
-    param([string]$Type, [int]$ExitCode = 0, [string]$Agent = 'codex', [string]$Command = '')
+    param([string]$Type, [int]$ExitCode = 0, [string]$Agent = 'codex', [string]$Command = '', [string]$AccountLaunch = '')
     $global:AgentrixEventSequence++
     try {
         $eventData = @{
@@ -63,10 +65,14 @@ function global:Send-AgentrixEvent {
             agent = $Agent
             codexAvailable = [bool]$global:AgentrixCodexCommand
             claudeAvailable = [bool]$global:AgentrixClaudeCommand
-            codexHome = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.codex' })
+            codexHome = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } elseif ($env:USERPROFILE) { Join-Path $env:USERPROFILE '.codex' } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.codex' })
             cwd = (Get-Location).Path
             command = $Command
-        } | ConvertTo-Json -Compress
+        }
+        if ($Type -eq 'codex-started' -and $Agent -eq 'codex') {
+            $eventData.accountLaunch = if ($AccountLaunch -ceq 'model-only-v1') { 'model-only-v1' } else { 'unavailable' }
+        }
+        $eventData = $eventData | ConvertTo-Json -Compress
         $pipe = [System.IO.Pipes.NamedPipeClientStream]::new('.', $global:AgentrixSession.pipeName, [System.IO.Pipes.PipeDirection]::Out)
         try {
             $pipe.Connect(750)
@@ -83,6 +89,31 @@ function global:Get-AgentrixCommand($arguments) {
     if ($first -cmatch '^-{0,2}[A-Za-z][A-Za-z-]{0,23}$') { $first } else { '' }
 }
 
+# Owned helper, bounded and silent. Full argv goes only through its private stdin;
+# the event receives a capability, never a prompt, config or credential value.
+function global:Get-AgentrixAccountLaunch($arguments) {
+    $scopeProcess = $null
+    try {
+        if (-not $global:AgentrixAccountBaseline -or -not $global:AgentrixSession.nodePath -or -not $global:AgentrixSession.accountScopeHelper) { return 'unavailable' }
+        $info = [Diagnostics.ProcessStartInfo]::new()
+        $info.FileName = $global:AgentrixSession.nodePath
+        $info.Arguments = ConvertTo-AgentrixArgument $global:AgentrixSession.accountScopeHelper
+        $info.UseShellExecute = $false; $info.CreateNoWindow = $true
+        $info.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+        $info.RedirectStandardInput = $true; $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true
+        $scopeProcess = [Diagnostics.Process]::Start($info)
+        $output = $scopeProcess.StandardOutput.ReadToEndAsync()
+        $diagnostics = $scopeProcess.StandardError.ReadToEndAsync()
+        $payload = @{ args = @($arguments); baseline = ($global:AgentrixAccountBaseline | ConvertFrom-Json) } | ConvertTo-Json -Depth 5 -Compress
+        $scopeProcess.StandardInput.Write($payload); $scopeProcess.StandardInput.Close()
+        if (-not $scopeProcess.WaitForExit(3000)) { $scopeProcess.Kill(); return 'unavailable' }
+        if ($scopeProcess.ExitCode -eq 0 -and $output.Result -ceq 'model-only-v1') { return 'model-only-v1' }
+    } catch { } finally {
+        if ($scopeProcess) { try { if (-not $scopeProcess.HasExited) { $scopeProcess.Kill() } } catch { }; $scopeProcess.Dispose() }
+    }
+    return 'unavailable'
+}
+
 function global:codex {
     if (-not $global:AgentrixCodexCommand) {
         Write-Host 'Codex CLI was not found in PATH. Install it, then restart this terminal.' -ForegroundColor Yellow
@@ -97,7 +128,7 @@ function global:codex {
         '-ProjectId', $global:AgentrixSession.projectId,
         '-SessionKey', $global:AgentrixSession.sessionKey
     ) | ConvertTo-Json -Compress
-    Send-AgentrixEvent 'codex-started' -Command (Get-AgentrixCommand $args)
+    Send-AgentrixEvent 'codex-started' -Command (Get-AgentrixCommand $args) -AccountLaunch (Get-AgentrixAccountLaunch $forwardArgs)
     $codexExit = 0
     try {
         if ([IO.Path]::GetExtension($global:AgentrixCodexExecutable) -ne '.exe') {

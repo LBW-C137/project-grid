@@ -6,8 +6,9 @@
 # What Agentrix passed in, kept in this shell only; programs started here do not inherit it.
 __pg_socket=$AGENTRIX_SOCKET __pg_project=$AGENTRIX_PROJECT_ID __pg_key=$AGENTRIX_SESSION_KEY
 __pg_node=$AGENTRIX_NODE __pg_helper=$AGENTRIX_EVENT_HELPER __pg_start=$AGENTRIX_START_DIR __pg_note=$AGENTRIX_READING_NOTE
+__pg_account_baseline=$AGENTRIX_ACCOUNT_BASELINE
 __pg_sequence=0
-unset AGENTRIX_SOCKET AGENTRIX_PROJECT_ID AGENTRIX_SESSION_KEY AGENTRIX_NODE AGENTRIX_EVENT_HELPER AGENTRIX_START_DIR AGENTRIX_BOOTSTRAP AGENTRIX_READING_NOTE
+unset AGENTRIX_SOCKET AGENTRIX_PROJECT_ID AGENTRIX_SESSION_KEY AGENTRIX_NODE AGENTRIX_EVENT_HELPER AGENTRIX_START_DIR AGENTRIX_BOOTSTRAP AGENTRIX_READING_NOTE AGENTRIX_ACCOUNT_BASELINE
 
 [[ -r ~/.bashrc ]] && builtin source ~/.bashrc
 
@@ -56,7 +57,7 @@ __pg_send() {
   __pg_program codex && codex=true
   __pg_program claude && claude=true
   ELECTRON_RUN_AS_NODE=1 "$__pg_node" "$__pg_helper" shell-event "$__pg_socket" "$__pg_project" "$__pg_key" \
-    "$1" "$__pg_sequence" "${2:-0}" "${3:-codex}" "$codex" "$claude" "${CODEX_HOME:-$HOME/.codex}" "$PWD" "${4:-}" </dev/null >/dev/null 2>&1
+    "$1" "$__pg_sequence" "${2:-0}" "${3:-codex}" "$codex" "$claude" "${CODEX_HOME:-$HOME/.codex}" "$PWD" "${4:-}" "${5:-}" </dev/null >/dev/null 2>&1
   return 0
 }
 
@@ -66,6 +67,17 @@ __pg_command() {
   local pattern='^-{0,2}[A-Za-z][A-Za-z-]{0,23}$'
   [[ ${1-} =~ $pattern ]] && printf '%s' "$1"
   return 0
+}
+
+# Private stdin to the shared bounded classifier; only its enum is emitted.
+__pg_account_scope() {
+  local word separator=
+  [[ -n $__pg_account_baseline ]] || { printf unavailable; return; }
+  {
+    printf '{"baseline":%s,"args":[' "$__pg_account_baseline"
+    for word in "$@"; do __pg_json "$word"; printf '%s%s' "$separator" "$REPLY"; separator=,; done
+    printf ']}'
+  } | ELECTRON_RUN_AS_NODE=1 "$__pg_node" "${__pg_helper%/*}/codex-account-scope.cjs" 2>/dev/null
 }
 
 codex() {
@@ -80,7 +92,7 @@ codex() {
   for word in /usr/bin/env ELECTRON_RUN_AS_NODE=1 "$__pg_node" "$__pg_helper" codex-notify "$__pg_socket" "$__pg_project" "$__pg_key"; do
     __pg_json "$word"; notify+=${notify:+,}$REPLY
   done
-  __pg_send codex-started 0 codex "$(__pg_command "$@")"
+  __pg_send codex-started 0 codex "$(__pg_command "$@")" "$(__pg_account_scope "${program[@]:1}" "$@")"
   # What the reading view can show (electron/features/agents/reading-note.cjs); the user's own -c comes later and wins.
   local -a note=()
   [[ -n $__pg_note ]] && note=(-c "developer_instructions=\"$__pg_note\"")

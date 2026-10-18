@@ -4,7 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { interactiveSession } = require('./session-restore.cjs');
 const { rolloutFiles, sessionMeta } = require('./session-files.cjs');
-const { transcriptWindow, LIVE_READ_LIMIT } = require('./transcript-window.cjs');
+const { transcriptWindow, LIVE_READ_LIMIT, codexMetadata } = require('./transcript-window.cjs');
 const { OversizedLine } = require('./oversized-record.cjs');
 const { sameThread } = require('./terminal-title.cjs');
 
@@ -31,7 +31,9 @@ class CodexActivityReader {
           this.filename = item.filename;
           this.fileIdentity = null;
           this.snapshot = { threadId: meta.id, turnId: null, state: 'unknown', updatedAt: 0 };
-          this.historyPending = true; this.options.onHistory?.(false);
+          this.historyPending = true;
+          if (!this.historyOpened) this.options.onHistory?.(false);
+          this.historyOpened = true;
           return;
         }
       } catch {}
@@ -54,7 +56,13 @@ class CodexActivityReader {
   }
   async read() {
     const threadId = this.options.threadId?.() || null;
-    if (threadId !== this.boundThread) { this.boundThread = threadId; this.filename = null; this.snapshot = null; this.fileIdentity = null; this.nextDiscovery = 0; }
+    if (threadId !== this.boundThread) {
+      const hadScope = this.boundThread != null || this.filename;
+      this.boundThread = threadId; this.filename = null; this.snapshot = null; this.fileIdentity = null; this.nextDiscovery = 0;
+      // A new title can precede its rollout file. Invalidate the old account now,
+      // even if discovery cannot yet recover the new conversation's metadata.
+      if (hadScope) { this.options.onHistory?.(false); this.historyOpened = true; }
+    }
     if (this.options.requireBinding?.() && !threadId) return null;
     if (!this.filename || this.snapshot.state !== 'working') await this.discover();
     if (!this.filename) return null;
@@ -65,10 +73,14 @@ class CodexActivityReader {
       const identity = `${stat.dev}:${stat.ino}`;
       if (this.fileIdentity !== identity || size < this.fileSize) {
         const rebinding = this.fileIdentity != null;
-        Object.assign(this, transcriptWindow(size)); this.buffer = Buffer.alloc(0);
+        Object.assign(this, transcriptWindow(size)); this.buffer = Buffer.alloc(0); this.oversized = null;
         this.snapshot = { threadId: this.snapshot.threadId, turnId: null, state: 'unknown', updatedAt: 0 };
         this.historyPending = true;
-        if (rebinding) this.options.onHistory?.(false);
+        if (rebinding) { this.options.onHistory?.(false); this.historyOpened = true; }
+        if (this.offset > 0) {
+          const meta = await codexMetadata(file, this.snapshot.threadId);
+          this.options.onRecord?.(meta || { type: 'session_meta', payload: {} });
+        }
       }
       this.fileIdentity = identity; this.fileSize = size;
       // Catch up the bounded history in one poll; live growth keeps its smaller budget.
@@ -93,7 +105,7 @@ class CodexActivityReader {
           this.buffer = Buffer.alloc(0); this.skipping = true;
         }
       }
-      if (this.historyPending && this.offset >= size) { this.historyPending = false; this.options.onHistory?.(true); }
+      if (this.historyPending && this.offset >= size) { this.historyPending = false; this.historyOpened = false; this.options.onHistory?.(true); }
       return this.offset >= size ? { ...this.snapshot } : null;
     } finally { await file.close(); }
   }

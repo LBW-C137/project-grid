@@ -35,7 +35,9 @@ export type SSHAuthPrompt = { id: string; host: string; message: string; kind: '
 export type Workspace = { desktopGlass?: { supported: boolean; compatibility: boolean; active: boolean; restart: boolean; failed: boolean }; projects: Project[]; settings: Settings; warning: string | null; platform: string; version: string; guide: boolean; autoHideTitlebar: boolean;
   // Linux: the shell new local terminals use and whether zsh is installed.
   localShell: { kind: 'bash' | 'zsh'; zsh: boolean } | null };
-type TerminalSnapshot = { sessionId: string | null; seq: number; data: string };
+// A backend observation epoch; no native Claude Code/Codex approval request ID is exposed by terminal mode.
+export type ApprovalStamp = { sessionId: string; revision: number };
+type TerminalSnapshot = { sessionId: string | null; seq: number; data: string; approval?: ApprovalStamp };
 export type TerminalPacket = TerminalSnapshot & { id: string };
 export type FileEntry = { name: string; path: string; kind: 'directory' | 'file' | 'link' };
 export type FileProgress = { projectId: string; text: string } | null;
@@ -152,6 +154,7 @@ type Bridge = {
   agentSessions(id: string): Promise<Result<AgentSession[]>>;
   followAgentSession(id: string, sessionId: string): Promise<Result<boolean>>;
   writeTerminal(id: string, data: string): void;
+  writeApproval(id: string, key: string, stamp: ApprovalStamp, actionId: string): Promise<Result<boolean>>;
   answerTerminal(id: string, data: string): void;
   resizeTerminal(id: string, cols: number, rows: number): void;
   copy(text: string): Promise<Result<void>>;

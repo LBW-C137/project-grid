@@ -20,7 +20,7 @@ const git=(...args)=>execFileSync('git',['-C',projects[2].path,...args],{windows
 git('init','-b','main');git('config','user.name','Theme fixture');git('config','user.email','fixture@example.test');
 await fs.writeFile(path.join(projects[2].path,'settings.ts'),'export const theme = "forest";\nexport const attention = "pink";\n');git('add','.');git('commit','-m','Initial fixture');
 await fs.writeFile(path.join(projects[2].path,'settings.ts'),'export const theme = "mono-amber";\nexport const attention = "orange";\n');
-await fs.writeFile(path.join(profile,'workspace.json'),JSON.stringify({version:2,projects,settings:{theme:'forest',terminalRenderer:'dom',notifications:false,sound:false,announce:false,restoreSessions:false,closeToTray:false,fontSize:14}}));
+await fs.writeFile(path.join(profile,'workspace.json'),JSON.stringify({version:2,projects,settings:{ language: 'zh',theme:'forest',terminalRenderer:'dom',notifications:false,sound:false,announce:false,restoreSessions:false,closeToTray:false,fontSize:14}}));
 const env={...process.env,AGENTRIX_DATA_DIR:profile,AGENTRIX_TEST_TITLEBAR: '1',CODEX_HOME:home};delete env.ELECTRON_RUN_AS_NODE;delete env.AGENTRIX_DEV_URL;
 let app,page;const errors=[],results={checks:[],output,profile};
 const state=async()=>(await page.evaluate(()=>window.agentrix.getState())).value;

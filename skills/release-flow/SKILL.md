@@ -70,3 +70,14 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
 17. **Slow PowerShell unit subprocesses.** Use `10000 * timeoutScale` from `scripts/wait.mjs` for the PATH-check child,
    matching the workflow's existing scale. Keep every case and assertion; validate with an injected startup delay above
    the original ten-second cap. A killed child with empty output is not a failed PATH assertion.
+18. **Locale defaults and fixtures.** Chinese UI locators need `language: 'zh'` in each isolated smoke profile's
+   persisted settings, including full-sixteen and platform CI scripts; preserve their assertions. Keep a separate
+   fresh profile with no language field to verify the real English first paint. Headless locale and fixture tests
+   cover unset/invalid defaults, explicit preferences, renderer startup and native translation fallbacks.
+19. **Unpacked and installed checks differ.** Run the normal desktop suites against `win-unpacked`. An extracted
+   installer payload contains its uninstaller and correctly reports installed update eligibility; use it only for
+   installed-runtime checks. Enable `AGENTRIX_TEST_GUIDE=1` to inspect onboarding in an isolated profile.
+20. **Drag release coordinates matter.** A pointer release can arrive without the last move. Reproduce it by
+   activating a drag and releasing through CDP at the destination without a final move; check the persisted order.
+   Normal drag fixtures wait for stable cell geometry and the exact preview order before releasing, retaining the
+   cancellation, terminal, click and keyboard assertions. A blind retry does not establish the cause of a failure.

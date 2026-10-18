@@ -25,7 +25,7 @@ await fs.symlink(path.join(ssh.project, 'docs/nested'), path.join(ssh.project, '
 await fs.writeFile(path.join(ssh.project, 'README.md'), '# 远程文件\n\n[查看文档目录](docs/nested/)\n');
 // A regular shell at the end proves startup restoration actually ran after any legacy entries.
 // These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [legacy, closed, remote, local], settings: { terminalRenderer: 'dom', autoSave: false, notifications: false, restoreSessions: true, closeToTray: false } }));
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [legacy, closed, remote, local], settings: { language: 'zh', terminalRenderer: 'dom', autoSave: false, notifications: false, restoreSessions: true, closeToTray: false } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: profile, AGENTRIX_TEST_SSH_CONFIG: ssh.configFile, AGENTRIX_TEST_RESTORE: '1', CODEX_HOME: path.join(output, 'codex-home') }; delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 const packaged = process.argv.includes('--packaged'); let app, page;
 const state = async () => (await page.evaluate(() => window.agentrix.getState())).value;

@@ -16,7 +16,7 @@ const output = await testRun('desktop-glass'), profile = path.join(output, 'prof
 await fs.mkdir(profile, { recursive: true });
 const projects = ['清晰文字', '等待查看'].map((name, index) => ({ id: randomUUID(), name, path: path.join(output, 'project-' + index), kind: 'local', unread: index, lastCompletedAt: index ? Date.now() : null, restore: { terminal: false, codex: false } }));
 for (const project of projects) { await fs.mkdir(project.path); await fs.writeFile(path.join(project.path, 'README.md'), '# Native glass\n\nThe operating system blurs the real background.\n'); }
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { theme: 'mono-amber', surface: 'glass', glassBackground: 'desktop', glassTransparency: 37, terminalRenderer: 'dom', columns: 2, notifications: false, sound: false, announce: false, restoreSessions: false, closeToTray: false, fontSize: 15 } }));
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { language: 'zh', theme: 'mono-amber', surface: 'glass', glassBackground: 'desktop', glassTransparency: 37, terminalRenderer: 'dom', columns: 2, notifications: false, sound: false, announce: false, restoreSessions: false, closeToTray: false, fontSize: 15 } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: profile }; delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 let app, page; const errors = [], results = { backend, checks: [] };
 const state = async () => (await page.evaluate(() => window.agentrix.getState())).value;

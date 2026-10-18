@@ -10,7 +10,7 @@ const { isLocalAgentCommand } = require('../electron/agent-commands.cjs');
 const main = fs.readFileSync(path.join(__dirname, '../electron/main.cjs'), 'utf8');
 // Exercise the actual event handlers without opening Electron or the user's terminals.
 function handlers() {
-  const project = { id: 'p', completionArmed: false }, session = { terminalId: 't', projectId: 'p', sessionKey: 'key', codexActive: true, agent: 'claude', codexActivity: 'working', promptQueue: { reset() {} }, submissions: { reset() {} } };
+  const project = { id: 'p', completionArmed: false }, session = { terminalId: 't', projectId: 'p', sessionKey: 'key', codexActive: true, agent: 'claude', codexActivity: 'working', promptQueue: { reset() {} }, submissions: { reset() {} }, approval: new (require('../electron/features/terminal/approval-guard.cjs').ApprovalGuard)('pty') };
   const calls = { broadcast: 0, restore: 0, activity: 0, follow: 0, completion: [], usageDispose: 0 };
   session.usageAccount = { dispose() { calls.usageDispose++; } };
   session.bindUsageAccount = () => {};
@@ -42,6 +42,21 @@ test('Claude permission notices broadcast waiting state without changing activit
   session.agent = 'codex'; send({ state: 'attention', message: 'Ignored' });
   assert.equal(calls.broadcast, 1);
   assert.deepEqual(calls.completion, []);
+});
+
+test('Claude hook event identities conservatively invalidate old approval actions without pretending to be native request IDs', () => {
+  const { session, send, calls } = handlers();
+  send({ state: 'attention', eventId: 'session:notice-A', message: 'Approve identical command' });
+  const first = session.approval.stamp();
+  send({ state: 'attention', eventId: 'session:notice-A', message: 'Approve identical command' });
+  assert.deepEqual(session.approval.stamp(), first, 'duplicate observation leaves the stamp alone');
+  send({ state: 'attention', eventId: 'session:notice-B', message: 'Approve different command' });
+  send({ state: 'attention', eventId: 'session:notice-A', message: 'Approve identical command' });
+  assert.equal(session.approval.matches(first), false, 'even a reused event string cannot restore an earlier epoch');
+  const second = session.approval.stamp();
+  send({ state: 'working', eventId: 'session:prompt-B', prompt: 'Another turn' });
+  assert.equal(session.approval.matches(second), false);
+  assert.deepEqual(calls.completion, [['p', true]], 'only the real prompt hook arms completion');
 });
 
 test('working and complete clear waiting without disposing usage; actual agent/shell exits clean up', () => {

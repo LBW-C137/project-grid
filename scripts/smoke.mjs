@@ -52,7 +52,7 @@ await fs.writeFile(path.join(previewProject, 'assets', 'data.json'), JSON.string
 await fs.writeFile(path.join(previewProject, 'assets', 'preview.mjs'), 'import { message } from "./message.mjs"; document.querySelector("#script-status").textContent=message; const data=await fetch(new URL("./data.json", import.meta.url)).then(r=>r.json()); document.querySelector("#data-status").textContent=data.label; document.querySelector("#increment").onclick=()=>{document.querySelector("#count").textContent=String(Number(document.querySelector("#count").textContent)+1)};');
 await fs.writeFile(path.join(previewProject, 'reports', 'preview.html'), '<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>HTML preview fixture</title><link rel="stylesheet" href="../assets/preview.css"><main><h1>HTML 页面已渲染</h1><img src="../image-preview.png" alt="相对路径图片"><p id="script-status">Loading scripts</p><p id="data-status"></p><button id="increment">点击计数</button><output id="count">0</output></main><script type="module" src="../assets/preview.mjs"></script></html>');
 // These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { terminalRenderer: 'dom', autoSave: false, notifications: false, sound: false, closeToTray: true, fontSize: 12 } }));
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { language: 'zh', terminalRenderer: 'dom', autoSave: false, notifications: false, sound: false, closeToTray: true, fontSize: 12 } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: dataDir };
 env.NO_COLOR = '1';
 env.NODE_DISABLE_COLORS = '1';
@@ -230,25 +230,54 @@ try {
 
   const projectOrder = () => page.locator('.agentrix > .project-slot > .project-panel').evaluateAll(panels => panels.map(panel => panel.dataset.projectId));
   const beginProjectDrag = async (sourceId, targetId) => {
-    const source = page.locator(`[data-project-id="${sourceId}"] .panel-name`);
-    const target = page.locator(`[data-project-id="${targetId}"] .panel-header`);
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const from = await source.boundingBox(), to = await target.boundingBox();
-        await page.mouse.move(from.x + 20, from.y + from.height / 2);
-        await page.mouse.down();
-        await page.locator(`[data-project-id="${sourceId}"].drag-source`).waitFor({ timeout: attempt ? 30000 : 3000 });
-        await page.mouse.move(to.x + 40, to.y + to.height / 2, { steps: 10 });
-        await page.locator(`[data-project-slot="${sourceId}"].drag-placeholder`).waitFor({ timeout: attempt ? 30000 : 3000 });
-        return;
-      } catch (error) {
-        if (attempt || error.name !== 'TimeoutError') throw error;
-        // A transient blur/capture loss can cancel pickup during movement. Cancel before releasing so a partial drag cannot commit.
-        console.warn('Retrying project drag after a gesture timeout:', error.message);
-        await page.keyboard.press('Escape'); await page.mouse.up();
-        await page.locator('.is-reordering').waitFor({ state: 'hidden' });
-      }
-    }
+    const baseline = await projectOrder(), fromIndex = baseline.indexOf(sourceId), toIndex = baseline.indexOf(targetId);
+    assert.ok(fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex, 'drag source and destination are distinct baseline projects');
+    const expected = [...baseline]; expected.splice(fromIndex, 1); expected.splice(toIndex, 0, sourceId);
+    const stableGeometry = async () => {
+      let previous, geometry;
+      await waitFor(async () => {
+        const current = await page.evaluate(async ({ baseline, sourceId }) => {
+          const grid = document.querySelector('.agentrix'), area = grid.closest('.grid-area');
+          const slots = [...grid.querySelectorAll(':scope > [data-project-slot]')];
+          const state = await window.agentrix.getState();
+          if (grid.classList.contains('is-reordering') || !state.ok ||
+            JSON.stringify(slots.map(slot => slot.dataset.projectSlot)) !== JSON.stringify(baseline) ||
+            JSON.stringify(state.value.projects.map(project => project.id)) !== JSON.stringify(baseline)) return null;
+          const panels = slots.map(slot => slot.querySelector('.project-panel'));
+          const headers = panels.map(panel => panel.querySelector('.panel-header'));
+          const name = grid.querySelector(`[data-project-id="${sourceId}"] .panel-name`);
+          // Only finite geometry animations on cards/slots/handles matter; terminal animations can run forever.
+          if ([grid, ...slots, ...panels, ...headers, name].some(node => node.getAnimations().some(animation =>
+            (animation.pending || animation.playState === 'running') && Number.isFinite(animation.effect?.getComputedTiming().endTime) &&
+            animation.effect.getKeyframes().some(frame => ['transform', 'translate', 'scale', 'left', 'top', 'width', 'height'].some(key => key in frame))))) return null;
+          const box = node => { const r = node.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
+          return { grid: box(grid), area: box(area), name: box(name), scroll: [area.scrollLeft, area.scrollTop],
+            cells: slots.map((slot, index) => ({ left: slot.offsetLeft, top: slot.offsetTop, width: slot.offsetWidth, height: slot.offsetHeight,
+              slot: box(slot), header: box(headers[index]), panel: box(panels[index]) })) };
+        }, { baseline, sourceId });
+        const stable = current && previous && JSON.stringify(current) === JSON.stringify(previous);
+        previous = current; geometry = stable ? current : null;
+        return !!geometry;
+      }, `drag geometry and DOM/workspace baseline settle for ${sourceId}`);
+      return geometry;
+    };
+    const initial = await stableGeometry();
+    await page.mouse.move(initial.name.x + Math.min(20, initial.name.width / 2), initial.name.y + initial.name.height / 2);
+    const settled = await stableGeometry(); // Hover lift can move the header after the pointer arrives.
+    await page.mouse.move(settled.name.x + Math.min(20, settled.name.width / 2), settled.name.y + settled.name.height / 2);
+    await page.mouse.down();
+    await page.locator(`[data-project-id="${sourceId}"].drag-source`).waitFor();
+    // Keep the baseline physical ordinal, rather than following a neighboring card as it shifts away.
+    const cell = settled.cells[toIndex];
+    const to = await page.locator('.agentrix').evaluate((grid, cell) => {
+      const bounds = grid.getBoundingClientRect();
+      return { x: bounds.left + cell.left + Math.min(40, cell.width / 2),
+        y: bounds.top + cell.top + cell.header.y - cell.slot.y + cell.header.height / 2 };
+    }, cell);
+    assert.ok(to.x > settled.area.x && to.x < settled.area.x + settled.area.width && to.y > settled.area.y && to.y < settled.area.y + settled.area.height, 'destination cell is inside the drag viewport');
+    await page.mouse.move(to.x, to.y, { steps: 10 });
+    await waitFor(async () => await page.locator(`[data-project-id="${sourceId}"].drag-source`).count() === 1 &&
+      JSON.stringify(await projectOrder()) === JSON.stringify(expected), `active drag previews exact insertion order ${JSON.stringify(expected)}`);
   };
   const originalOrder = projects.map(project => project.id);
   const sessionIds = Object.fromEntries((await page.evaluate(() => window.agentrix.getState())).value.projects.map(project => [project.id, project.sessionId]));

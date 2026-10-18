@@ -20,7 +20,7 @@ const project = { id: randomUUID(), name: '对话分层预览', path: path.join(
 for (const directory of [profile, home, claudeHome, project.path]) await fs.mkdir(directory, { recursive: true });
 await fs.writeFile(path.join(project.path, 'large.txt'), 'A'.repeat(256 * 1024) + '\nPAGE_TWO_MARKER\n');
 await fs.writeFile(path.join(project.path, 'slow-save.txt'), 'original');
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { startView: 'workspace', theme: 'daylight', focusAnimation: 'off', terminalRenderer: 'dom', restoreSessions: false, notifications: false, sound: false, announce: false, closeToTray: false, activityPane: false, guideVersion: '9.9.9' } }));
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { language: 'zh', startView: 'workspace', theme: 'daylight', focusAnimation: 'off', terminalRenderer: 'dom', restoreSessions: false, notifications: false, sound: false, announce: false, closeToTray: false, activityPane: false, guideVersion: '9.9.9' } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: profile, CODEX_HOME: home, CLAUDE_CONFIG_DIR: claudeHome };
 delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 const at = new Date(2026, 9, 17, 22, 10).getTime();

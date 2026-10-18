@@ -49,6 +49,9 @@ export type ScreenQuestion = {
   review: { question: string; answer: string }[] | null; // Claude's last page: "Review your answers"
 };
 export type ScreenChoice = {
+  // Added by terminal-screen, never inferred by the text parser. instance is a local observed incarnation;
+  // stamp is the backend raw-output epoch. Neither is a native CLI request ID.
+  approval?: { instance: number; stamp: import('../../shared/types').ApprovalStamp | null };
   kind: 'permission' | 'menu' | 'question';
   title: string;              // "Do you want to create hello.txt?", "Would you like to run the following command?",
                               // "Select model", "Select Model and Effort"

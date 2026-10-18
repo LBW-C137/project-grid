@@ -1,6 +1,7 @@
 const { registerWindowIpc } = require('./app/window-ipc.cjs');
 const { registerClipboardIpc } = require('./shared/clipboard-ipc.cjs');
 const { registerTerminalIpc } = require('./features/terminal/ipc.cjs');
+const { ApprovalGuard, approvalStamp } = require('./features/terminal/approval-guard.cjs');
 const { registerWorkspaceIpc } = require('./features/workspace/ipc.cjs');
 const { createSshRuntime } = require('./features/ssh/runtime.cjs');
 const { registerSshIpc } = require('./features/ssh/ipc.cjs');
@@ -46,7 +47,7 @@ const pty = require('node-pty');
 const { WorkspaceStore } = require('./state.cjs');
 const { createEventServer } = require('./events.cjs');
 const { ProjectGit } = require('./project-git.cjs');
-const { acceptShellEvent, SubmissionTracker, PromptMarkers, InputGate } = require('./terminal-input.cjs');
+const { acceptShellEvent, SubmissionTracker, PromptMarkers, InputGate, isTerminalResponse } = require('./terminal-input.cjs');
 const { PromptQueue } = require('./prompt-queue.cjs');
 const { createTerminalEnvironment } = require('./terminal-env.cjs');
 const { adoptSystemProxy } = require('./system-proxy.cjs');
@@ -76,6 +77,7 @@ const { ZSH, findShell, linuxShell, prepareZshStartup, shellEnvironment, zshEnvi
 
 const root = path.join(__dirname, '..');
 const integrationDir = app.isPackaged ? path.join(process.resourcesPath, 'integration') : path.join(root, 'integration');
+const { accountEnvironment } = require(path.join(integrationDir, 'codex-account-scope.cjs'));
 const devUrl = !app.isPackaged ? process.env.AGENTRIX_DEV_URL : null;
 if (process.env.AGENTRIX_DATA_DIR) app.setPath('userData', path.resolve(process.env.AGENTRIX_DATA_DIR));
 else if (app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'Agentrix'));
@@ -371,6 +373,7 @@ function followClaude(project, s, event) {
   if (!remote && !file.toLowerCase().startsWith(claudeConfigDir().toLowerCase() + path.sep)) return;
   s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
   s.claudeSessionId = event.sessionId;
+  s.approval?.context('claude-session', event.sessionId);
   s.usage?.calls.setFolder(remote ? null : path.join(path.dirname(file), event.sessionId, 'subagents'));
   if (s.claudeTranscript?.filename !== file) {
     const onHistory = ready => {
@@ -406,12 +409,14 @@ function startUsage(project, s, event) {
   stopUsageAccount(s);
   const usage = s.usage = new UsageMeter(s.agent, { changed: () => { if (s.usage === usage) scheduleState(); } });
   if (s.agent === 'codex') {
-    let provider;
+    let binding;
     s.bindUsageAccount = () => {
-      if (s.usage !== usage || (s.usageAccount && provider === usage.providerId)) return;
-      s.usageAccount?.dispose(); provider = usage.providerId;
+      const next = JSON.stringify([usage.providerId, usage.scopeCwd, event.accountLaunch, event.codexHome || s.codexHome]);
+      if (s.usage !== usage || (s.usageAccount && binding === next)) return;
+      s.usageAccount?.dispose(); binding = next;
       s.usageAccount = codexAccounts.watch({ codexHome: event.codexHome || s.codexHome, cwd: event.cwd || project.path,
-        env: s.usageEnv || process.env, provider, remote: project.kind === 'ssh', command: event.command }, account => {
+        recordedCwd: usage.scopeCwd, env: s.usageEnv || process.env, provider: usage.providerId,
+        remote: project.kind === 'ssh', accountLaunch: event.accountLaunch }, account => {
         if (s.usage === usage && s.codexActive && sessions.get(s.terminalId) === s) { usage.codexAccount(account); scheduleState(); }
       });
     };
@@ -460,6 +465,7 @@ function applyActivity(project, s, snapshot) {
   // must not make newly running work look complete.
   if (snapshot.updatedAt < Math.max(s.activitySince, s.activityInputAt)) return;
   s.rootThreadId = snapshot.threadId;
+  s.approval?.context('activity', [snapshot.threadId, snapshot.turnId, snapshot.state]);
   // Keep the last prompt that named some work; a bare "继续" or "continue" keeps the one before it.
   const task = summarizeTask(snapshot.prompt);
   if (task) s.lastTask = task;
@@ -498,6 +504,9 @@ function applyActivity(project, s, snapshot) {
 function claudeActivity(project, s, event) {
   if (!s.codexActive || s.agent !== 'claude' || !['working', 'complete', 'attention', 'session'].includes(event.state)) return;
   if (typeof event.sessionId !== 'string' || !/^[\w-]{1,100}$/.test(event.sessionId) || typeof event.eventId !== 'string' || event.eventId.length > 200) return;
+  // Hook eventId is an event identity, not a native approval request ID. A different observed event invalidates
+  // actions conservatively, even if its message is identical. Duplicate events leave the epoch alone.
+  s.approval?.context('claude-event', [event.sessionId, event.eventId, event.state]);
   if (event.state === 'attention') { s.needsInput = { message: typeof event.message === 'string' ? event.message.slice(0, 300) : '', since: Date.now() }; broadcast(); return; }
   if (event.state === 'session') { followClaude(project, s, event); broadcast(); return; }
   // Claude Code runs its prompt hooks for some local slash commands (/context, /doctor, /compact) too. They open a screen
@@ -526,6 +535,7 @@ function onEvent(event) {
   if (!project) return;
   if (event.type === 'agent-activity') { claudeActivity(project, s, event); return; }
   if (event.type !== 'turn-complete' && !acceptShellEvent(s, event)) return;
+  s.approval?.context('shell-event', [event.type, event.sequence]);
   if (event.type === 'shell-ready' || event.type === 'shell-prompt') {
     s.needsInput = null; s.agentCommand = null; stopUsageAccount(s);
     s.claudeResumeId = null; s.claudeFollowRequest = (s.claudeFollowRequest || 0) + 1;
@@ -588,7 +598,10 @@ function onEvent(event) {
     // sent back compacted with each status (integration/remote-worker.py), with the same history start and end.
     const onHistory = ready => {
       if (ready) s.conversation.endHistory();
-      else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.usage?.reset(); }
+      else {
+        s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.usage?.reset();
+        s.usage?.resetScope(); s.bindUsageAccount?.();
+      }
     };
     const onRecord = record => {
       codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
@@ -759,8 +772,10 @@ function startTerminal(id) {
   if (bootstrapFile) fs.writeFileSync(bootstrapFile, JSON.stringify({
     projectId: id, projectPath: startPath, sessionKey, pipeName: eventServer.name,
     powershellPath, notifyPath: path.join(integrationDir, 'notify.ps1'), claudeHookPath: path.join(integrationDir, 'claude-hook.ps1'),
+    nodePath: process.execPath, accountScopeHelper: path.join(integrationDir, 'codex-account-scope.cjs'),
   }), { mode: 0o600 });
   let env = createTerminalEnvironment(withoutAppImage(process.env), bootstrapFile || '');
+  if (project.kind !== 'ssh') env.AGENTRIX_ACCOUNT_BASELINE = JSON.stringify(accountEnvironment(env));
   // The agent wrappers tell Claude Code and Codex what the reading view shows (an SSH project's worker is told on start),
   // and where the work done in this folder before is written down for them (handoff.cjs), so either one carries it on.
   if (project.kind !== 'ssh') {
@@ -796,9 +811,14 @@ function startTerminal(id) {
     titles: new TerminalTitleTracker(), reportedThreadId: null,
     codexActive: false, codexAvailable: null, seq: 0, chunks: [], bytes: 0, pending: '',
     flushTimer: null, error: null, submissions: new SubmissionTracker(),
+    approval: new ApprovalGuard(sessionId), approvalRemote: project.kind === 'ssh',
   };
   s.actions = new ActionLog(() => publishAction(s));
-  s.gate = new InputGate(data => { if (sessions.get(id) === s && s.status !== 'exited') terminal.write(data); }, { shellOwnsInput: () => !s.codexActive });
+  s.gate = new InputGate(data => {
+    if (sessions.get(id) !== s || s.status === 'exited') return;
+    if (!isTerminalResponse(data)) s.approval.invalidate();
+    terminal.write(data);
+  }, { shellOwnsInput: () => !s.codexActive });
   s.promptQueue = new PromptQueue(() => { if (sessions.get(id) === s) scheduleState(); });
   // A prompt the agent's own record shows it received is being worked on. History read when a session is
   // resumed is older than the agent's start and is left out.
@@ -824,12 +844,15 @@ function startTerminal(id) {
   const flush = () => {
     clearTimeout(s.flushTimer); s.flushTimer = null;
     if (!s.pending) return;
-    send('terminal:data', { id, sessionId, seq: ++s.seq, data: s.pending });
+    send('terminal:data', { id, sessionId, seq: ++s.seq, data: s.pending, approval: approvalStamp(s) });
     s.pending = '';
   };
   s.flush = flush;
   terminal.onData(data => {
     if (sessions.get(id) !== s) return;
+    // Before the 16 ms transport batch and the renderer's 100 ms publication: even coalesced A/B/A output
+    // invalidates old tickets. Identical bytes can be a new request; terminal mode provides no native request ID.
+    s.approval.invalidate();
     if (s.prompts) for (const cwd of s.prompts.write(data)) {
       onEvent({ projectId: id, sessionKey, type: 'shell-prompt', sequence: (s.lastShellEventSequence || 0) + 1, cwd, codexAvailable: s.tools.codex, claudeAvailable: s.tools.claude,
         codexHome: env.CODEX_HOME || path.join(os.homedir(), '.codex') });
@@ -837,6 +860,7 @@ function startTerminal(id) {
     for (const threadId of s.titles.write(data)) {
       if (s.reportedThreadId !== threadId) {
         s.reportedThreadId = threadId;
+        s.approval.context('terminal-title', threadId);
         // A title cut short names the session only by how its id begins: the whole id is kept once its record is found.
         if (s.codexActive) { s.codexActivity = 'unknown'; s.activityInputAt = 0; if (wholeThread(threadId)) store.setRestore(id, { threadId }); void s.activityMonitor?.poll(); }
       }
@@ -1194,7 +1218,7 @@ if (!app.requestSingleInstanceLock()) {
       });
     }
   }).catch(error => {
-    dialog.showErrorBox('Agentrix 无法启动', String(error?.stack || error));
+    dialog.showErrorBox(t('Agentrix 无法启动'), t(String(error?.stack || error)));
     app.exit(1);
   });
 }

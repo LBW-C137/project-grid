@@ -4,14 +4,14 @@ import type { ScreenChoice } from '../agents/agent-screen-types';
 import { parseAgentScreen } from '../agents/agent-screen';
 import { signInScreen } from '../agents/sign-in-screen';
 import { hasCliInput } from '../reading/cli-panel';
-import { choiceIdentity } from '../reading/choice-keys';
-import { subscribeScreen } from '../terminal/terminal-screen';
+import { bindApproval, choiceIdentity } from '../reading/choice-keys';
+import { subscribeScreen, type Screen } from '../terminal/terminal-screen';
 import { reviewHistory } from './review-history';
 
 // Something one of the agents waits on you for, across every project: a permission to grant, a question to answer, a
 // choice to make (a model, a folder to trust), a sign-in, or a notice its CLI raised that only its terminal can take.
-// Each is bound to the terminal's session and, for a choice, to the choice itself as the CLI draws it: when the screen
-// moves on, the decision is gone, and an answer is only sent after the same choice is read on the screen again.
+// Permission decisions bind both to an observed screen incarnation and a backend epoch. Text equality alone
+// cannot authorize an action: a byte-identical later request must invalidate the earlier captured selection.
 export type DecisionKind = 'approval' | 'question' | 'choice' | 'signin' | 'attention' | 'review';
 export type Decision = {
   id: string; kind: DecisionKind; projectId: string; projectName: string; terminalId: string; sessionId: string | null; terminalTitle: string; multipleTerminals: boolean;
@@ -37,10 +37,10 @@ const useSnoozes = () => useSyncExternalStore(listener => { snoozeListeners.add(
 
 // Every live agent terminal's screen, kept current.
 function useScreens(ids: string[]) {
-  const [screens, setScreens] = useState<Record<string, string[]>>({});
+  const [screens, setScreens] = useState<Record<string, Screen>>({});
   const key = ids.join('|');
   useEffect(() => {
-    const offs = ids.map(id => subscribeScreen(id, screen => setScreens(current => current[id] === screen.rows ? current : { ...current, [id]: screen.rows })));
+    const offs = ids.map(id => subscribeScreen(id, screen => setScreens(current => ({ ...current, [id]: screen }))));
     return () => offs.forEach(off => off());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -62,9 +62,9 @@ export function useDecisions(projects: readonly Project[]) {
   const all = useMemo(() => {
     const found: Decision[] = [];
     for (const { project, terminal } of live) {
-      const agent = terminal.agent === 'claude' ? 'claude' : 'codex', rows = screens[terminal.id] ?? [];
+      const agent = terminal.agent === 'claude' ? 'claude' : 'codex', observed = screens[terminal.id] ?? null, rows = observed?.rows ?? [];
       const base = { projectId: project.id, projectName: project.name, terminalId: terminal.id, sessionId: terminal.sessionId, terminalTitle: terminal.title, multipleTerminals: project.terminals.length > 1, agent } as const;
-      const screen = parseAgentScreen(agent, rows);
+      const parsed = parseAgentScreen(agent, rows), screen = { ...parsed, choice: bindApproval(parsed.choice, agent, observed) };
       const add = (decision: Omit<Decision, 'since' | keyof typeof base>) => {
         const id = `${terminal.id}:${terminal.sessionId}:${decision.id}`;
         if (!firstSeen.has(id)) { firstSeen.set(id, Date.now()); if (firstSeen.size > 500) firstSeen.delete(firstSeen.keys().next().value!); }
@@ -73,7 +73,7 @@ export function useDecisions(projects: readonly Project[]) {
       if (screen.choice) {
         const choice = screen.choice, identity = choiceIdentity(choice);
         const kind: DecisionKind = choice.kind === 'permission' ? 'approval' : choice.kind === 'question' ? 'question' : 'choice';
-        add({ id: identity, kind, title: choice.title, context: choice.context, choice, identity, message: '' });
+        add({ id: `${choice.approval?.instance ?? ''}:${identity}`, kind, title: choice.title, context: choice.context, choice, identity, message: '' });
         continue;
       }
       const signIn = rows.length && !hasCliInput(agent, rows, screen) ? signInScreen(agent, rows) : null;

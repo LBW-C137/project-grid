@@ -22,7 +22,7 @@ import { ReadingCliPanel } from './ReadingCliPanel';
 import { ReadingSignIn } from './ReadingSignIn';
 import { signInScreen } from '../agents/sign-in-screen';
 import { useReadingCli } from './useReadingCli';
-import { choiceIdentity } from './choice-keys';
+import { bindApproval, choiceIdentity } from './choice-keys';
 import { setChoiceVisible } from './reading-mode';
 import { isTyping, markTyping } from './typing';
 import { useStickToBottom } from './useStickToBottom';
@@ -245,13 +245,17 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
   const sendOwner = useRef(conversationKey(terminal.id, terminal.sessionId)); sendOwner.current = conversationKey(terminal.id, terminal.sessionId);
   const deliveryEpoch = useRef(0);
   const visibleScreen = useScreen(terminal.id);
-  const screen = useMemo(() => parseAgentScreen(terminal.agent === 'claude' ? 'claude' : 'codex', visibleScreen?.rows ?? []), [terminal.agent, visibleScreen]);
+  const screen = useMemo(() => {
+    const agent = terminal.agent === 'claude' ? 'claude' : 'codex';
+    const parsed = parseAgentScreen(agent, visibleScreen?.rows ?? []);
+    return { ...parsed, choice: bindApproval(parsed.choice, agent, visibleScreen) };
+  }, [terminal.agent, visibleScreen]);
   // The CLI signing in before its input exists (a link to open, a code to paste): a popup, never a stuck welcome.
   const signIn = useMemo(() => {
     const kind = terminal.agent === 'claude' ? 'claude' : 'codex';
     return terminal.codexActive && visibleScreen && !screen.choice && !hasCliInput(kind, visibleScreen.rows, screen) ? signInScreen(kind, visibleScreen.rows) : null;
   }, [terminal.agent, terminal.codexActive, visibleScreen, screen]);
-  const choiceKey = screen.choice ? choiceIdentity(screen.choice) : null;
+  const choiceKey = screen.choice ? `${terminal.sessionId}:${screen.choice.approval?.instance ?? ''}:${choiceIdentity(screen.choice)}` : null;
   const [sessionsOpen, setSessionsOpen] = useState(false);
   useEffect(() => { setSessionsOpen(false); }, [terminal.id, terminal.sessionId, terminal.agent]);
   const welcomeIsStarting = useWelcomeStarting(terminal.agentStartedAt, screen);
@@ -797,7 +801,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}>{screen.choice.kind === 'question'
       ? <ReadingQuestion key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} />
-      : <ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} />}</div>}
+      : <ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} onError={onError} />}</div>}
     {sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}><ReadingSessions key={`${terminal.id}-${terminal.sessionId}`} terminalId={terminal.id} agent={terminal.agent === 'codex' ? 'codex' : 'claude'} onError={onError} onClose={() => setSessionsOpen(false)} onSent={text => {

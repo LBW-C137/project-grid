@@ -1,4 +1,11 @@
 import type { ScreenChoice } from '../agents/agent-screen-types';
+import type { Screen } from '../terminal/terminal-screen';
+import type { ScreenAgent } from '../agents/agent-screen-types';
+
+export function bindApproval(choice: ScreenChoice | null, agent: ScreenAgent, screen: Screen | null): ScreenChoice | null {
+  if (choice?.kind !== 'permission') return choice;
+  return { ...choice, approval: { instance: screen?.instances?.[agent] ?? 0, stamp: screen?.approval ?? null } };
+}
 
 export function selectedChoiceIndex(choice: ScreenChoice): number {
   return Math.max(0, choice.options.findIndex(option => option.selected));
@@ -10,6 +17,7 @@ export function choiceKeys(selected: number, target: number): string[] {
   return [...Array.from({ length: Math.abs(distance) }, () => distance > 0 ? '\x1b[B' : '\x1b[A'), '\r'];
 }
 
+// Display equivalence only: identical text is NOT a permission request identity (see approval-action.ts).
 // Cursor updates are the same prompt; a second menu (e.g. effort after model) is a new prompt. A question keeps its
 // card for the whole page: ticks, a typed answer, notes and hints redraw it, and only another question or page (or
 // the review) is new. Replacing the card mid-answer would drop the keys it had not sent yet.

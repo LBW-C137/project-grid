@@ -14,7 +14,7 @@ await fs.mkdir(profile, { recursive: true });
 const projects = Array.from({ length: 16 }, (_, index) => ({ id: randomUUID(), name: `${index < 6 ? '运行样例' : '附加项目'} ${String(index + 1).padStart(2, '0')}`, path: path.join(output, `project-${index}`), restore: { terminal: false, codex: false } }));
 for (const project of projects) await fs.mkdir(project.path);
 // These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { terminalRenderer: 'dom', restoreSessions: false, closeToTray: false, notifications: false, fontSize: 13 } }));
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { language: 'zh', terminalRenderer: 'dom', restoreSessions: false, closeToTray: false, notifications: false, fontSize: 13 } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: profile }; delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 const packaged = process.argv.includes('--packaged'); let app, page;
 const state = async () => (await page.evaluate(() => window.agentrix.getState())).value;

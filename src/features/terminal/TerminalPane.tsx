@@ -11,7 +11,7 @@ import { terminalFontFamily } from './terminal-font';
 
 // The terminal text weight chosen in Settings, which App writes on the document; 400 when none is chosen.
 const chosenWeight = () => Number(document.documentElement.dataset.terminalWeight) || Number(terminalOptions.fontWeight);
-import { registerScreen } from './terminal-screen';
+import { registerScreen, writeScreen } from './terminal-screen';
 import '@xterm/xterm/css/xterm.css';
 import { t } from '../../shared/i18n';
 import { isMac, isWindows } from '../../shared/platform';
@@ -119,7 +119,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-terminal-weight', 'data-terminal-font-family'] });
     term.current = terminal;
-    const unregister = registerScreen(id, terminal);
+    const unregister = registerScreen(id, terminal, sessionId);
     let disposed = false;
     let ready = false;
     let lastSeq = 0;
@@ -127,7 +127,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     const apply = (packet: TerminalPacket) => {
       if (packet.sessionId !== sessionId || packet.seq <= lastSeq) return;
       lastSeq = packet.seq;
-      terminal.write(packet.data);
+      writeScreen(id, packet.data, packet.approval);
     };
     const unsubscribe = window.agentrix.onTerminalData(packet => {
       if (packet.id !== id || packet.sessionId !== sessionId || disposed) return;
@@ -139,7 +139,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
       if (disposed) return;
       if (!result.ok) { queued = []; unsubscribe(); report.current(result.error); return; }
       if (result.value.sessionId === sessionId) {
-        terminal.write(result.value.data);
+        writeScreen(id, result.value.data, result.value.approval);
         lastSeq = result.value.seq;
       }
       ready = true;

@@ -1,0 +1,245 @@
+<p align="center">
+  <a href="https://github.com/noeigenstate/Agentrix/releases/latest"><img src="docs/images/hero.svg" alt="Agentrix：一张网格上并行工作的 AI 助手" width="100%" /></a>
+</p>
+
+<p align="center"><strong>从目标到交付的 AI 开发闭环：你说要什么，AI 去做，需要你决定时来找你，做完交给你验收。</strong></p>
+<p align="center">Codex 和 Claude Code 同时开发多个项目；Agentrix 把需要你拍板的事集中到一处，把它们做出的东西摆到你面前。</p>
+
+<p align="center">
+  <a href="https://github.com/noeigenstate/Agentrix/releases/latest"><img src="https://img.shields.io/github/v/release/noeigenstate/Agentrix?style=for-the-badge&color=ff3d8b&label=release" alt="Latest release" /></a>
+  <a href="https://github.com/noeigenstate/Agentrix/releases"><img src="https://img.shields.io/github/downloads/noeigenstate/Agentrix/total?style=for-the-badge&color=2ef2ff&label=downloads" alt="Downloads" /></a>
+  <img src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-8a5bff?style=for-the-badge" alt="Windows, macOS, Linux" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-39ffa0?style=for-the-badge" alt="MIT License" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/noeigenstate/Agentrix/releases/latest"><strong>⬇️ 下载</strong></a> ·
+  <a href="#-一眼看懂">一眼看懂</a> ·
+  <a href="#-工作方式">工作方式</a> ·
+  <a href="#-亮点">亮点</a> ·
+  <a href="#-开始使用">开始使用</a> ·
+  <a href="README.md">English</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/promo.webp" alt="Agentrix 宣传片：霓虹网格中六块面板并行运转，一块点亮后爆发，终端字符重组为文档，语音化作光，红绿碎片取舍归位，最后汇成 Agentrix 标志" width="960" />
+</p>
+<p align="center"><sub>30 秒宣传片 · <a href="docs/images/promo.mp4">高清版</a></sub></p>
+
+## ✨ 一眼看懂
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><h3>🧭 先决定</h3>所有项目里等你拍板的事集中在一页：审批、提问、选择、登录、交付审查，选好点确认才发送。</td>
+    <td width="33%" valign="top"><h3>🧩 一屏多开</h3>每个项目一张卡片、一个真实终端。Codex 和 Claude Code 同时开工，🔵 处理中、🩷 做完等你看、🟢 已看过，每一轮只提醒一次。</td>
+    <td width="33%" valign="top"><h3>📖 终端变时间轴</h3>对话排成时间轴：提问、回答、每组工具调用各是一个节点；图片、网页、视频直接显示在回答里。</td>
+  </tr>
+  <tr>
+    <td valign="top"><h3>📊 用量一目了然</h3>活动栏写出模型路由、上下文还剩多少、5 小时和每周额度；额度用完可以一键重置，倒数 10 秒随时取消。</td>
+    <td valign="top"><h3>✅ 逐块取舍</h3>按 Git 方式逐块看改动：留下想要的，还原其余的，不用记 <code>git add -p</code>。</td>
+    <td valign="top"><h3>🎙️ 开口即指令</h3><kbd>Ctrl</kbd>+<kbd>T</kbd> 说话、回车发送。识别在本机离线完成，录音不上传。</td>
+  </tr>
+</table>
+
+## 🔭 下一代编辑器
+
+编辑器围着**文件和光标**设计了四十年。AI 写代码之后，真正要管理的是**任务和助手**：哪个在思考，哪个做完了，哪个卡住在等你，它到底改了什么。
+
+**1.0 是方向上的转变**：Agentrix 不再只是一个能开很多终端的窗口，而是一条完整的开发闭环——**提出目标 → AI 并行执行 → 需要你时集中决策 → 产物摆到面前 → 逐块取舍交付**。你管目标和判断，执行交给 AI。
+
+| | 在 IDE 里开几个终端 | Agentrix |
+| --- | --- | --- |
+| **同时做几个项目** | 来回切窗口，靠记忆 | 一张网格全摆开，状态一目了然 |
+| **它做完了吗？** | 盯着终端等它安静 | 读会话记录判断，做完亮灯、通知 |
+| **它说了什么** | 终端里的字符画 | 排版好的文档，图片和网页直接显示 |
+| **它改了什么** | 自己跑 `git diff` | 逐块呈现，一键保留或还原 |
+| **给它下指令** | 敲键盘 | 打字或者直接说 |
+
+终端里跑的仍是你自己安装的 `codex` 和 `claude`，按键、配置和交互都不变。
+
+## 🧠 工作方式
+
+```mermaid
+flowchart LR
+  you(["🧑 你"]) -->|"打一行 / 说一句"| grid["🧩 Agentrix 网格"]
+  grid --> a1["Codex · 项目 A"]
+  grid --> a2["Claude Code · 项目 B"]
+  grid --> a3["… 更多项目 / SSH 远程"]
+  a1 & a2 & a3 -->|"会话记录"| sense{{"感知每一轮"}}
+  sense -->|"🔵 处理中 · 🩷 待查看 · 🟢 已看过"| grid
+  sense -->|"重新排版"| read["📖 阅读视图<br/>回答 · 图片 · 网页 · 改动"]
+  read -->|"看一眼，拍板"| you
+```
+
+## 🚀 亮点
+
+### 🧭 先决定，再进项目
+
+<img src="docs/images/decisions.jpg" alt="决策页：一张卡片写着「运行命令：./cleanup-archive.ps1 -Host db-01 -Days 30」等你审批，下面一张是支付服务交付的这一轮等你审查；右侧一栏列出所有会话在做什么" width="100%" />
+
+打开 Agentrix 先看到**决策**首页：所有项目里需要你拍板的事排成一叠卡片——权限审批、提问、选择、登录，以及做完等你审查的一轮工作。标题直接写出它要做什么（“运行命令：./cleanup-archive.ps1 …”），附上命令原文。选中答案后点确认才发送，本机权限审批还会在每个按键发送前核对卡片及终端状态（核对范围见下文）；也可以稍后处理或打开来源。右侧一栏列出所有会话在做什么、等什么；下面的输入框直接告诉 Agentrix 接下来要做什么，可以粘贴截图。顶栏的「决策 · 工作台」随时切换，工作台是项目网格。
+
+**权限卡片的核对范围：** 本机 Claude Code 和 Codex 的已识别权限卡片绑定已观测的屏幕实例和终端代次；阅读视图与决策页都会在每个按键前复核，后端在同步写入本机 PTY 前再次检查。已解析的 A → B → 字节相同的 A 会产生新实例；即使中间屏幕被合并而没有解析，只要原始输出已到达后端，旧操作也会失效。普通终端输入、尺寸变化及已收到的会话、轮次或生命周期事件变化也会使旧操作失效，同一捕获代次的最终确认按键只能发送一次。相同请求的重绘可保留屏幕实例，但任何新原始输出都会使已捕获的操作失效；重新查看后再点选。导航按键引发重绘时，后续确认可能被拒绝，需要重新点选或在终端处理。
+
+**终端模式的边界：** 当前审批路径没有 CLI 原生审批请求 ID；会话、轮次及 Claude 通知事件仅提供额外的失效信号。校验保证覆盖写入前 Agentrix 已观测到的变化，无法证明 CLI 实际消费按键时仍是同一请求：完全没有可观测信号的替换、尚未送达 Agentrix 的变化，以及 PTY 写入后发生的替换均无法排除。SSH 的远端输入仍会排队，卡片审批因此拒绝发送（包括取消及导航），请切换到终端处理。在终端中直接作答不经过卡片的核对保护。
+
+### 🧩 一屏指挥所有项目
+
+<img src="docs/images/overview.jpg" alt="总览：六个项目，正在处理的卡片泛蓝，待查看的粉色，已完成的绿色，Codex 与 Claude Code 并排" width="100%" />
+
+- 🔵 **泛蓝**：正在处理，不用管它
+- 🩷 **粉色呼吸、系统通知**：这一轮做完了，等你查看
+- 🟢 **绿色**：已经看过，随时下达下一条指令
+
+状态读自 Codex 和 Claude Code 记录的会话轮次，而不是猜终端安静了多久：子任务结束不算，命令跑完不算，只有主任务这一轮真正结束才提醒，每条指令只提醒一次。卡片可以拖动排序、点顶栏放大、一键缩回，终端会话和没发出的草稿都不会丢；同一个项目可以开多个终端分屏。
+
+### 📖 终端，被重新排版
+
+<img src="docs/images/reading-view.jpg" alt="阅读视图：对话按时间轴排版，提示、回答和工具调用各是竖线上的一个节点，回答里提到的效果图直接显示在卡片里；右侧活动栏显示模型路由、上下文长度、用量和重置额度按钮" width="100%" />
+
+把 Claude Code 或 Codex 的对话切换成**阅读视图**：按时间轴排版，你的提示、它的回答和每组工具调用都是竖线上的节点，名字后面标出时间（「你 18:39」），头像、卡片和下面的输入框排成一列，左右留白一样宽。节点是镂空细圈，按身份上色（你是蓝色，Claude 是橙色星芒，Codex 是白色，工具步骤是青色）；正在运行的节点不转圈——Claude 的星芒像它自己的 ✻ 一样绽放、收回，其他步骤向外扩散光圈。标题、列表、表格、带「复制」按钮的代码块放在磨砂卡片里，工具调用折叠成一个胶囊并列出改过的文件；鼠标划过条目时，它会轻快地跳一下。底部输入框直接写进下面的真实终端，随时切回终端。
+
+- **产物就在回答里。** 助手写出或提到的图片、网页、视频、Markdown 直接显示在回答下面；点一下在当前窗口弹出大图、网页或文档，Esc 关闭，不会跳进项目页，也不会打开别的程序。Agentrix 启动它们时会告诉它们这一点，所以它们会直接把图片「给你看」，而不是说「终端只能显示文字」。
+- **CLI 的输出也重新渲染。** `/usage`、`/status`、`/context` 等斜杠命令的结果以弹窗呈现：边框去掉，统计排成对照表，用量变成进度条。输入 `/` 列出全部命令，`@` 提及项目文件。
+- **提问和确认变成卡片。** 权限确认、`/model` 之类的选择，以及 Claude Code（AskUserQuestion）和 Codex（Plan 模式）向你提的问题，都是可以直接点选的卡片；它正在做什么也像 CLI 一样写在对话末尾，带计时和「Esc 中断」。
+- **干活时也能接着说。** 它工作时发的消息标成「已送达，排队中」，当前这一步做完它就会读到，不会重复发送，也不会被当成没送达。
+
+右侧**活动栏**从上到下是模型路由（代理 › 接口 › 模型，以及思考强度和速度模式；它调用的模型也逐条列出，例如 Sonnet 5.5 子代理、Codex 的 GPT-6.1-Sol 子任务，带次数和正在运行的数量）、上下文长度（已用 / 窗口大小）和用量：本轮与本次对话的 token，以及 5 小时和每周额度与重置时间（Codex 读自它的会话记录，Claude Code 读自它自己缓存的 `/usage`，装了 CodePulse 时取更新的一份）。正在处理和排队的任务放在活动栏底部。
+
+用量卡片内有**重置额度**按钮：点一下先倒数 10 秒，期间随时可以点「取消」或按 Esc；倒数结束才把助手自己的命令发给它（Claude Code 用 `/limit-reset`，每周 1 次、重置 5 小时额度；Codex 打开 `/usage`，在里面选择并确认）。Agentrix 自己从不调用重置。支持的本地官方 Codex 账号通过独立的只读 app-server 查询剩余重置次数。本地封装器检查完整启动参数，支持无额外参数、`resume`、`-m`/`--model`，以及仅修改 `model`、`model_reasoning_effort`、`service_tier`（含快速模式）的 `-c`/`--config`；profile、账号/接口覆盖、相关环境变量或 home 变更无法证明安全时明确显示不可查询。未知、查询失败和不支持会明确区分，不会当成 0。远程、自定义接口及无法确认启动环境的会话不借用本机账号的次数。
+
+> 阅读视图目前支持 **Claude Code** 和 **Codex**。OpenCode、Gemini CLI 等其他命令行助手照常在卡片的终端里运行。
+
+### ✅ 逐块取舍
+
+<img src="docs/images/git-review.jpg" alt="Git 审查：按 Git 方式显示每一处修改，红色是去掉的行，绿色是新加的行，每一块都能单独保留或还原" width="100%" />
+
+一轮做完，在 Git 栏点开改动的文件，按 `git diff` 的方式逐块显示。**每一块单独决定**：保留就加入暂存区，不要就还原；已暂存的可以取消，删掉的文件能找回。
+
+### 🎙️ 开口即指令
+
+<img src="docs/images/voice.jpg" alt="语音输入：卡片中央浮现深蓝玻璃的话筒窗口，声波随声音起伏" width="100%" />
+
+按 <kbd>Ctrl</kbd>+<kbd>T</kbd> 对当前终端说话，回车发送。识别在本机离线完成，**录音不上传**，无需 API 密钥；可选「高精度 · 中英混合」模型。
+
+### 🔑 从安装到登录，都在窗口里
+
+- **没装也能开始**：新项目卡片上会标出没装的助手，点一下一键安装，装好就启动；连 Node.js 都没有时会带你去下载。
+- **第一次启动不卡住**：信任文件夹、选主题、选登录方式、更新提示都变成弹窗；登录时弹出「登录 Claude Code / Codex」窗口，一键在浏览器打开登录页、粘贴授权码或 API Key、复制一次性验证码。授权码只交给 CLI，不会出现在对话或任务列表里。
+
+### 还有这些
+
+- **重开即续上**：启动时恢复上次的终端和 Codex / Claude Code 会话，被打断的任务自动接着做。
+- **SSH 远程项目**：沿用 VS Code Remote-SSH 的主机配置，终端、文件、Git、预览都走 SSH，局域网电脑上生成的网页和图片同样能预览。
+- **文件就在手边**：目录树、自动保存的编辑器（VS Code 的编辑快捷键，<kbd>Ctrl</kbd>+<kbd>F</kbd> 查找），图片、网页、视频、Markdown 直接预览，右键可以打开文件所在位置；<kbd>Ctrl</kbd>+点击（macOS <kbd>⌘</kbd>+点击）终端里的路径，在弹窗里打开；放大的图片按窗口完整显示，单击看原始大小、拖动查看。
+- **分屏随手拖**：同一个项目开多个终端分屏，分隔线可以拖动调整大小。
+- **清晰的界面**：深色磨砂玻璃、白色正文，壁纸保持原画亮度；需要最锐利的文字可切换「实色」材质。另有「黑白橙」浅色和「白黑橙」深色两套简洁主题。
+- **中英双语、快捷键可改、Windows 自动更新**，第一次打开时会一步步带你上手。
+
+## 📦 开始使用
+
+新安装默认使用英语。在 **Settings → Appearance → Language（设置 → 外观 → 语言）** 中选择「中文」即可切换；已保存的语言偏好保持不变。
+
+**需要：** Windows 10 / 11 x64，Apple 芯片的 Mac（macOS 12 或更高），或 64 位 Linux 桌面（x64 / arm64）。[Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://docs.anthropic.com/claude-code) 没装也没关系，点项目卡片就能一键安装。
+
+1. **安装**：从 [Releases](https://github.com/noeigenstate/Agentrix/releases/latest) 下载对应平台的版本（见下）。
+2. **添加项目**：按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> 选择项目文件夹，可以一次选多个，也可以添加 SSH 远程项目。
+3. **下达指令**：在卡片上选 Claude Code 或 Codex，接着这个文件夹上次的对话或开始新开发；第一次用会弹窗带你登录。说出要做的事，然后去忙别的，粉色亮起时回来看结果。
+
+| 平台 | 下载 | 说明 |
+| --- | --- | --- |
+| **Windows** | `Agentrix-Setup-<版本>-x64.exe` | 安装后自动更新 |
+| **macOS** | 终端运行下面的命令 | 安装或更新都用同一条命令；应用为临时签名，未经 Apple 公证 |
+| **Linux** | `Agentrix-<版本>-linux-<架构>.AppImage` | `chmod +x` 后直接运行；也提供 `.tar.gz` |
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | bash
+```
+
+指定版本、手动安装、macOS 与 Linux 的终端和快捷键细节，见 [使用文档](docs/usage.md#安装细节)。
+
+<details>
+<summary><strong>⌨️ 常用快捷键</strong>（都可以在设置里改；macOS 同样使用 Control）</summary>
+
+| 快捷键 | 功能 |
+| --- | --- |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> | 添加项目 |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> | 放大或还原当前项目 |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> | 返回总览 |
+| <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> | 下一个 / 上一个项目 |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> | 当前项目新建终端并分屏 |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd> | 移除当前项目（文件保留） |
+| <kbd>Ctrl</kbd>+<kbd>T</kbd> | 语音输入，回车发送，Esc 取消 |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> | 搜索项目 |
+| <kbd>Ctrl</kbd>+<kbd>B</kbd> | 展开或收起目录栏 |
+| <kbd>F11</kbd> | 窗口全屏 |
+| <kbd>Ctrl</kbd>+<kbd>,</kbd> | 设置 |
+
+</details>
+
+## ❓ 常见问题
+
+<details>
+<summary><strong>我的代码和数据会被上传吗？</strong></summary>
+
+Agentrix 本身**不收集任何数据，没有统计上报**。它只会访问 GitHub（检查更新）和 Hugging Face 或其国内镜像（首次下载离线语音识别模型）。Codex 和 Claude Code 与各自服务的通信，和你平时在终端里使用时一样。
+
+</details>
+
+<details>
+<summary><strong>和在 IDE 里开几个终端有什么不同？</strong></summary>
+
+终端还是那个终端，区别在于 Agentrix **知道每个 AI 助手处在什么状态**：它读取 Codex 和 Claude Code 的会话记录，准确判断这一轮是在处理、做完了还是被中断，并把回答、命令结果、图片网页和改动重新排版给你看。它是为「同时指挥多个 AI 任务」设计的，而不是为「一个人编辑一个文件」设计的。
+
+</details>
+
+<details>
+<summary><strong>「重置额度」会自动帮我重置吗？</strong></summary>
+
+不会。重置会用掉套餐里有限的次数，所以按钮按下后先倒数 10 秒，随时可以取消；倒数结束后也只是把助手自己的命令发给它，由 Claude Code 或 Codex 完成重置。Agentrix 不调用任何重置接口，也不会在你没点的时候发出这个命令。
+
+</details>
+
+<details>
+<summary><strong>会改动我的 Codex / Claude Code 配置吗？</strong></summary>
+
+不会。完成提醒用的钩子和「阅读视图能显示图片」的说明都在启动时临时传入，不写入你的配置文件，你自己的 hook、设置和指令照常生效，你在命令行里另外指定的同类参数优先。
+
+</details>
+
+更多细节（会话恢复、SSH、文件预览、提醒方式、开发与发布）见 [使用文档](docs/usage.md)。
+
+## 🗺️ 路线图
+
+- [ ] 右侧栏按需求和 Bug 列出完成情况与修复次数
+- [ ] 开发概览：每个需求和 Bug 花了多少 token、多少钱、多少时间
+- [ ] 更多 CLI 的阅读视图（OpenCode、Gemini CLI 等）
+- [ ] WSL 工作区
+
+有想法？欢迎提 [Issue](https://github.com/noeigenstate/Agentrix/issues)。觉得有用的话，点个 ⭐ Star。
+
+## 🛠️ 参与开发
+
+```bash
+git clone https://github.com/noeigenstate/Agentrix.git
+cd Agentrix
+npm ci
+npm start              # 开发运行
+npm test               # 单元测试
+npm run test:desktop   # 真实桌面交互测试
+npm run dist           # 构建 Windows 安装版（macOS：dist:mac，Linux：dist:linux）
+```
+
+Electron · React · TypeScript · xterm.js · node-pty。每个版本都通过单元测试、打包版桌面测试和 Linux SSH 集成测试后才发布。截图由 `scripts/readme-shots.mjs` 从演示项目生成，宣传片由 `scripts/promo/` 逐帧渲染。
+
+## 📄 许可证
+
+[MIT](LICENSE)。
+
+---
+
+<p align="center">
+  <strong>让 AI 去干活，让注意力回到需要你的地方。</strong><br />
+  <a href="https://github.com/noeigenstate/Agentrix/releases/latest">下载体验</a> ·
+  <a href="https://github.com/noeigenstate/Agentrix/issues">反馈与建议</a>
+</p>

@@ -15,7 +15,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = await testRun('gpu-terminal'), dataDir = path.join(output, 'profile');
 const project = { id: randomUUID(), name: 'GPU terminal', path: path.join(output, 'project'), kind: 'local', restore: { terminal: false, codex: false } };
 await fs.mkdir(project.path, { recursive: true }); await fs.mkdir(dataDir, { recursive: true });
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { notifications: false, sound: false, announce: false, closeToTray: false, restoreSessions: false, guideVersion: '9.9.9' } }));
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { language: 'zh', notifications: false, sound: false, announce: false, closeToTray: false, restoreSessions: false, guideVersion: '9.9.9' } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: dataDir }; delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 const packaged = process.argv.includes('--packaged');
 const application = await electron.launch({ executablePath: packaged ? path.join(root, 'release/win-unpacked/Agentrix.exe') : require('electron'), args: packaged ? [] : [root], cwd: root, env, timeout: 30000 });

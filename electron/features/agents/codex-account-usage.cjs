@@ -127,28 +127,130 @@ function readCodexAccount({ env = process.env, cwd, codexHome, signal, timeout =
 
 // Scope only to the actual reported home + inherited account environment + cwd
 // (Codex resolves project config there). No credential files or account IDs read.
-function usageScope({ codexHome, cwd, env = process.env, provider, remote, command } = {}) {
+function scopePathKey(value, platform = process.platform) {
+  if (platform !== 'win32') return path.posix.resolve(value);
+  // Codex can write Win32 extended paths while the shell reports DOS/UNC paths.
+  const normal = value.replace(/\//g, '\\').replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\(?=[A-Za-z]:\\)/, '');
+  return path.win32.resolve(normal).toLowerCase();
+}
+
+function usageScope({ codexHome, cwd, recordedCwd, env = process.env, provider, remote, accountLaunch } = {}) {
   if (remote) return { reason: 'remote' };
   if (!provider) return { reason: 'scope' };
   if (provider !== 'openai') return { reason: 'provider' };
-  if (command?.startsWith('-')) return { reason: 'scope' };
-  const home = path.resolve(cwd || process.cwd(), codexHome || env.CODEX_HOME || path.join(os.homedir(), '.codex'));
+  if (accountLaunch !== 'model-only-v1') return { reason: 'scope' };
+  const directory = path.resolve(cwd || process.cwd());
+  if (recordedCwd === null || recordedCwd && scopePathKey(recordedCwd) !== scopePathKey(directory)) return { reason: 'scope' };
+  const userHome = (process.platform === 'win32' ? env.USERPROFILE : env.HOME) || os.homedir();
+  const home = path.resolve(directory, codexHome || env.CODEX_HOME || path.join(userHome, '.codex'));
   // Object identity keeps distinct account environments separate without ever
   // inspecting, comparing, hashing or retaining credential values as cache keys.
   if (!environments.has(env)) environments.set(env, ++nextEnvironment);
-  return { home, key: JSON.stringify([home, cwd, environments.get(env), provider]) };
+  return { home, cwd: directory, key: JSON.stringify([scopePathKey(home), scopePathKey(directory), environments.get(env), provider, accountLaunch]) };
+}
+
+// This is deliberately a conservative boundary check, not a second Codex config
+// loader. The owned server loads the real config in the same home/cwd. Reject
+// account endpoints, redefinitions of "openai", selected profiles and config
+// syntax we cannot prove safe. Inactive custom provider definitions are fine.
+function configScope(text) {
+  let section = [], multiline = null;
+  const keys = input => {
+    const parts = input.match(/"(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+|\./g);
+    if (!parts || parts.length % 2 !== 1 || parts.some((part, i) => i % 2 ? part !== '.' : part === '.')
+      || parts.join('').replace(/\s/g, '') !== input.replace(/\s/g, '')) return null;
+    try { return parts.filter(part => part !== '.').map(part => part[0] === '"' ? JSON.parse(part) : part[0] === "'" ? part.slice(1, -1) : part); }
+    catch { return null; }
+  };
+  for (let line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    if (multiline) { const end = line.indexOf(multiline); if (end < 0) continue; line = line.slice(end + 3); multiline = null; }
+    // Strip comments only outside quoted strings. Values are never logged.
+    let quote = null, escaped = false, equal = -1, end = line.length;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (escaped) { escaped = false; continue; }
+      if (quote) { if (c === '\\' && quote === '"') escaped = true; else if (c === quote) quote = null; continue; }
+      if (c === '#') { end = i; break; }
+      if ((c === '"' || c === "'") && line.slice(i, i + 3) === c.repeat(3)) {
+        const close = line.indexOf(c.repeat(3), i + 3);
+        if (close < 0) { multiline = c.repeat(3); end = i; break; }
+        i = close + 2; continue;
+      }
+      if (c === '"' || c === "'") quote = c;
+      else if (c === '=' && equal < 0) equal = i;
+    }
+    if (quote) return 'scope';
+    line = line.slice(0, end).trim();
+    if (!line) continue;
+    let field;
+    if (line.startsWith('[')) {
+      section = keys(line.replace(/^\[\[?|\]\]?$/g, '').trim());
+      if (!section) return 'scope';
+      field = section;
+    } else {
+      if (equal < 0) continue; // continuation of an unrelated array/value
+      const parts = keys(line.slice(0, line.indexOf('=')).trim());
+      if (!parts) return 'scope';
+      field = [...section, ...parts];
+      if (field.length === 1 && field[0] === 'model_provider') {
+        if (!/^(?:"openai"|'openai')$/.test(line.slice(line.indexOf('=') + 1).trim())) return 'provider';
+      }
+    }
+    if (field[0] === 'model_providers' && (field.length === 1 || field[1] === 'openai')) return 'provider';
+    if (['profile', 'chatgpt_base_url', 'openai_base_url', 'auth', 'auth_keyring', 'mcp_enterprise_managed_auth'].includes(field[0])) return 'scope';
+  }
+  return multiline ? 'scope' : null;
+}
+
+async function accountConfigScope({ codexHome, cwd, env = process.env }) {
+  // Presence alone is sufficient to decline these routes; never inspect keys.
+  if (['OPENAI_BASE_URL', 'CODEX_CHATGPT_BASE_URL', 'CODEX_APP_SERVER_TEST_USER_CONFIG_FILE',
+    'CODEX_MANAGED_CONFIG_PATH', 'CODEX_MANAGED_REQUIREMENTS_PATH'].some(key => env[key])) return 'scope';
+  const files = new Set([path.join(codexHome, 'config.toml')]);
+  let directory = cwd;
+  for (let depth = 0; depth < 64; depth++) {
+    files.add(path.join(directory, '.codex', 'config.toml'));
+    const parent = path.dirname(directory); if (parent === directory) break; directory = parent;
+    if (depth === 63) return 'scope';
+  }
+  // Codex's system config lives here on Unix. On Windows it uses ProgramData.
+  const system = process.platform === 'win32' ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'OpenAI', 'Codex') : '/etc/codex';
+  files.add(path.join(system, 'config.toml'));
+  // Managed routing may remap credential sources. Its presence is enough to
+  // decline; do not read that configuration or any credential store.
+  for (const filename of [path.join(system, 'managed_config.toml'), path.join(system, 'requirements.toml'),
+    path.join(codexHome, 'managed_config.toml')]) {
+    try { await fs.promises.stat(filename); return 'scope'; }
+    catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) return 'scope'; }
+  }
+  for (const filename of files) {
+    let file;
+    try {
+      file = await fs.promises.open(filename, 'r');
+      const bytes = Buffer.alloc(MAX_OUTPUT + 1); let length = 0;
+      while (length < bytes.length) {
+        const { bytesRead } = await file.read(bytes, length, bytes.length - length, length);
+        if (!bytesRead) break; length += bytesRead;
+      }
+      if (length > MAX_OUTPUT) return 'scope';
+      const reason = configScope(bytes.subarray(0, length).toString('utf8'));
+      if (reason) return reason;
+    } catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) return 'scope'; }
+    finally { await file?.close(); }
+  }
+  return null;
 }
 
 class CodexAccountUsage {
-  constructor({ read = readCodexAccount, interval = 30000 } = {}) {
-    this.read = read; this.interval = interval; this.entries = new Map();
+  constructor({ read = readCodexAccount, scope = accountConfigScope, interval = 30000 } = {}) {
+    this.read = read; this.scope = scope; this.interval = interval; this.entries = new Map();
   }
   watch(options, changed) {
     const scope = usageScope(options);
     if (scope.reason) { changed(unavailable(scope.reason)); return { dispose() {}, refresh() {}, output() {} }; }
     let entry = this.entries.get(scope.key);
     if (!entry) {
-      entry = { options: { ...options, codexHome: scope.home }, listeners: new Set(), failures: 0, generation: 0 };
+      entry = { options: { ...options, codexHome: scope.home, cwd: scope.cwd }, listeners: new Set(), failures: 0, generation: 0 };
       this.entries.set(scope.key, entry);
     }
     entry.listeners.add(changed);
@@ -179,7 +281,11 @@ class CodexAccountUsage {
     const publish = value => { entry.value = value; for (const changed of entry.listeners) changed(value); };
     publish({ resets: null, resetQuery: { state: 'loading' } });
     entry.pending = true;
-    Promise.resolve().then(() => abort.signal.aborted ? null : this.read({ ...entry.options, signal: abort.signal })).catch(() => ({ resets: null, resetQuery: { state: 'error', reason: 'query' } })).then(value => {
+    Promise.resolve().then(async () => {
+      const reason = await this.scope(entry.options);
+      if (abort.signal.aborted) return null;
+      return reason ? unavailable(reason) : this.read({ ...entry.options, signal: abort.signal });
+    }).catch(() => ({ resets: null, resetQuery: { state: 'error', reason: 'query' } })).then(value => {
       if (entry.generation !== generation || !entry.listeners.size) return;
       entry.pending = false; publish(value);
       const failed = value.resetQuery.state !== 'ready';
@@ -194,4 +300,4 @@ class CodexAccountUsage {
   }
 }
 
-module.exports = { CodexAccountUsage, readCodexAccount, accountResult, usageScope, codexExecutable };
+module.exports = { CodexAccountUsage, readCodexAccount, accountResult, usageScope, codexExecutable, configScope, accountConfigScope, scopePathKey };

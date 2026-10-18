@@ -51,9 +51,9 @@ test("Codex's route, context, round, conversation and plan limits come from its 
   // A count that only brings limits (Codex sends one before the first call) still updates them.
   assert.equal(meter.apply(event({ type: 'token_count', info: null, rate_limits: { primary: { used_percent: 40, window_minutes: 300 }, secondary: null } })), true);
   assert.deepEqual(meter.snapshot().limits, [{ minutes: 300, percent: 40, resetsAt: null }]);
-  // Another conversation starts over but keeps the provider until its own record names one, and the plan's limits.
+  // Another conversation cannot borrow a provider from the preceding conversation.
   meter.apply({ type: 'session_meta', payload: { id: 'b' } });
-  assert.deepEqual(meter.snapshot(), { provider: 'OpenAI', context: null, round: null, total: null, limits: [{ minutes: 300, percent: 40, resetsAt: null }], limitsAt: null, limitsFrom: null, resets: null, calls: [] });
+  assert.deepEqual(meter.snapshot(), { provider: null, context: null, round: null, total: null, limits: [{ minutes: 300, percent: 40, resetsAt: null }], limitsAt: null, limitsFrom: null, resets: null, calls: [] });
   // Records that say nothing about usage change nothing.
   assert.equal(meter.apply({ type: 'response_item', payload: { type: 'message' } }), false);
   assert.equal(meter.apply(event({ type: 'agent_message', message: 'hi' })), false);

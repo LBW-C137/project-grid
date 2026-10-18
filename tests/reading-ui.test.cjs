@@ -39,6 +39,7 @@ function loadUI(name, overrides = {}) {
     if (name === '@phosphor-icons/react') return new Proxy({}, { get: () => props => React.createElement('svg', { className: props.className }) });
     if (key === './i18n') return { currentLanguage: () => 'en', t: (text, values = {}) => (en[text] ?? text).replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match) };
     if (key === './choice-keys') return require('../src/features/reading/choice-keys.ts');
+    if (key === './approval-action') return require('../src/features/reading/approval-action.ts');
     if (key === './dictation-send') return require('../src/features/reading/dictation-send.ts');
     if (key === './reading-sessions') return require('../src/features/reading/reading-sessions.ts');
     if (key === './reply-files') return require('../src/features/reading/reply-files.ts');
@@ -398,7 +399,7 @@ test('dictation without submit inserts and focuses without scheduling a send', a
 });
 
 // Exercise the component's handlers with persistent hook slots, without a DOM or native GUI.
-function choiceHarness(t, choice = fakeChoice()) {
+function choiceHarness(t, choice = { ...fakeChoice(), kind: 'menu' }) {
   const slots = []; let cursor = 0;
   const hooks = {
     useState: initial => {
@@ -456,7 +457,7 @@ test('choice arrows move a local highlight; Enter submits once and keeps a pendi
 
 test('choice number keys target printed numbers and write relative to the CLI cursor', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const choice = fakeChoice(); choice.options.forEach((option, index) => { option.number = [4, 7, 9][index]; });
+  const choice = { ...fakeChoice(), kind: 'menu' }; choice.options.forEach((option, index) => { option.number = [4, 7, 9][index]; });
   const harness = choiceHarness(t, choice);
   harness.press('4'); harness.options()[2].props.onClick();
   assert.deepEqual(harness.written, [{ id: 'native-choice', key: '\x1b[A' }]);
@@ -577,7 +578,7 @@ function readingHarness(t, entries = [], overrides = {}) {
     './action-text': { stepVerb: tool => tool.kind, actionText: tool => tool.target }, './voice-input': {}, './terminal-screen': { useScreen: () => null },
     './agent-screen': { parseAgentScreen: () => fakeScreen() },
     './ReadingWelcome': { ReadingWelcome: () => React.createElement('p', null, 'welcome preserved') },
-    './ReadingChoice': {}, './ReadingQuestion': {}, './choice-keys': {}, './reading-mode': {},
+    './ReadingChoice': {}, './ReadingQuestion': {}, './reading-mode': {},
     './useStickToBottom': { useStickToBottom: () => ({ stuck: true, unseen: 0, ready: true, holdPosition() {}, toBottom() {} }) },
     './useReadingConversation': { conversationKey: () => 'session', useReadingConversation: () => state.entries },
     './useVisibleTail': tail, './reading.css': {},

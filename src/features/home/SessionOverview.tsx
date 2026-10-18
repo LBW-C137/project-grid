@@ -1,10 +1,10 @@
-import { CaretRight, Robot, TerminalWindow } from '@phosphor-icons/react';
+import { CaretRight, TerminalWindow } from '@phosphor-icons/react';
 import type { Project, ProjectTerminal } from '../../shared/types';
 import type { Decision } from './decisions';
 import { relativeTime } from '../../shared/time';
 import { t } from '../../shared/i18n';
 import { actionText } from '../agents/action-text';
-import { ClaudeSpark } from '../reading/Timeline';
+import { ClaudeLogo, CodexLogo } from '../agents/AgentBrandIcon';
 import './home.css';
 
 type State = { key: 'deciding' | 'working' | 'unread' | 'done' | 'idle' | 'stopped'; label: string };
@@ -39,7 +39,7 @@ export function SessionOverview({ projects, decisions, onOpenProject }: { projec
         const queued = prompts.filter(prompt => prompt.state === 'queued').length;
         const agent = terminal.codexActive ? terminal.agent === 'claude' ? 'claude' : 'codex' : 'terminal';
         return <li key={terminal.id}><button type="button" onClick={() => onOpenProject(project.id)}>
-          <span className={`task-tile is-${agent}`} aria-hidden="true">{agent === 'claude' ? <ClaudeSpark size={20} /> : agent === 'codex' ? <Robot size={20} /> : <TerminalWindow size={20} />}</span>
+          <span className={`task-tile is-${agent}`} aria-hidden="true">{agent === 'claude' ? <ClaudeLogo size={20} /> : agent === 'codex' ? <CodexLogo size={40} /> : <TerminalWindow size={20} />}</span>
           <span className="task-main">
             <span className="task-top">
               <span className={`task-state is-${state.key}`}>{state.label}</span>

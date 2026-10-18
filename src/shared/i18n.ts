@@ -17,10 +17,12 @@ const patterns = Object.keys(dictionary).filter(key => /\{\w+\}/.test(key)).map(
   return { regex: new RegExp(`^${source}$`), names, template: dictionary[key] };
 });
 
-let language: Settings['language'] = 'zh';
+// The loading screen renders before settings arrive; index.html also starts with lang="en".
+let language: Settings['language'] = 'en';
 
 // Called while App renders, before its children, so the whole tree renders in one language.
-export function applyLanguage(next: Settings['language']) {
+export function applyLanguage(preference?: Settings['language']) {
+  const next = preference === 'zh' ? 'zh' : 'en';
   if (next === language) return;
   language = next;
   document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';

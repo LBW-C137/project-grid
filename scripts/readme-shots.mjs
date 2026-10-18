@@ -57,7 +57,7 @@ background:radial-gradient(circle at 20% 15%,#ff7ab6 0,transparent 42%),radial-g
 <span style="font-size:30px;font-weight:800;color:#1b1630">¥ 798</span></div>
 <div style="margin-top:18px;padding:14px;border-radius:14px;text-align:center;color:#fff;font-weight:700;font-size:16px;background:linear-gradient(90deg,#ff5fa2,#7b5cff)">立即支付</div></div></body>`;
 
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { notifications: false, sound: false, announce: false, closeToTray: false, restoreSessions: false, fontSize: 13, guideVersion: '9.9.9' } }));
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { language: 'zh', notifications: false, sound: false, announce: false, closeToTray: false, restoreSessions: false, fontSize: 13, guideVersion: '9.9.9' } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: dataDir, CODEX_HOME: home }; delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 const application = await electron.launch({ executablePath: require('electron'), args: [root, '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'], cwd: root, env, timeout: 30000 });
 const shot = name => page.screenshot({ path: path.join(images, name), type: 'jpeg', quality: 90 });

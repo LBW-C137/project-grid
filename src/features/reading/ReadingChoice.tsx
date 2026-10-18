@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { CircleNotch } from '@phosphor-icons/react';
-import type { ScreenChoice } from '../agents/agent-screen-types';
+import type { ScreenAgent, ScreenChoice } from '../agents/agent-screen-types';
 import { selectedChoiceIndex, writeChoiceKeys } from './choice-keys';
+import { writeApprovalAction } from './approval-action';
 import { t } from '../../shared/i18n';
 
-export function ReadingChoice({ choice, terminalId, onError }: { choice: ScreenChoice; terminalId: string; onError: (message: string) => void }) {
+export function ReadingChoice({ choice, terminalId, agent, onError }: { choice: ScreenChoice; terminalId: string; agent: ScreenAgent; onError: (message: string) => void }) {
   const [highlight, setHighlight] = useState(() => selectedChoiceIndex(choice));
   const [pending, setPending] = useState<number | 'cancel' | null>(null);
   const sending = useRef(false), active = useRef(true), latest = useRef(choice), card = useRef<HTMLDivElement>(null);
@@ -21,15 +22,21 @@ export function ReadingChoice({ choice, terminalId, onError }: { choice: ScreenC
     if (sending.current || !latest.current.options[index]) return;
     sending.current = true; card.current?.focus(); setHighlight(index); setPending(index);
     try {
-      await writeChoiceKeys(selectedChoiceIndex(latest.current), index, key => window.agentrix.writeTerminal(terminalId, key), () => active.current);
+      if (choice.kind === 'permission') await writeApprovalAction(terminalId, agent, choice, index, () => active.current);
+      else await writeChoiceKeys(selectedChoiceIndex(latest.current), index, key => window.agentrix.writeTerminal(terminalId, key), () => active.current);
     } catch (error) {
-      if (active.current) { sending.current = false; setPending(null); onError(String(error)); }
+      if (active.current) { sending.current = false; setPending(null); onError(error instanceof Error ? t(error.message) : String(error)); }
     }
   };
-  const cancel = () => {
+  const cancel = async () => {
     if (sending.current) return;
     sending.current = true; card.current?.focus(); setPending('cancel');
-    window.agentrix.writeTerminal(terminalId, '\x1b');
+    try {
+      if (choice.kind === 'permission') await writeApprovalAction(terminalId, agent, choice, 'cancel', () => active.current);
+      else window.agentrix.writeTerminal(terminalId, '\x1b');
+    } catch (error) {
+      if (active.current) { sending.current = false; setPending(null); onError(error instanceof Error ? t(error.message) : String(error)); }
+    }
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation();

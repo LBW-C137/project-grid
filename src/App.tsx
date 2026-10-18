@@ -274,7 +274,7 @@ export function App() {
   useEffect(() => { if (shownView !== 'workspace') (document.activeElement as HTMLElement | null)?.closest('.main-workspace, .focus-sidebar') && (document.activeElement as HTMLElement).blur(); }, [shownView]);
   const openDecision = useCallback((decision: Decision) => { void focusProject(decision.projectId); }, [focusProject]);
 
-  if (!api) return <div className="startup-message"><SquaresFour size={38} /><h1>Agentrix 是桌面应用</h1><p>请在项目目录运行 npm start，或双击打包后的应用。</p></div>;
+  if (!api) return <div className="startup-message"><SquaresFour size={38} /><h1>{t('Agentrix 是桌面应用')}</h1><p>{t('请在项目目录运行 npm start，或双击打包后的应用。')}</p></div>;
   if (!workspace) return <div className="startup-message"><SquaresFour size={34} /><p>{error || t('正在打开工作区…')}</p></div>;
   const { projects, settings } = workspace;
   // Set before the children render, so every t() in this render uses the chosen language.

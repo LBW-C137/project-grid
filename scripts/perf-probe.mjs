@@ -23,7 +23,7 @@ const surface = process.argv.find(arg => arg.startsWith('--surface='))?.split('=
 const projects = ['商城前端', '支付服务', '数据看板', '文档站点', '移动端 App', '运维脚本'].map(name => ({ id: randomUUID(), name, path: path.join(output, 'p', name), kind: 'local', restore: { terminal: false, codex: false } }));
 for (const project of projects) await fs.mkdir(project.path, { recursive: true });
 await fs.mkdir(dataDir, { recursive: true });
-await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { notifications: false, sound: false, announce: false, closeToTray: false, restoreSessions: true, guideVersion: '9.9.9', surface } }));
+await fs.writeFile(path.join(dataDir, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { language: 'zh', notifications: false, sound: false, announce: false, closeToTray: false, restoreSessions: true, guideVersion: '9.9.9', surface } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: dataDir }; delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 
 const application = await electron.launch({ executablePath: require('electron'), args: [root], cwd: root, env, timeout: 30000 });

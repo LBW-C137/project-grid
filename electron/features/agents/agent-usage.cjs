@@ -50,6 +50,11 @@ class UsageMeter {
   }
   // Another conversation starts over; the provider and the plan's limits stay.
   reset() { this.context = null; this.round = null; this.total = null; this.roundStart = null; this.replies = new Map(); this.calls.reset(); }
+  resetScope() {
+    this.providerId = null; this.scopeCwd = null; this.resets = null;
+    this.limits = []; this.limitsAt = null; this.limitsFrom = null;
+    this.resetQuery = { state: 'unavailable', reason: 'scope' };
+  }
   // What the pane shows.
   snapshot() { const provider = this.providerId ? this.names(this.providerId) : this.provider; return { provider, context: this.context, round: this.round, total: this.total, limits: this.limits, limitsAt: this.limitsAt, limitsFrom: this.limitsFrom ?? null, resets: this.resets, ...(this.resetQuery ? { resetQuery: this.resetQuery } : {}), calls: this.calls.snapshot(provider) }; }
   // Whether this record changed what the pane shows.
@@ -90,7 +95,8 @@ class UsageMeter {
     const payload = record.payload || {};
     if (record.type === 'session_meta') {
       this.reset();
-      if (typeof payload.model_provider === 'string' && payload.model_provider) this.providerId = payload.model_provider;
+      this.providerId = typeof payload.model_provider === 'string' && payload.model_provider ? payload.model_provider : null;
+      this.scopeCwd = typeof payload.cwd === 'string' && path.isAbsolute(payload.cwd) ? payload.cwd : null;
       return true;
     }
     if (record.type !== 'event_msg') return false;

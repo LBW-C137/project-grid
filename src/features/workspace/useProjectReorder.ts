@@ -167,7 +167,13 @@ export function useReorder(enabled: boolean, context: string, ids: string[], onR
         Promise.all([landing.finished.catch(() => {}), persist ? commit.current(draft) : Promise.resolve()]).finally(() => { if (!ended) clear(); });
       });
     };
-    const up = (event: globalThis.PointerEvent) => { if (event.pointerId === pointerId) { x = event.clientX; y = event.clientY; finish(true); } };
+    const up = (event: globalThis.PointerEvent) => {
+      if (event.pointerId !== pointerId || ended || settling) return;
+      x = event.clientX; y = event.clientY;
+      // The release can arrive at a new cell without a final pointermove (for example, coalesced input).
+      if (active) update();
+      finish(true);
+    };
     const canceled = (event: globalThis.PointerEvent) => { if (event.pointerId === pointerId) finish(false); };
     const abort = () => { detach(); clear(); };
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); } };

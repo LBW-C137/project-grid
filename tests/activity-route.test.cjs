@@ -97,7 +97,16 @@ test('Codex reset count arrives automatically, shows zero and bounded query stat
 });
 
 test('working task keeps its real status, spinner and text, with no fake progress or dead theme overrides', () => {
-  const html = activityMarkup([], 'zh', { prompts: [{ id: 'work', text: 'Continue responding while usage hangs', state: 'working' }] });
+  const html = activityMarkup([], 'zh', { agent: 'codex',
+    prompts: [{ id: 'work', text: 'Continue responding while usage hangs', state: 'working' }],
+    agentUsage: { provider: 'OpenAI', context: { used: 25000, window: 100000 },
+      limits: [{ minutes: 300, percent: 60 }], resets: { left: 2 }, resetQuery: { state: 'ready' } },
+  });
+  const positions = ['activity-route"', 'activity-context"', 'activity-usage"', 'activity-tasks"'].map(name => html.indexOf(name));
+  assert.ok(positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1])), 'route, context, usage/reset controls, then tasks');
+  const usage = html.slice(positions[2], positions[3]);
+  assert.match(usage, /activity-estop/); assert.match(usage, /剩余 2 次/);
+  assert.match(html, /aria-valuenow="25"/); assert.match(usage, /aria-valuenow="60"/);
   assert.match(html, /正在处理/); assert.match(html, /Continue responding while usage hangs/);
   assert.match(fs.readFileSync(path.join(__dirname, '../src/features/agents/ActivityPane.tsx'), 'utf8'), /className="loading-spinner"/);
   assert.doesNotMatch(html, /activity-progress/);

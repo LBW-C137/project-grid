@@ -18,7 +18,7 @@
   <a href="#-how-it-works">How it works</a> ·
   <a href="#-highlights">Highlights</a> ·
   <a href="#-get-started">Get started</a> ·
-  <a href="README.md">中文</a>
+  <a href="README.zh-CN.md">中文</a>
 </p>
 
 <p align="center">
@@ -77,7 +77,11 @@ flowchart LR
 
 <img src="docs/images/decisions.jpg" alt="Decide: a card asks to approve running ./cleanup-archive.ps1 -Host db-01 -Days 30, with the payments round waiting for review under it; a column on the right lists what every session is doing" width="100%" />
 
-Agentrix opens on **Decide**: everything across your projects that needs your call, as a stack of cards — approvals, questions, choices, sign-ins, and rounds of work handed in for review — each titled by what it would do ("Run a command: ./cleanup-archive.ps1 …") with the command itself. An answer is sent only when you confirm it, after checking the question has not changed; or put it off, or open the source. A column beside it shows what every session is doing and waiting on, and the box below tells Agentrix what to do next (paste a screenshot into it too). Decide · Workbench in the title bar switch at any time: the workbench is the project grid.
+Agentrix opens on **Decide**: everything across your projects that needs your call, as a stack of cards — approvals, questions, choices, sign-ins, and rounds of work handed in for review — each titled by what it would do ("Run a command: ./cleanup-archive.ps1 …") with the command itself. An answer is sent only when you confirm it; local permission approvals also recheck the card and terminal before each key, within the limits below. You can put it off or open the source. A column beside it shows what every session is doing and waiting on, and the box below tells Agentrix what to do next (paste a screenshot into it too). Decide · Workbench in the title bar switch at any time: the workbench is the project grid.
+
+**What permission cards recheck:** Recognized local Claude Code and Codex permission cards bind to an observed screen instance and terminal epoch. Both reading and Decide cards recheck before every key, and the backend checks again immediately before its synchronous local PTY write. A parsed A → B → byte-identical A gets a new instance. Even if intermediate screens are coalesced and never parsed, raw output already received by the backend invalidates the old action. Ordinary terminal input, resizing and observed session, turn or lifecycle changes also invalidate it; each captured epoch permits only one final confirmation key. Repaints of the same request can retain its screen instance, but any new raw output invalidates a captured action. Review and select again. If navigation causes a repaint, the remaining confirmation can be rejected; select again or handle it in the terminal.
+
+**Terminal-mode boundary:** The current approval route has no native CLI approval request ID. Session, turn and Claude notification events supply additional invalidation signals. Checks cover changes Agentrix has observed before writing; they cannot prove the CLI still has the same request when it consumes a key. Replacements with no observable signal, changes that have not yet reached Agentrix, and replacements after the PTY write remain outside this guarantee. SSH input still queues remotely, so permission cards fail closed, including Cancel and navigation: handle SSH approvals in the terminal. Answers typed directly in the terminal do not pass through these card checks.
 
 ### 🧩 Direct every project from one screen
 
@@ -100,9 +104,9 @@ Switch any Claude Code or Codex conversation to the **reading view**: a timeline
 - **Questions and confirmations become cards.** Permission prompts, pickers like `/model`, and questions from Claude Code (AskUserQuestion) and Codex (Plan mode) are cards you click; what the agent is doing is written at the end of the conversation, as in its CLI, with a timer and Esc to interrupt.
 - **Keep talking while it works.** A message sent mid-round is marked *delivered and queued*: the agent reads it once the current step is done, and it is never sent twice or taken for undelivered.
 
-The **activity pane** starts with the tasks being worked on and waiting; below are the model route (agent › service › model, with the reasoning effort and speed mode, and every model it calls on its behalf, such as Sonnet 5.5 subagents or Codex GPT-6.1-Sol runs, with how many are running), the context length (used / window) and usage: tokens this round and this conversation, and the 5-hour and weekly limits with their reset times (Codex's from its session records, Claude Code's from its own cached `/usage`, or CodePulse's record when that is fresher).
+The **activity pane** starts with the model route (agent › service › model, with the reasoning effort and speed mode, and every model it calls on its behalf, such as Sonnet 5.5 subagents or Codex GPT-6.1-Sol runs, with how many are running), the context length (used / window) and usage: tokens this round and this conversation, and the 5-hour and weekly limits with their reset times (Codex's from its session records, Claude Code's from its own cached `/usage`, or CodePulse's record when that is fresher). Running and queued tasks are last, at the bottom of the pane.
 
-At the bottom is the **Reset limit** button: a click starts a 10-second countdown that *Cancel* or Esc stops at any time; only then does the agent get its own command (Claude Code's `/limit-reset`, once a week for the 5-hour limit; Codex's `/usage`, where you pick and confirm). Agentrix itself never calls a reset.
+Inside the usage card is the **Reset limit** button: a click starts a 10-second countdown that *Cancel* or Esc stops at any time; only then does the agent get its own command (Claude Code's `/limit-reset`, once a week for the 5-hour limit; Codex's `/usage`, where you pick and confirm). Agentrix itself never calls a reset. Supported local official Codex accounts supply the remaining reset count through a separate read-only app-server query. Local wrappers check the complete launch arguments: flag-free launches, `resume`, `-m`/`--model` and `-c`/`--config` overrides limited to `model`, `model_reasoning_effort` and `service_tier` (including fast mode) are supported. Unproven profiles, account/provider overrides, relevant environment overrides and home changes remain explicitly unavailable. Unknown, failed and unsupported reads stay distinct from zero. Remote, custom-provider and ambiguous launch scopes never borrow the local account’s count.
 
 > The reading view currently supports **Claude Code** and **Codex**. OpenCode, Gemini CLI and other command-line agents run as usual in the card's terminal.
 
@@ -133,6 +137,8 @@ Press <kbd>Ctrl</kbd>+<kbd>T</kbd> and talk to the current terminal; Enter sends
 - **English and Chinese, remappable shortcuts, automatic updates on Windows**, and a guided tour the first time you open it.
 
 ## 📦 Get started
+
+New installs default to English. Choose 中文 under **Settings → Appearance → Language** to switch to Chinese; existing language preferences are kept.
 
 **You need:** Windows 10 / 11 x64, an Apple silicon Mac (macOS 12 or later), or a 64-bit Linux desktop (x64 / arm64). [Codex CLI](https://github.com/openai/codex) or [Claude Code](https://docs.anthropic.com/claude-code) can be installed with one click from a project's card.
 

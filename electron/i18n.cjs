@@ -17,7 +17,8 @@ const patterns = Object.keys(en).filter(key => /\{\w+\}/.test(key)).map(key => {
 });
 
 function translate(language, text, values) {
-  if (language !== 'en' || typeof text !== 'string') return values ? fill(String(text), values) : text;
+  // Only an explicit Chinese preference opts out, including before the store is ready.
+  if (language === 'zh' || typeof text !== 'string') return values ? fill(String(text), values) : text;
   if (Object.prototype.hasOwnProperty.call(en, text)) return values ? fill(en[text], values) : en[text];
   if (!values) {
     for (const { regex, names, template } of patterns) {

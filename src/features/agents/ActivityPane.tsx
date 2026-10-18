@@ -18,15 +18,9 @@ export function tokenCount(value: number) {
 const level = (percent: number) => percent >= 90 ? 'is-high' : percent >= 70 ? 'is-warm' : '';
 const percentOf = (part: number, whole: number) => whole > 0 ? Math.min(100, Math.round(part / whole * 100)) : 0;
 
-// Beside an expanded project's terminal: the prompts being worked on, then what the agent runs on and spends — the
-// route its model is reached through, how full the context window is and the tokens and plan allowance used.
+// Beside an expanded project's terminal: the model route, context and usage, followed by the running tasks.
 export function ActivityPane({ terminal }: { terminal: ProjectTerminal }) {
   return <aside className="activity-pane" aria-label={t('活动')}>
-    {/* A card of fixed size: prompts piling up scroll inside it and never push the cards under it down. */}
-    <section className="activity-card activity-tasks" aria-label={t('正在处理的任务')}>
-      <h4 className="activity-card-title">{t('正在处理的任务')}{(terminal.prompts?.length ?? 0) > 1 && <span className="activity-task-count">{terminal.prompts.length}</span>}</h4>
-      <PromptList terminal={terminal} />
-    </section>
     {terminal.codexActive ? <>
       <RouteCard terminal={terminal} />
       <ContextCard usage={terminal.agentUsage} />
@@ -34,6 +28,11 @@ export function ActivityPane({ terminal }: { terminal: ProjectTerminal }) {
     </> : <section className="activity-card">
       <p className="activity-empty">{t('在终端里启动 Codex 或 Claude Code 后，这里显示它的模型路由、上下文长度和用量。')}</p>
     </section>}
+    {/* The task card stays fixed at the bottom; prompts piling up scroll inside it. */}
+    <section className="activity-card activity-tasks" aria-label={t('正在处理的任务')}>
+      <h4 className="activity-card-title">{t('正在处理的任务')}{(terminal.prompts?.length ?? 0) > 1 && <span className="activity-task-count">{terminal.prompts.length}</span>}</h4>
+      <PromptList terminal={terminal} />
+    </section>
   </aside>;
 }
 

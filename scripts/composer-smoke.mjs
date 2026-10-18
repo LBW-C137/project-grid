@@ -18,7 +18,7 @@ const provider = http.createServer((request, response) => { requests.push({ meth
 await new Promise(resolve => provider.listen(0, '127.0.0.1', resolve));
 await fs.writeFile(path.join(home, 'config.toml'), `model="gpt-6-astra"\nmodel_provider="preview"\ncheck_for_update_on_startup=false\n[model_providers.preview]\nname="Isolated preview"\nbase_url="http://127.0.0.1:${provider.address().port}/v1"\nwire_api="responses"\nrequires_openai_auth=false\n[projects.'${projects[0].path}']\ntrust_level="trusted"\n`);
 // These checks read the terminal's rows as HTML, so the compatible (DOM) renderer draws them; gpu-terminal-smoke covers the GPU one.
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { terminalRenderer: 'dom', restoreSessions: false, closeToTray: false, notifications: false, fontSize: 14 } }));
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects, settings: { language: 'zh', terminalRenderer: 'dom', restoreSessions: false, closeToTray: false, notifications: false, fontSize: 14 } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: profile, CODEX_HOME: home }; delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 const packaged = process.argv.includes('--packaged'), doneFile = path.join(output, 'fixture.done');
 let app, page, controlId;

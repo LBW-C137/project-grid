@@ -10,6 +10,28 @@ line or read their credentials. The explicitly requested Codex reset counter is 
 background app-server reads `account/rateLimits/read` and `rateLimitResetCredits.availableCount`, without creating a
 thread, sending a turn or consuming a reset. Keep timeouts, output bounds, account-environment scoping and cleanup.
 Unknown or unsupported counters are not zero; do not substitute the local account's count for an SSH account.
+The local Codex activity reader recovers only provider/cwd metadata from the first record (at most 1 MiB) when its
+8 MiB history tail omits `session_meta`. Recover from the same open file handle on initial binding, truncation and
+rotation; never replay old prompts or lifecycle events. Clear the account scope before rebinding and keep a missing
+provider/cwd unavailable. A model name never proves the provider. The account query checks the reported Codex home,
+inherited environment and matching recorded/launch cwd, and conservatively declines provider redefinitions, selected
+profiles and account-route overrides. Windows cwd comparison normalizes case and DOS/extended-path/UNC aliases;
+genuinely different directories stay unavailable. Invalidate scope immediately when the bound thread changes, even
+if its rollout file is not yet discoverable, so old provider/count data cannot survive the transition.
+
+`event.command` remains only the first argument for command/subcommand detection. Local PowerShell (also cmd), Bash
+and zsh wrappers separately classify the complete actual argv through `integration/codex-account-scope.cjs`, including
+Unix alias-prefix flags. They emit only `accountLaunch: model-only-v1` or `unavailable`, never raw argv, prompts,
+config values or credentials. The whitelist permits flag-free/resume launches, `-m`/`--model`, and `-c`/`--config`
+overrides of `model`, `model_reasoning_effort` and `service_tier` (including fast). Validate all options and values;
+a benign model flag followed by a provider/profile/account override must fail. Prompts remain opaque.
+The proof also requires stable nonsecret home/directory environment facts and absence of known credential,
+endpoint, provider, profile or config-directory environment overrides, checked by key presence without reading or
+hashing credential values. Unknown/missing proof, malformed flags, changed home facts and arbitrary overrides stay
+unavailable. Keep the proof in account binding/cache scope, and still require recorded official-provider metadata
+and config checks; neither a model name nor this capability alone proves an official account. SSH remains unsupported.
+The sidebar keeps the existing model routing, context length and usage/reset controls above the task list, which is
+fixed at the bottom; retain real context/quota meters and existing content/accessibility.
 
 ## Where each agent writes it
 

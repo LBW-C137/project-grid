@@ -14,7 +14,7 @@ const profile = path.join(output, 'profile'), projectPath = path.join(output, 'p
 await fs.mkdir(profile, { recursive: true }); await fs.mkdir(projectPath, { recursive: true });
 await fs.writeFile(path.join(projectPath, 'README.md'), '# Transparency preview\n\nBackground changes; text stays clear.\n');
 const project = { id: randomUUID(), name: '透明度预览', path: projectPath, kind: 'local', restore: { terminal: false, codex: false } };
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { theme: 'mono-amber', surface: 'glass', terminalRenderer: 'dom', notifications: false, sound: false, announce: false, restoreSessions: false, closeToTray: false } }));
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { language: 'zh', theme: 'mono-amber', surface: 'glass', terminalRenderer: 'dom', notifications: false, sound: false, announce: false, restoreSessions: false, closeToTray: false } }));
 const env = { ...process.env, AGENTRIX_DATA_DIR: profile };
 delete env.ELECTRON_RUN_AS_NODE; delete env.AGENTRIX_DEV_URL;
 let app, page; const errors = [], samples = [];

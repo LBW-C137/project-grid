@@ -5,6 +5,8 @@ import { snooze } from './decisions';
 import { parseAgentScreen } from '../agents/agent-screen';
 import { readScreen } from '../terminal/terminal-screen';
 import { choiceIdentity, selectedChoiceIndex, writeChoiceKeys } from '../reading/choice-keys';
+import { writeApprovalAction } from '../reading/approval-action';
+import type { ScreenChoice } from '../agents/agent-screen-types';
 import { ReadingQuestion } from '../reading/ReadingQuestion';
 import { t } from '../../shared/i18n';
 import { ReviewCard } from './ReviewCard';
@@ -55,8 +57,9 @@ export function DecisionCard({ decision, now, onOpen, onDone, onError }: {
 }) {
   const [picked, setPicked] = useState<number | null>(null), [state, setState] = useState<'idle' | 'sending' | 'expired'>('idle'), [later, setLater] = useState(false);
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
-  useEffect(() => { setPicked(null); setState('idle'); setLater(false); }, [decision.id]);
+  const [pickedFor, setPickedFor] = useState<ScreenChoice | null>(null);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { setPicked(null); setPickedFor(null); setState('idle'); setLater(false); }, [decision.id, decision.choice?.approval?.stamp?.sessionId, decision.choice?.approval?.stamp?.revision]);
   const { label, Icon } = KINDS[decision.kind];
   if (decision.kind === 'review') return <ReviewCard decision={decision} now={now} kind={<span className="decision-kind"><Icon size={15} weight="fill" />{t(label)}</span>} onOpen={onOpen} onDone={onDone} onError={onError} />;
   const options = decision.choice?.options ?? [];
@@ -68,9 +71,12 @@ export function DecisionCard({ decision, now, onOpen, onDone, onError }: {
     if (!current || choiceIdentity(current) !== decision.identity) { setState('expired'); return; }
     setState('sending');
     try {
-      await writeChoiceKeys(selectedChoiceIndex(current), picked, key => window.agentrix.writeTerminal(decision.terminalId, key), () => alive.current);
+      if (decision.kind === 'approval') {
+        if (!pickedFor) { setState('expired'); return; }
+        await writeApprovalAction(decision.terminalId, decision.agent, pickedFor, picked, () => alive.current);
+      } else await writeChoiceKeys(selectedChoiceIndex(current), picked, key => window.agentrix.writeTerminal(decision.terminalId, key), () => alive.current);
       onDone(t('已回答「{project}」：{answer}', { project: decision.projectName, answer: options[picked]?.label ?? '' }));
-    } catch (error) { if (alive.current) { setState('idle'); onError(String(error)); } }
+    } catch (error) { if (alive.current) { setState('idle'); onError(error instanceof Error ? t(error.message) : String(error)); } }
   };
   const putOff = (minutes: number) => { snooze(decision.id, Date.now() + minutes * 60000); setLater(false); onDone(t('已暂缓，{time} 后再提醒；执行仍在等你。', { time: minutes < 60 ? t('{count} 分钟', { count: minutes }) : t('{count} 小时', { count: minutes / 60 }) })); };
   return <article className={`decision-card is-${decision.kind}`} aria-label={decisionTitle(decision)}>
@@ -85,7 +91,7 @@ export function DecisionCard({ decision, now, onOpen, onDone, onError }: {
       ? <div className="decision-question"><ReadingQuestion key={decision.id} choice={decision.choice} terminalId={decision.terminalId} onError={onError} /></div>
       : options.length > 0 && <div className="decision-options" role="radiogroup" aria-label={decisionTitle(decision)}>
         {options.map((option, index) => <label key={option.number} className={`decision-option ${picked === index ? 'is-picked' : ''}`}>
-          <input type="radio" name={`decision-${decision.id}`} checked={picked === index} disabled={state === 'sending'} onChange={() => setPicked(index)} />
+          <input type="radio" name={`decision-${decision.id}`} checked={picked === index} disabled={state === 'sending'} onChange={() => { setPickedFor(decision.choice); setPicked(index); }} />
           <span><b>{option.label}</b>{option.detail && <small>{option.detail}</small>}</span>
         </label>)}
       </div>}

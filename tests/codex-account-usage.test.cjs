@@ -7,10 +7,11 @@ const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const vm = require('node:vm');
 const { UsageMeter } = require('../electron/features/agents/agent-usage.cjs');
-const { CodexAccountUsage, readCodexAccount, usageScope, accountResult } = require('../electron/features/agents/codex-account-usage.cjs');
+const { accountLaunch, accountEnvironment } = require('../integration/codex-account-scope.cjs');
+const { CodexAccountUsage, readCodexAccount, usageScope, accountResult, configScope, accountConfigScope } = require('../electron/features/agents/codex-account-usage.cjs');
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
-const options = { cwd: os.tmpdir(), codexHome: path.join(os.tmpdir(), 'fake-codex-home'), env: {}, provider: 'openai' };
+const options = { cwd: os.tmpdir(), codexHome: path.join(os.tmpdir(), 'fake-codex-home'), env: {}, provider: 'openai', accountLaunch: 'model-only-v1' };
 const ready = left => accountResult({ rateLimitResetCredits: { availableCount: left }, rateLimits: {
   primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: 1792149600 }, secondary: null,
 } }, 1234);
@@ -115,7 +116,7 @@ test('hung read times out without blocking the event loop, kills its child, and 
 
 test('cache deduplicates, isolates home/account environment and drops stale/disposed results', async () => {
   const pending = [], values = [], other = [];
-  const service = new CodexAccountUsage({ read: opts => new Promise(resolve => pending.push({ opts, resolve })) });
+  const service = new CodexAccountUsage({ scope: async () => null, read: opts => new Promise(resolve => pending.push({ opts, resolve })) });
   const first = service.watch(options, value => values.push(value));
   const second = service.watch(options, value => other.push(value));
   await flush(); assert.equal(pending.length, 1);
@@ -139,8 +140,8 @@ test('cache deduplicates, isolates home/account environment and drops stale/disp
 });
 
 test('remote, custom provider and ambiguous override scopes never query the local account', async () => {
-  const service = new CodexAccountUsage({ read: () => assert.fail('must not query') });
-  for (const [overrides, reason] of [[{ remote: true }, 'remote'], [{ provider: 'relay' }, 'provider'], [{ provider: null }, 'scope'], [{ command: '-c' }, 'scope']]) {
+  const service = new CodexAccountUsage({ scope: async () => null, read: () => assert.fail('must not query') });
+  for (const [overrides, reason] of [[{ remote: true }, 'remote'], [{ provider: 'relay' }, 'provider'], [{ provider: null }, 'scope'], [{ command: '-c', accountLaunch: undefined }, 'scope'], [{ accountLaunch: 'unavailable' }, 'scope']]) {
     let value;
     service.watch({ ...options, ...overrides }, result => { value = result; });
     assert.equal(value.resets, null); assert.equal(value.resetQuery.reason, reason);
@@ -148,13 +149,76 @@ test('remote, custom provider and ambiguous override scopes never query the loca
   assert.notEqual(usageScope(options).key, usageScope({ ...options, cwd: options.cwd + '-project' }).key);
   assert.notEqual(usageScope(options).key, usageScope({ ...options, env: {} }).key, 'independent account environments never share cached counts');
   assert.equal(usageScope({ ...options, codexHome: '.codex-local' }).home, path.join(options.cwd, '.codex-local'), 'relative homes follow the actual agent cwd');
+  assert.equal(usageScope({ ...options, recordedCwd: path.join(options.cwd, 'different') }).reason, 'scope');
+  assert.equal(usageScope({ ...options, recordedCwd: null }).reason, 'scope', 'missing recorded cwd cannot prove the project-config scope');
+  const homeEnv = process.platform === 'win32' ? { USERPROFILE: options.codexHome } : { HOME: options.codexHome };
+  assert.equal(usageScope({ ...options, codexHome: undefined, env: homeEnv }).home, path.join(options.codexHome, '.codex'));
+  for (const command of ['-m', '--model', '-c', '--config', '-p', '--profile', '-C', '--cd', '--oss', '--local-provider']) {
+    assert.equal(usageScope({ ...options, command, accountLaunch: undefined }).reason, 'scope', 'a first-word-only event cannot prove the remaining arguments safe');
+  }
   await flush(); service.dispose();
+});
+
+test('config boundary accepts explicit official config and refuses provider redefinitions, selected profiles and account routes', () => {
+  for (const config of ['', 'model = "gpt-test"\nmodel_reasoning_effort = "high"',
+    'model_provider = "openai" # actual provider\n', "'model_provider' = 'openai'",
+    '[model_providers.relay]\nbase_url = "https://example.invalid"',
+    'developer_instructions = """\nmodel_provider = "relay"\n"""\nmodel_provider = "openai"']) assert.equal(configScope(config), null, config);
+  for (const config of ['model_provider = "relay"', '[model_providers.openai]\nbase_url = "https://example.invalid"',
+    'model_providers."openai".base_url = "https://example.invalid"', 'model_providers = { openai = {} }',
+    '"model_providers"."op\\u0065nai".base_url = "https://example.invalid"']) assert.equal(configScope(config), 'provider', config);
+  for (const config of ['profile = "work"', "profile = 'work'\n[profiles.work]\nmodel_provider = 'openai'",
+    'chatgpt_base_url = "https://example.invalid"', '[auth]\nmode = "external"',
+    '"model_provider" junk = "relay"', 'developer_instructions = "unterminated',
+    'developer_instructions = """\nunterminated']) assert.equal(configScope(config), 'scope', config);
+});
+
+test('home and ancestor project config checks stay read-only, bounded, and stop custom routes before an account read', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-scope-config-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const home = path.join(root, 'account'), cwd = path.join(root, 'project', 'nested');
+  fs.mkdirSync(home); fs.mkdirSync(cwd, { recursive: true });
+  fs.writeFileSync(path.join(home, 'config.toml'), 'model_provider = "openai"');
+  const opts = { ...options, codexHome: home, cwd };
+  assert.equal(await accountConfigScope(opts), null);
+  const projectConfig = path.join(root, 'project', '.codex', 'config.toml');
+  fs.mkdirSync(path.dirname(projectConfig)); fs.writeFileSync(projectConfig, 'model_provider = "relay"');
+  assert.equal(await accountConfigScope(opts), 'provider');
+  const values = [], service = new CodexAccountUsage({ read: () => assert.fail('custom project config must not query an official account') });
+  const finished = new Promise(resolve => service.watch(opts, value => { values.push(value); if (value.resetQuery.state !== 'loading') resolve(); }));
+  await finished; service.dispose();
+  assert.equal(values.at(-1).resets, null); assert.equal(values.at(-1).resetQuery.reason, 'provider');
+  fs.writeFileSync(projectConfig, 'x'.repeat(256 * 1024 + 1));
+  assert.equal(await accountConfigScope(opts), 'scope');
+  fs.writeFileSync(projectConfig, 'model_provider = "openai"');
+  assert.equal(await accountConfigScope({ ...opts, env: { OPENAI_BASE_URL: 'https://example.invalid' } }), 'scope');
+  fs.writeFileSync(path.join(home, 'managed_config.toml'), 'do not read');
+  assert.equal(await accountConfigScope(opts), 'scope', 'managed credential routing is declined from presence alone');
+});
+
+test('proven benign complete flags reach watch preflight and a ready count; later account flags never query', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-benign-flags-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'config.toml'), 'model_provider = "openai"');
+  const env = {}, baseline = accountEnvironment(env); let reads = 0;
+  const service = new CodexAccountUsage({ read: async () => { ++reads; return ready(2); } });
+  t.after(() => service.dispose());
+  const watch = args => new Promise(resolve => {
+    service.watch({ ...options, env, cwd: root, recordedCwd: root, codexHome: root,
+      command: args[0], accountLaunch: accountLaunch(args, env, baseline) }, value => {
+      if (value.resetQuery.state !== 'loading') resolve(value);
+    });
+  });
+  assert.equal((await watch(['-m', 'gpt-test', '-c', 'model_reasoning_effort=high', '-c', 'service_tier="fast"'])).resets.left, 2);
+  assert.equal(reads, 1);
+  const unsafe = await watch(['-m', 'gpt-test', '-c', 'model_reasoning_effort=high', '--profile', 'work']);
+  assert.equal(unsafe.resetQuery.reason, 'scope'); assert.equal(unsafe.resets, null); assert.equal(reads, 1);
 });
 
 test('failed refreshes back off, retry automatically and recover without an endless loading status', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let calls = 0; const values = [];
-  const service = new CodexAccountUsage({ interval: 100, read: async () => ++calls < 3
+  const service = new CodexAccountUsage({ scope: async () => null, interval: 100, read: async () => ++calls < 3
     ? { resets: null, resetQuery: { state: 'error', reason: 'query' } } : ready(2) });
   service.watch(options, value => values.push(value)); await flush();
   assert.equal(values.at(-1).resetQuery.state, 'error');
@@ -172,7 +236,7 @@ test('main lifecycle follows recorded provider, replaces sessions safely and nev
   const functions = main.slice(main.indexOf('function startUsage('), main.indexOf("// Claude's plan limits and resets, from Claude Code's own state file,"));
   const notes = main.slice(main.indexOf('function noteSettings('), main.indexOf('// A skill step names the skill;'));
   const pending = [], sessions = new Map();
-  const service = new CodexAccountUsage({ read: opts => new Promise(resolve => pending.push({ opts, resolve })) });
+  const service = new CodexAccountUsage({ scope: async () => null, read: opts => new Promise(resolve => pending.push({ opts, resolve })) });
   const { startUsage, stopUsageAccount, noteSettings } = vm.runInNewContext(`${functions}\n${notes}\n({ startUsage, stopUsageAccount, noteSettings })`, {
     UsageMeter, codexAccounts: service, sessions, process, scheduleState() {},
     codexProvider: async () => id => id, claudeProvider: async () => 'Anthropic', claudeConfigDir: () => '', refreshClaudeAccounts() {},
@@ -181,8 +245,8 @@ test('main lifecycle follows recorded provider, replaces sessions safely and nev
   const s = { terminalId: 'test', codexActive: true, agent: 'codex', usageEnv: {} };
   sessions.set(s.terminalId, s);
   const project = { path: os.tmpdir(), kind: 'local' };
-  const event = { codexHome: options.codexHome };
-  const meta = model_provider => ({ type: 'session_meta', payload: { model_provider } });
+  const event = { codexHome: options.codexHome, accountLaunch: 'model-only-v1', command: '-m' };
+  const meta = model_provider => ({ type: 'session_meta', payload: { model_provider, cwd: project.path } });
   startUsage(project, s, event); await flush();
   assert.equal(pending.length, 0, 'wait for the actual recorded provider, without querying the wrong account');
   noteSettings(s, 'codex', meta('relay')); await flush();
@@ -201,5 +265,17 @@ test('main lifecycle follows recorded provider, replaces sessions safely and nev
   assert.equal(s.usage.snapshot().resetQuery.reason, 'remote');
   s.agent = 'claude'; startUsage(project, s, event); await flush();
   assert.equal(pending.length, 3); assert.equal(s.usage.agent, 'claude');
+  s.agent = 'codex'; const proofEvent = { ...event };
+  startUsage(project, s, proofEvent); noteSettings(s, 'codex', meta('openai')); await flush();
+  pending.at(-1).resolve(ready(2)); await flush();
+  assert.equal(s.usage.snapshot().resets.left, 2);
+  proofEvent.accountLaunch = 'unavailable'; s.bindUsageAccount(); await flush();
+  assert.equal(s.usage.snapshot().resets, null); assert.equal(s.usage.snapshot().resetQuery.reason, 'scope');
+  assert.equal(pending.length, 4, 'a scope-proof change invalidates the cached count without querying');
+  proofEvent.accountLaunch = 'model-only-v1'; s.bindUsageAccount(); await flush();
+  const untrustedLate = pending.at(-1);
+  noteSettings(s, 'codex', meta('relay')); assert.equal(untrustedLate.opts.signal.aborted, true);
+  untrustedLate.resolve(ready(2)); await flush();
+  assert.equal(s.usage.snapshot().resets, null); assert.equal(s.usage.snapshot().resetQuery.reason, 'provider');
   stopUsageAccount(s); service.dispose();
 });

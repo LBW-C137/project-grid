@@ -15,7 +15,7 @@ const output = await testRun('path-refresh'), profile = path.join(output, 'profi
 const project = { id: randomUUID(), name: '环境刷新', path: path.join(output, 'project'), restore: { terminal: false, codex: false } };
 for (const folder of [profile, bin, home, project.path]) await fs.mkdir(folder, { recursive: true });
 await fs.writeFile(path.join(bin, 'agentrix-extra.cmd'), '@echo off\r\necho EXTRA_PATH_OK\r\n');
-await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { restoreSessions: false, closeToTray: false, notifications: false } }));
+await fs.writeFile(path.join(profile, 'workspace.json'), JSON.stringify({ version: 2, projects: [project], settings: { language: 'zh', restoreSessions: false, closeToTray: false, notifications: false } }));
 const system32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'), powershell = path.join(system32, 'WindowsPowerShell/v1.0/powershell.exe');
 const env = { ...process.env, AGENTRIX_DATA_DIR: profile, CODEX_HOME: home, PG_PATH_SENTINEL: 'keep-me' };
 const inherited = Object.entries(env).find(([key]) => key.toLowerCase() === 'path')?.[1] || '';

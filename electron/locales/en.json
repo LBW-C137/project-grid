@@ -1391,5 +1391,20 @@
   "无法确认账号环境，暂不能查询": "Cannot verify the account environment; query unavailable",
   "查询失败，将自动重试": "Query failed; retrying automatically",
   "当前账号或 Codex 版本未提供次数，将自动重试": "This account or Codex version did not provide a count; retrying automatically",
-  "尚未确认命令完成。请切换到终端检查，避免重复执行。": "Command completion is unconfirmed. Check the terminal before running it again."
+  "尚未确认命令完成。请切换到终端检查，避免重复执行。": "Command completion is unconfirmed. Check the terminal before running it again.",
+  "审批操作已失效，未发送本次按键。请重新查看请求，或切换到终端处理。": "The approval action expired; this key was not sent. Review the request again or handle it in the terminal.",
+  "另一项审批操作已开始，请重新查看请求，或切换到终端处理。": "Another approval action has started. Review the request again or handle it in the terminal.",
+  "审批终端已变化或尚未就绪。": "The approval terminal has changed or is not ready.",
+  "无效的审批按键。": "Invalid approval key.",
+  "SSH 审批请切换到终端处理。阅读卡片无法校验远端最终发送时的请求。": "Handle SSH approvals in the terminal. Reading cards cannot verify the request at the remote write boundary.",
+  "终端正在等待响应，审批没有发送。请重新查看请求，或切换到终端处理。": "The terminal is waiting for a response; the approval key was not sent. Review the request again or handle it in the terminal.",
+  "审批终端已变化。": "The approval terminal has changed.",
+  "检测到审批变化后，旧选择自动失效；远程审批在终端确认。": "When an approval change is detected, the old choice expires automatically; confirm remote approvals in the terminal.",
+  "修复长对话中的次数查询，本地官方 Codex 账号在默认或仅带模型参数启动时自动显示剩余重置次数。": "Fixed reset-count queries in long conversations; local official Codex accounts show remaining resets automatically when launched with default settings or model-only options.",
+  "右侧栏先显示模型路由、上下文长度和用量，正在处理的任务移到底部。": "The right sidebar shows the model route, context length and usage first, with active tasks at the bottom.",
+  "决策页改用官方 GPT/Codex 和 Claude 标识，并统一图标的显示大小。": "The decision page uses official GPT/Codex and Claude marks with consistent icon sizes.",
+  "新安装默认使用英语，可在设置中切换中文。": "New installs default to English; Chinese remains available in Settings.",
+  "Agentrix 是桌面应用": "Agentrix is a desktop app",
+  "请在项目目录运行 npm start，或双击打包后的应用。": "Run npm start in the project directory, or open the packaged app.",
+  "Agentrix 无法启动": "Agentrix could not start"
 }

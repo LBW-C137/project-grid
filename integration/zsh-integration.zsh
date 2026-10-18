@@ -28,8 +28,9 @@ if [[ $__pg_user_zdotdir == $HOME && -z $AGENTRIX_USER_ZDOTDIR ]]; then unset ZD
 # What Agentrix passed in, kept in this shell only; programs started here do not inherit it.
 typeset -g __pg_socket=$AGENTRIX_SOCKET __pg_project=$AGENTRIX_PROJECT_ID __pg_key=$AGENTRIX_SESSION_KEY
 typeset -g __pg_node=$AGENTRIX_NODE __pg_helper=$AGENTRIX_EVENT_HELPER __pg_start=$AGENTRIX_START_DIR __pg_note=$AGENTRIX_READING_NOTE
+typeset -g __pg_account_baseline=$AGENTRIX_ACCOUNT_BASELINE
 typeset -gi __pg_sequence=0
-unset AGENTRIX_SOCKET AGENTRIX_PROJECT_ID AGENTRIX_SESSION_KEY AGENTRIX_NODE AGENTRIX_EVENT_HELPER AGENTRIX_START_DIR AGENTRIX_USER_ZDOTDIR AGENTRIX_READING_NOTE
+unset AGENTRIX_SOCKET AGENTRIX_PROJECT_ID AGENTRIX_SESSION_KEY AGENTRIX_NODE AGENTRIX_EVENT_HELPER AGENTRIX_START_DIR AGENTRIX_USER_ZDOTDIR AGENTRIX_READING_NOTE AGENTRIX_ACCOUNT_BASELINE
 unset __pg_zdotdir __pg_user_zdotdir
 zmodload zsh/net/socket 2>/dev/null
 autoload -Uz add-zsh-hook
@@ -73,7 +74,7 @@ __pg_program() {
 __pg_send() {
   emulate -L zsh
   (( ++__pg_sequence ))
-  local project key cwd home command codex=false claude=false
+  local project key cwd home command launch= codex=false claude=false
   __pg_json "${4:-}"; command=$REPLY
   __pg_json $__pg_project; project=$REPLY
   __pg_json $__pg_key; key=$REPLY
@@ -81,7 +82,12 @@ __pg_send() {
   __pg_json ${CODEX_HOME:-$HOME/.codex}; home=$REPLY
   __pg_program codex && codex=true
   __pg_program claude && claude=true
-  local line="{\"projectId\":$project,\"sessionKey\":$key,\"type\":\"$1\",\"sequence\":$__pg_sequence,\"exitCode\":${2:-0},\"agent\":\"${3:-codex}\",\"codexAvailable\":$codex,\"claudeAvailable\":$claude,\"codexHome\":$home,\"cwd\":$cwd,\"command\":$command}"
+  if [[ $1 == codex-started && ${3:-codex} == codex ]]; then
+    local scope=unavailable
+    [[ ${5:-} == model-only-v1 ]] && scope=model-only-v1
+    launch=",\"accountLaunch\":\"$scope\""
+  fi
+  local line="{\"projectId\":$project,\"sessionKey\":$key,\"type\":\"$1\",\"sequence\":$__pg_sequence,\"exitCode\":${2:-0},\"agent\":\"${3:-codex}\",\"codexAvailable\":$codex,\"claudeAvailable\":$claude,\"codexHome\":$home,\"cwd\":$cwd,\"command\":$command$launch}"
   ( zsocket $__pg_socket && print -r -u $REPLY -- $line ) 2>/dev/null
   return 0
 }
@@ -92,6 +98,18 @@ __pg_command() {
   emulate -L zsh
   [[ ${1-} =~ '^-{0,2}[A-Za-z][A-Za-z-]{0,23}$' ]] && print -rn -- "$1"
   return 0
+}
+
+# Private stdin to the same classifier Bash and PowerShell use.
+__pg_account_scope() {
+  emulate -L zsh
+  local word separator=
+  [[ -n $__pg_account_baseline ]] || { print -rn -- unavailable; return; }
+  {
+    printf '{"baseline":%s,"args":[' "$__pg_account_baseline"
+    for word in "$@"; do __pg_json "$word"; printf '%s%s' "$separator" "$REPLY"; separator=,; done
+    printf ']}'
+  } | ELECTRON_RUN_AS_NODE=1 "$__pg_node" "${__pg_helper%/*}/codex-account-scope.cjs" 2>/dev/null
 }
 
 codex() {
@@ -107,7 +125,7 @@ codex() {
   for word in /usr/bin/env ELECTRON_RUN_AS_NODE=1 "$__pg_node" "$__pg_helper" codex-notify "$__pg_socket" "$__pg_project" "$__pg_key"; do
     __pg_json "$word"; notify+=${notify:+,}$REPLY
   done
-  __pg_send codex-started 0 codex "$(__pg_command "$@")"
+  __pg_send codex-started 0 codex "$(__pg_command "$@")" "$(__pg_account_scope "${program[@]:1}" "$@")"
   # What the reading view can show (electron/features/agents/reading-note.cjs); the user's own -c comes later and wins.
   local -a note=()
   [[ -n $__pg_note ]] && note=(-c "developer_instructions=\"$__pg_note\"")

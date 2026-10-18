@@ -7,8 +7,40 @@ const { randomUUID } = require('node:crypto');
 const { CodexActivityReader, monitorActivity } = require('../electron/codex-activity.cjs');
 const { TerminalTitleTracker } = require('../electron/terminal-title.cjs');
 const { HISTORY_WINDOW } = require('../electron/transcript-window.cjs');
+const { UsageMeter } = require('../electron/features/agents/agent-usage.cjs');
 const line = value => JSON.stringify(value) + '\n';
 const event = (type, turn) => line({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type, turn_id: turn } });
+
+test('a long rollout recovers only bounded account metadata before its tail, including rotation and rebinding', async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-quota-meta-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  await fs.mkdir(path.join(home, 'sessions'));
+  const ids = [randomUUID(), randomUUID()], meter = new UsageMeter('codex'), seen = [];
+  const content = (id, provider) => line({ type: 'session_meta', payload: { id, cwd: home, source: 'cli',
+    model_provider: provider, base_instructions: { text: 'private instructions' } } })
+    + line({ type: 'event_msg', payload: { type: 'user_message', message: 'excluded private prompt' } })
+    + line({ padding: 'x'.repeat(HISTORY_WINDOW + 1000) }) + event('task_started', 'tail-turn');
+  for (const [i, id] of ids.entries()) await fs.writeFile(path.join(home, 'sessions', `rollout-${id}.jsonl`), content(id, i ? 'relay' : 'openai'));
+  let bound = ids[0];
+  const reader = new CodexActivityReader(home, home, 0, { threadId: () => bound,
+    onHistory: ready => { if (!ready) meter.resetScope(); },
+    onRecord: record => { seen.push(record); meter.apply(record); } });
+  await reader.read();
+  assert.equal(meter.providerId, 'openai');
+  assert.deepEqual(seen[0], { type: 'session_meta', payload: { model_provider: 'openai', cwd: home } });
+  assert.doesNotMatch(JSON.stringify(seen), /private|base_instructions/);
+  seen.length = 0; await reader.read(); assert.equal(seen.length, 0, 'metadata is not replayed on idle polls');
+  const file = reader.filename;
+  await fs.rename(file, `${file}.old`); await fs.writeFile(file, content(ids[0], 'relay'));
+  await reader.read(); assert.equal(meter.providerId, 'relay', 'same-path rotation uses the open handle, not cached discovery metadata');
+  bound = ids[1]; await reader.read(); assert.equal(meter.providerId, 'relay');
+  await fs.writeFile(reader.filename, content(ids[1], undefined));
+  await reader.read(); assert.equal(meter.providerId, null, 'missing metadata must not keep an earlier provider');
+  meter.providerId = 'openai'; meter.codexAccount({ resets: { left: 2 }, limits: [], resetQuery: { state: 'ready' } });
+  bound = randomUUID();
+  assert.equal(await reader.read(), null);
+  assert.equal(meter.providerId, null); assert.equal(meter.snapshot().resets, null, 'a not-yet-discoverable binding cannot display the previous count');
+});
 
 test('two terminals in the same folder bind to different Codex session titles', async t => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-two-sessions-'));
@@ -171,7 +203,9 @@ test('binding another Codex thread starts its own window without carrying an ear
   bound = ids[1]; seen.length = 0;
   const snapshot = await reader.read();
   assert.equal(snapshot.threadId, ids[1]); assert.equal(snapshot.state, 'unknown'); assert.equal(snapshot.turnId, null);
-  assert.equal(reader.buffer.length, 0); assert.deepEqual(seen.map(record => record.payload.type), ['task_complete']);
+  assert.equal(reader.buffer.length, 0);
+  assert.equal(seen[0].type, 'session_meta');
+  assert.deepEqual(seen.filter(record => record.type !== 'session_meta').map(record => record.payload.type), ['task_complete']);
   assert.deepEqual(history, [false, true, false, true]);
 });
 
