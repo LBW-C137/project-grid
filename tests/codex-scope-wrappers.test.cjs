@@ -10,6 +10,53 @@ const { accountEnvironment } = require('../integration/codex-account-scope.cjs')
 const { createEventServer } = require('../electron/events.cjs');
 const exec = promisify(execFile), integration = path.resolve(__dirname, '../integration');
 const scopeHelper = path.join(integration, 'codex-account-scope.cjs');
+function ciStackFrames(output) {
+  const frames = new Set();
+  for (const line of String(output || '').split(/\r?\n/)) {
+    const hit = /^\s*[\da-f`]{8,17}\s+[\da-f`]{8,17}\s+((?:System|Microsoft|DynamicClass)\.[\w.$+`<>\[\],-]{1,260})\(/i.exec(line);
+    if (hit) frames.add(hit[1].replace(/\+0x[\da-f]+$/i, ''));
+    if (frames.size === 120) break;
+  }
+  return [...frames];
+}
+function scheduleCIStack(pending, index, root, script, env) {
+  const noop = () => {};
+  if (index !== 0 || process.platform !== 'win32' || process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') return noop;
+  const target = pending.child, pid = target?.pid;
+  if (!Number.isInteger(pid) || pid <= 0 || !path.isAbsolute(root) || !path.basename(root).startsWith('quota-scope-wrapper-') || script !== path.join(root, 'probe.ps1') || target.spawnargs?.at(-1) !== script || path.basename(target.spawnfile || '').toLowerCase() !== 'powershell.exe') return noop;
+  const alive = () => target.pid === pid && target.exitCode === null && target.signalCode === null && !target.killed;
+  let debuggerChild, hard, canceled = false;
+  const stopDebugger = () => {
+    if (!debuggerChild) return;
+    if (debuggerChild.exitCode === null && debuggerChild.signalCode === null) { try { debuggerChild.kill('SIGKILL'); } catch {} }
+    debuggerChild.stdin?.destroy(); debuggerChild.stdout?.destroy(); debuggerChild.stderr?.destroy(); debuggerChild.unref();
+  };
+  const timer = setTimeout(async () => {
+    if (canceled || !alive()) return;
+    try {
+      const sdk = process.env['ProgramFiles(x86)'];
+      const cdb = sdk && path.join(sdk, 'Windows Kits/10/Debuggers/x64/cdb.exe');
+      if (!cdb || !fs.existsSync(cdb)) { console.log('CI_STACK_UNAVAILABLE'); return; }
+      if (!alive()) return;
+      const capture = exec(cdb, ['-pv', '-pd', '-p', String(pid), '-y', root, '-c', '.loadby sos clr;~*e !clrstack -n'],
+        { env: { ...env, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root, _NT_SYMBOL_PATH: root, _NT_ALT_SYMBOL_PATH: root, _NT_SOURCE_PATH: root, _NT_SYMCACHE_PATH: root }, cwd: root, windowsHide: true, timeout: 8000, maxBuffer: 1024 * 1024 });
+      debuggerChild = capture.child;
+      debuggerChild.stdin?.on('error', noop);
+      // ~e consumes its input line; quit/detach is the next debugger-only line.
+      debuggerChild.stdin.end('qd\n');
+      hard = setTimeout(() => { if (!canceled) { canceled = true; console.log('CI_STACK_TIMEOUT'); stopDebugger(); } }, 8500);
+      const { stdout } = await capture;
+      if (!canceled) {
+        const frames = ciStackFrames(stdout);
+        console.log(frames.length ? `CI_STACK_CAPTURED count=${frames.length}` : 'CI_STACK_NO_FRAMES');
+        for (const method of frames) console.log('CI_STACK_FRAME ' + method);
+      }
+    } catch (error) {
+      if (!canceled) console.log(`CI_STACK_FAILED code=${Number.isInteger(error.code) ? error.code : 'none'}`);
+    } finally { clearTimeout(hard); stopDebugger(); }
+  }, 5000);
+  return () => { canceled = true; clearTimeout(timer); clearTimeout(hard); stopDebugger(); };
+}
 const cases = [
   { args: [], safe: true },
   { args: ['-m', 'gpt-test'], safe: true },
@@ -136,8 +183,10 @@ if ($global:LASTEXITCODE -ne 3) { exit 9 }
       const env = { ...safeEnv(home, true), AGENTRIX_BOOTSTRAP: bootstrap, QUOTA_INTEGRATION: probeIntegration,
         QUOTA_EXE: exe, QUOTA_EXPECTED: JSON.stringify(item.args), QUOTA_CHANGE: item.change || '' };
       env.AGENTRIX_ACCOUNT_BASELINE = JSON.stringify(accountEnvironment(env));
-      const result = await exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      const pending = exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
         ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script], { env, cwd: root, windowsHide: true, timeout: 7000 * timeoutScale, maxBuffer: 4096 });
+      const stopStack = scheduleCIStack(pending, i, root, script, env);
+      const result = await pending.finally(stopStack);
       assert.equal(result.stderr, '', `PowerShell case ${i} must be silent`);
       assert.ok(result.stdout.includes('FORWARD_OK'), `PowerShell forwarding case ${i}`);
       assert.ok(result.stdout.includes(`SCOPE=${item.safe ? 'model-only-v1' : 'unavailable'}`), `PowerShell proof case ${i}`);
