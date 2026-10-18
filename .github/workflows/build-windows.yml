@@ -66,11 +66,6 @@ jobs:
           node-version: '24'
           cache: npm
 
-      - name: Compare isolated Windows wrapper environments (temporary)
-        run: |
-          node --test scripts/windows-wrapper-env-probe.cjs
-          node scripts/windows-wrapper-env-probe.cjs
-
       - name: Diagnose Windows wrapper before dependency installation (temporary)
         run: node --test tests/codex-scope-wrappers.test.cjs
 

@@ -34,6 +34,7 @@ if (powershellModules) assert.ok(fs.statSync(powershellModules).isDirectory(), '
 const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '', PATH: process.env.PATH || process.env.Path || '',
   PATHEXT: '.COM;.EXE;.BAT;.CMD',
   ...(powershellModules ? { PSModulePath: powershellModules } : {}),
+  ...(powershellModules ? { PSModuleAnalysisCachePath: path.join(home, 'ModuleAnalysisCache') } : {}),
   HOME: home, USERPROFILE: home, HOMEDRIVE: 'C:', HOMEPATH: '\\Users\\fixture', CODEX_HOME: path.join(home, '.codex') });
 
 test('PowerShell and the cmd agent shim classify complete argv and forward it unchanged to an offline executable',
