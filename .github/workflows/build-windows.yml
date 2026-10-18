@@ -66,18 +66,6 @@ jobs:
           node-version: '24'
           cache: npm
 
-      - name: Check normal Windows PowerShell filesystem startup (temporary)
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
-        timeout-minutes: 1
-        run: Join-Path $env:SystemRoot 'System32' | Out-Null
-
-      - name: Bisect first Join-Path child environment (temporary)
-        timeout-minutes: 3
-        run: node scripts/windows-wrapper-env-probe.cjs
-
-      - name: Diagnose Windows wrapper before dependency installation (temporary)
-        run: node --test tests/codex-scope-wrappers.test.cjs
-
       - name: Validate release version
         id: version
         run: |

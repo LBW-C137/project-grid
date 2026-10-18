@@ -10,87 +10,6 @@ const { accountEnvironment } = require('../integration/codex-account-scope.cjs')
 const { createEventServer } = require('../electron/events.cjs');
 const exec = promisify(execFile), integration = path.resolve(__dirname, '../integration');
 const scopeHelper = path.join(integration, 'codex-account-scope.cjs');
-function ciStackStatus(output) {
-  const text = String(output || '');
-  return {
-    commandsBegin: /^\s*CI_STACK_COMMANDS_BEGIN\s*$/m.test(text),
-    sosAttempted: /^\s*CI_STACK_SOS_ATTEMPTED\s*$/m.test(text),
-    iterationComplete: /^\s*CI_STACK_ITERATION_COMPLETE\s*$/m.test(text),
-    usageText: /^\s*(?:usage\s*:|(?:cdb|ntsd)\s+\[)/im.test(text),
-    helpText: /(?:for (?:command.line )?help|command.line (?:help|options)|^\s*[-/]\?\s+.*(?:help|usage))/im.test(text),
-    bannerText: /^\s*Microsoft\s+\(R\)\s+Windows Debugger\b/im.test(text),
-    attachText: /(?:non.?invasive (?:debugging|attach)|attach(?:ed|ing) to (?:process|target))/i.test(text),
-    eofText: /(?:\bend of (?:file|input)\b|\b(?:stdin|input).*\b(?:eof|closed)\b|\bEOF\b)/i.test(text),
-    clrUnavailable: /(?:no export.*clr|unable to find module.*clr|(?:clr|runtime).*(?:not loaded|not found))/i.test(text),
-    sosLoadError: /(?:unable to load.*sos|(?:loadlibrary|load extension).*(?:failed|error)|extension.*sos.*(?:failed|not found))/i.test(text),
-    dacError: /(?:failed to load data access|(?:mscordacwks|\bdac\b).*(?:failed|error|not found|mismatch)|unable to load.*data access)/i.test(text),
-    notAttached: /(?:not attached|no (?:current )?(?:process|target)|no debuggee)/i.test(text),
-    noninvasiveUnsupported: /(?:non.?invasive.*(?:not support|unavailable)|(?:not support|unavailable).*non.?invasive)/i.test(text),
-    noManagedFrames: /(?:not a managed thread|no managed (?:code|frames|stack)|unable to walk.*managed stack)/i.test(text),
-    contextError: /(?:(?:failed|unable).*\bcontext\b|context.*(?:failed|unavailable|not found))/i.test(text),
-    readError: /(?:memory read error|(?:failed|unable|cannot|could not) to read|readprocessmemory.*failed|(?:failed|unable) to request)/i.test(text),
-    unknownCommand: /(?:unknown (?:command|extension)|not a recognized.*command|no export.*(?:clrstack|sos)|extension command.*not found)/i.test(text),
-    symbolsMissing: /(?:symbols?.*(?:not loaded|not found|could not|unable|wrong|mismatch)|(?:could not|unable).*load.*symbols?)/i.test(text),
-    errorText: /\b(?:error|failed|failure|unable|cannot|could not|not supported)\b/i.test(text),
-    outputLines: text.split(/\r?\n/).filter(line => line.trim()).length,
-    stackRows: text.split(/\r?\n/).filter(line => /^\s*[\da-f\x60]{8,17}\s+[\da-f\x60]{8,17}\s+/i.test(line)).length,
-  };
-}
-function ciStackFrames(output) {
-  const frames = new Set();
-  for (const line of String(output || '').split(/\r?\n/)) {
-    const hit = /^\s*[\da-f`]{8,17}\s+[\da-f`]{8,17}\s+((?:System|Microsoft|DynamicClass)\.[\w.$+`<>\[\],-]{1,260})\(/i.exec(line);
-    if (hit) frames.add(hit[1].replace(/\+0x[\da-f]+$/i, ''));
-    if (frames.size === 120) break;
-  }
-  return [...frames];
-}
-function scheduleCIStack(pending, index, root, script, env) {
-  const noop = () => {};
-  if (index !== 0 || process.platform !== 'win32' || process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') return noop;
-  const target = pending.child, pid = target?.pid;
-  if (!Number.isInteger(pid) || pid <= 0 || !path.isAbsolute(root) || !path.basename(root).startsWith('quota-scope-wrapper-') || script !== path.join(root, 'probe.ps1') || target.spawnargs?.at(-1) !== script || path.basename(target.spawnfile || '').toLowerCase() !== 'powershell.exe') return noop;
-  const alive = () => target.pid === pid && target.exitCode === null && target.signalCode === null && !target.killed;
-  let debuggerChild, hard, canceled = false;
-  const stopDebugger = () => {
-    if (!debuggerChild) return;
-    if (debuggerChild.exitCode === null && debuggerChild.signalCode === null) { try { debuggerChild.kill('SIGKILL'); } catch {} }
-    debuggerChild.stdin?.destroy(); debuggerChild.stdout?.destroy(); debuggerChild.stderr?.destroy(); debuggerChild.unref();
-  };
-  const timer = setTimeout(async () => {
-    if (canceled || !alive()) return;
-    try {
-      const sdk = process.env['ProgramFiles(x86)'];
-      const cdb = sdk && path.join(sdk, 'Windows Kits/10/Debuggers/x64/cdb.exe');
-      if (!cdb || !fs.existsSync(cdb)) { console.log('CI_STACK_UNAVAILABLE'); return; }
-      if (!alive()) return;
-      const commandFile = path.join(root, 'ci-stack.cdb');
-      fs.writeFileSync(commandFile, '.echo CI_STACK_COMMANDS_BEGIN\n.loadby sos clr\n.echo CI_STACK_SOS_ATTEMPTED\n~*e !clrstack -n\n.echo CI_STACK_ITERATION_COMPLETE\nqd\n', 'utf8');
-      // Options precede the terminal target selector; keep stdin open through command-file qd.
-      const capture = exec(cdb, ['-pv', '-pd', '-y', root, '-cf', commandFile, '-p', String(pid)],
-        { env: { ...env, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root, _NT_SYMBOL_PATH: root, _NT_ALT_SYMBOL_PATH: root, _NT_SOURCE_PATH: root, _NT_SYMCACHE_PATH: root }, cwd: root, windowsHide: true, timeout: 8000, maxBuffer: 1024 * 1024 });
-      debuggerChild = capture.child;
-      debuggerChild.stdin?.on('error', noop);
-      hard = setTimeout(() => { if (!canceled) { canceled = true; console.log('CI_STACK_TIMEOUT'); stopDebugger(); } }, 8500);
-      const { stdout, stderr } = await capture;
-      if (!canceled) {
-        console.log('CI_STACK_STATUS ' + JSON.stringify(ciStackStatus(stdout + '\n' + stderr)));
-        const frames = ciStackFrames(stdout);
-        console.log(frames.length ? `CI_STACK_CAPTURED count=${frames.length}` : 'CI_STACK_NO_FRAMES');
-        for (const method of frames) console.log('CI_STACK_FRAME ' + method);
-      }
-    } catch (error) {
-      const status = error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'CI_STACK_LIMIT' : error.killed ? 'CI_STACK_TIMEOUT' : `CI_STACK_FAILED code=${Number.isInteger(error.code) ? error.code : 'none'}`;
-      if (!canceled) {
-        console.log('CI_STACK_STATUS ' + JSON.stringify(ciStackStatus((error.stdout || '') + '\n' + (error.stderr || ''))));
-        console.log(status);
-      }
-    } finally { clearTimeout(hard); stopDebugger(); }
-  }, 5000);
-  const cancel = () => { canceled = true; clearTimeout(timer); clearTimeout(hard); stopDebugger(); };
-  target.once('exit', cancel);
-  return () => { target.removeListener('exit', cancel); cancel(); };
-}
 const cases = [
   { args: [], safe: true },
   { args: ['-m', 'gpt-test'], safe: true },
@@ -127,7 +46,7 @@ const safeEnv = (home, nativeShell = false) => ({ SystemRoot: process.env.System
   PATH: powershellModules ? [path.dirname(home), path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'),
     path.dirname(process.execPath), path.dirname(powershellModules)].join(path.delimiter) : process.env.PATH || process.env.Path || '',
   PATHEXT: '.COM;.EXE;.BAT;.CMD',
-  ...(powershellModules ? { PSModulePath: powershellModules } : {}),
+  ...(powershellModules ? { PSModulePath: process.env.PSModulePath ?? powershellModules } : {}),
   ...(powershellModules ? { PSModuleAnalysisCachePath: path.join(home, 'ModuleAnalysisCache') } : {}),
   ...(powershellModules && nativeShell ? {} : { HOME: home }), USERPROFILE: nativeProfile || home, HOMEDRIVE: nativeDrive || 'C:',
   HOMEPATH: nativeProfile ? nativeProfile.slice(nativeDrive.length) : '\\Users\\fixture', CODEX_HOME: path.join(home, '.codex') });
@@ -135,36 +54,9 @@ const safeEnv = (home, nativeShell = false) => ({ SystemRoot: process.env.System
 test('PowerShell and the cmd agent shim classify complete argv and forward it unchanged to an offline executable',
   { skip: process.platform !== 'win32', timeout: 60000 * timeoutScale }, async t => {
     const { root, home } = fixture(t), exe = path.join(root, 'codex.exe');
-    const ciTrace = process.env.CI === 'true';
-    const phase = stage => ciTrace ? `[Console]::WriteLine('TRACE=${stage}')` : '';
-    const probeIntegration = ciTrace ? path.join(root, 'integration') : integration;
-    if (ciTrace) {
-      fs.mkdirSync(probeIntegration);
-      fs.copyFileSync(path.join(integration, 'refresh-path.ps1'), path.join(probeIntegration, 'refresh-path.ps1'));
-      let subject = fs.readFileSync(path.join(integration, 'bootstrap.ps1'), 'utf8');
-      const eol = subject.includes('\r\n') ? '\r\n' : '\n';
-      for (const [anchor, stages] of [
-        ["[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)", ['input-encoding-before']],
-        ["[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)", ['input-encoding-after', 'output-encoding-before']],
-        ["$OutputEncoding = [Console]::OutputEncoding", ['output-encoding-after', 'pipeline-encoding-before']],
-        [". (Join-Path $PSScriptRoot 'refresh-path.ps1')", ['pipeline-encoding-after', 'refresh-path-before']],
-        ["$global:AgentrixSession = Get-Content -LiteralPath $env:AGENTRIX_BOOTSTRAP -Raw -Encoding UTF8 | ConvertFrom-Json", ['refresh-path-after', 'session-json-before']],
-        ["$global:AgentrixEventSequence = 0", ['session-json-after']],
-        ["$global:AgentrixCodexCommand = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source", ['codex-discovery-before']],
-        ["$global:AgentrixCodexExecutable = $global:AgentrixCodexCommand", ['codex-discovery-after', 'codex-resolver-before']],
-        ["$global:AgentrixClaudeCommand = Get-Command claude -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source", ['codex-resolver-after', 'claude-discovery-before']],
-        ["# Windows PowerShell 5 strips embedded quotes when forwarding native arguments.", ['claude-discovery-after']],
-        ["if ($global:AgentrixAgentOnly) { return }", ['agent-only-before']],
-      ]) {
-        assert.equal(subject.split(eol).filter(line => line === anchor).length, 1, 'unique bootstrap trace anchor');
-        subject = subject.replace(anchor, [...stages.map(stage => phase('bootstrap-' + stage)), anchor].join(eol));
-      }
-      fs.writeFileSync(path.join(probeIntegration, 'bootstrap.ps1'), subject);
-    }
     const source = path.join(root, 'fixture.cs');
     fs.writeFileSync(source, `using System; using System.Linq; using System.Web.Script.Serialization;
 class Fixture { static int Main(string[] args) {
-${ciTrace ? 'Console.WriteLine("TRACE=executable-entry");' : ''}
 var expected = new JavaScriptSerializer().Deserialize<string[]>(Environment.GetEnvironmentVariable("QUOTA_EXPECTED"));
 bool ok = args.Length == expected.Length + 4 && args[0] == "-c" && args[2] == "-c"
  && args[3] == "tui.terminal_title=[\\\"session-id\\\"]" && args.Skip(4).SequenceEqual(expected);
@@ -181,23 +73,8 @@ Console.WriteLine(ok ? "FORWARD_OK" : "FORWARD_FAILED"); return ok ? 3 : 7;
       pipeName: server.name, nodePath: process.execPath, accountScopeHelper: scopeHelper }));
     const script = path.join(root, 'probe.ps1');
     fs.writeFileSync(script, `
-${phase('script-entry')}
 $env:AGENTRIX_AGENT_ONLY = '1'
-${phase('bootstrap-path-before')}
-$quotaBootstrapPath = (Join-Path $env:QUOTA_INTEGRATION 'bootstrap.ps1')
-${phase('bootstrap-path-after')}
-${phase('bootstrap-source-before')}
-. $quotaBootstrapPath
-${phase('bootstrap-agent-only-after')}
-${phase('bootstrap-return')}
-${ciTrace ? `
-$global:QuotaOriginalAccountLaunch = (Get-Item Function:Get-AgentrixAccountLaunch).ScriptBlock
-function global:Get-AgentrixAccountLaunch($arguments) {
-  ${phase('account-proof-before')}
-  & $global:QuotaOriginalAccountLaunch $arguments
-  ${phase('account-proof-after')}
-}
-` : ''}
+. (Join-Path $env:QUOTA_INTEGRATION 'bootstrap.ps1')
 $global:AgentrixCodexCommand = $env:QUOTA_EXE
 $global:AgentrixCodexExecutable = $env:QUOTA_EXE
 $global:AgentrixCodexPrefix = @()
@@ -208,19 +85,15 @@ function global:Send-AgentrixEvent {
 if ($env:QUOTA_CHANGE -eq 'profile') { $env:CODEX_PROFILE = 'fixture' }
 if ($env:QUOTA_CHANGE -eq 'home') { $env:CODEX_HOME = Join-Path ([IO.Path]::GetDirectoryName($env:CODEX_HOME)) 'other' }
 $caseArgs = ConvertFrom-Json $env:QUOTA_EXPECTED
-${phase('codex-before')}
 codex @caseArgs
-${phase('codex-after')}
 if ($global:LASTEXITCODE -ne 3) { exit 9 }
 `);
     for (const [i, item] of cases.entries()) {
-      const env = { ...safeEnv(home, true), AGENTRIX_BOOTSTRAP: bootstrap, QUOTA_INTEGRATION: probeIntegration,
+      const env = { ...safeEnv(home, true), AGENTRIX_BOOTSTRAP: bootstrap, QUOTA_INTEGRATION: integration,
         QUOTA_EXE: exe, QUOTA_EXPECTED: JSON.stringify(item.args), QUOTA_CHANGE: item.change || '' };
       env.AGENTRIX_ACCOUNT_BASELINE = JSON.stringify(accountEnvironment(env));
-      const pending = exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      const result = await exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
         ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script], { env, cwd: root, windowsHide: true, timeout: 7000 * timeoutScale, maxBuffer: 4096 });
-      const stopStack = scheduleCIStack(pending, i, root, script, env);
-      const result = await pending.finally(stopStack);
       assert.equal(result.stderr, '', `PowerShell case ${i} must be silent`);
       assert.ok(result.stdout.includes('FORWARD_OK'), `PowerShell forwarding case ${i}`);
       assert.ok(result.stdout.includes(`SCOPE=${item.safe ? 'model-only-v1' : 'unavailable'}`), `PowerShell proof case ${i}`);
