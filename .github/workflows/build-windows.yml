@@ -268,8 +268,13 @@ jobs:
         shell: bash
         run: npm ci --no-audit --no-fund || { sleep 10; npm ci --no-audit --no-fund; }
 
-      - name: Run unit and integration tests, including a real zsh terminal
-        run: npm test
+      - name: Run unit and integration tests, including Bash and a real zsh terminal
+        shell: bash
+        run: |
+          brew install bash
+          export AGENTRIX_TEST_BASH="$(brew --prefix bash)/bin/bash"
+          "$AGENTRIX_TEST_BASH" --version
+          npm test
 
       - name: Build the macOS app, DMG and zip
         run: npm run dist:mac

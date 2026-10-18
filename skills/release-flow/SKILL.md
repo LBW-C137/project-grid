@@ -81,3 +81,4 @@ description: Publish a new Agentrix version — bump, update notes, the full loc
    activating a drag and releasing through CDP at the destination without a final move; check the persisted order.
    Normal drag fixtures wait for stable cell geometry and the exact preview order before releasing, retaining the
    cancellation, terminal, click and keyboard assertions. A blind retry does not establish the cause of a failure.
+21. **Wrapper test infrastructure.** macOS unit probes explicitly select modern Bash with `AGENTRIX_TEST_BASH="$(brew --prefix bash)/bin/bash"`; product zsh stays unchanged. Wrapper subprocess and parent deadlines use the existing CI `timeoutScale` from `scripts/wait.mjs`, including compile and bounded event waits; retain every case and assertion.

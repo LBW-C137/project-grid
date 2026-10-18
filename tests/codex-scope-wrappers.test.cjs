@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const { timeoutScale } = require('../scripts/wait.mjs');
 const { accountEnvironment } = require('../integration/codex-account-scope.cjs');
 const { createEventServer } = require('../electron/events.cjs');
 const exec = promisify(execFile), integration = path.resolve(__dirname, '../integration');
@@ -32,7 +33,7 @@ const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '', PATH: proce
   HOME: home, USERPROFILE: home, HOMEDRIVE: 'C:', HOMEPATH: '\\Users\\fixture', CODEX_HOME: path.join(home, '.codex') });
 
 test('PowerShell and the cmd agent shim classify complete argv and forward it unchanged to an offline executable',
-  { skip: process.platform !== 'win32', timeout: 60000 }, async t => {
+  { skip: process.platform !== 'win32', timeout: 60000 * timeoutScale }, async t => {
     const { root, home } = fixture(t), exe = path.join(root, 'codex.exe');
     const source = path.join(root, 'fixture.cs');
     fs.writeFileSync(source, `using System; using System.Linq; using System.Web.Script.Serialization;
@@ -44,7 +45,7 @@ Console.WriteLine(ok ? "FORWARD_OK" : "FORWARD_FAILED"); return ok ? 3 : 7;
 }}`);
     const system = process.env.SystemRoot || 'C:\\Windows';
     await exec(path.join(system, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'),
-      ['/nologo', '/target:exe', '/reference:System.Web.Extensions.dll', `/out:${exe}`, source], { windowsHide: true, timeout: 10000 });
+      ['/nologo', '/target:exe', '/reference:System.Web.Extensions.dll', `/out:${exe}`, source], { windowsHide: true, timeout: 10000 * timeoutScale });
     const bootstrap = path.join(root, 'bootstrap.json');
     const events = [], server = await createEventServer(event => events.push(event));
     t.after(() => server.close());
@@ -72,7 +73,7 @@ if ($global:LASTEXITCODE -ne 3) { exit 9 }
         QUOTA_EXE: exe, QUOTA_EXPECTED: JSON.stringify(item.args), QUOTA_CHANGE: item.change || '' };
       env.AGENTRIX_ACCOUNT_BASELINE = JSON.stringify(accountEnvironment(env));
       const result = await exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
-        ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script], { env, cwd: root, windowsHide: true, timeout: 7000, maxBuffer: 4096 });
+        ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script], { env, cwd: root, windowsHide: true, timeout: 7000 * timeoutScale, maxBuffer: 4096 });
       assert.equal(result.stderr, '', `PowerShell case ${i} must be silent`);
       assert.ok(result.stdout.includes('FORWARD_OK'), `PowerShell forwarding case ${i}`);
       assert.ok(result.stdout.includes(`SCOPE=${item.safe ? 'model-only-v1' : 'unavailable'}`), `PowerShell proof case ${i}`);
@@ -85,21 +86,24 @@ if ($global:LASTEXITCODE -ne 3) { exit 9 }
     env.AGENTRIX_ACCOUNT_BASELINE = JSON.stringify(accountEnvironment(env));
     const result = await exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(integration, 'agent.ps1'), 'codex', '-m', 'gpt-test'],
-      { env, cwd: root, windowsHide: true, timeout: 7000, maxBuffer: 4096 }).catch(error => {
+      { env, cwd: root, windowsHide: true, timeout: 7000 * timeoutScale, maxBuffer: 4096 }).catch(error => {
       assert.equal(error.code, 3, 'offline fixture exit status passes through cmd shim'); return error;
     });
     assert.equal(result.stderr, '');
-    for (let attempt = 0; attempt < 20 && !events.some(event => event.type === 'codex-exited'); attempt++) await new Promise(resolve => setTimeout(resolve, 50));
+    for (let attempt = 0; attempt < 20 * timeoutScale && !events.some(event => event.type === 'codex-exited'); attempt++) await new Promise(resolve => setTimeout(resolve, 50));
     const started = events.find(event => event.type === 'codex-started');
     assert.equal(started?.accountLaunch, 'model-only-v1'); assert.equal(started.command, '-m');
     assert.equal(events.find(event => event.type === 'codex-exited')?.exitCode, 3, 'fixture returns 3 only when argv was forwarded intact');
     assert.equal(Object.hasOwn(started, 'args'), false); assert.equal(Object.hasOwn(started, 'prompt'), false);
   });
 
+// CI may select a supported Bash without changing the product's shell selection.
+const bash = process.env.AGENTRIX_TEST_BASH;
+if (bash) assert.ok(fs.existsSync(bash), 'AGENTRIX_TEST_BASH must name an installed Bash');
 for (const kind of ['bash', 'zsh']) {
-  const shell = process.platform === 'win32' ? kind === 'bash' && 'C:/Program Files/Git/bin/bash.exe' : `/bin/${kind}`;
+  const shell = (kind === 'bash' && bash) || (process.platform === 'win32' ? kind === 'bash' && 'C:/Program Files/Git/bin/bash.exe' : `/bin/${kind}`);
   test(`${kind} wrapper proves alias and user flags together, emits only scope, and preserves forwarding`,
-    { skip: !shell || !fs.existsSync(shell), timeout: 60000 }, async t => {
+    { skip: !shell || !fs.existsSync(shell), timeout: 60000 * timeoutScale }, async t => {
       const { root, home } = fixture(t), probe = path.join(root, 'probe.sh');
       // LF copy makes the same Bash source executable by Git Bash on a CRLF checkout.
       const copy = path.join(root, `integration.${kind}`);
@@ -126,7 +130,7 @@ codex "$@"
           QUOTA_PROGRAM: program, QUOTA_RECORDER: recorder, QUOTA_EXPECTED: JSON.stringify(item.args),
           QUOTA_CHANGE: item.change || '', QUOTA_ALIAS: item.alias || '' };
         const result = await exec(shell, kind === 'bash' ? ['--noprofile', '--norc', probe, ...item.args] : ['-f', probe, ...item.args],
-          { env, cwd: root, windowsHide: true, timeout: 7000, maxBuffer: 4096 });
+          { env, cwd: root, windowsHide: true, timeout: 7000 * timeoutScale, maxBuffer: 4096 });
         assert.equal(result.stderr, '', `${kind} case ${i} must be silent`);
         assert.ok(result.stdout.includes('FORWARD_OK'), `${kind} forwarding case ${i}`);
         assert.ok(result.stdout.includes(`SCOPE=${item.safe ? 'model-only-v1' : 'unavailable'}`), `${kind} proof case ${i}`);
