@@ -82,7 +82,11 @@ Console.WriteLine(ok ? "FORWARD_OK" : "FORWARD_FAILED"); return ok ? 3 : 7;
     fs.writeFileSync(script, `
 ${phase('script-entry')}
 $env:AGENTRIX_AGENT_ONLY = '1'
-. (Join-Path $env:QUOTA_INTEGRATION 'bootstrap.ps1')
+${phase('bootstrap-path-before')}
+$quotaBootstrapPath = (Join-Path $env:QUOTA_INTEGRATION 'bootstrap.ps1')
+${phase('bootstrap-path-after')}
+${phase('bootstrap-source-before')}
+. $quotaBootstrapPath
 ${phase('bootstrap-agent-only-after')}
 ${phase('bootstrap-return')}
 ${ciTrace ? `

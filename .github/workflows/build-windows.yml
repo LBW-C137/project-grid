@@ -66,6 +66,9 @@ jobs:
           node-version: '24'
           cache: npm
 
+      - name: Diagnose Windows wrapper before dependency installation (temporary)
+        run: node --test tests/codex-scope-wrappers.test.cjs
+
       - name: Validate release version
         id: version
         run: |
