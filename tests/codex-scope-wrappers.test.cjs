@@ -28,8 +28,12 @@ function fixture(t) {
   const home = path.join(root, 'home'); fs.mkdirSync(home);
   return { root, home };
 }
+const powershellModules = process.platform === 'win32' &&
+  path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/Modules');
+if (powershellModules) assert.ok(fs.statSync(powershellModules).isDirectory(), 'system Windows PowerShell modules directory must exist');
 const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '', PATH: process.env.PATH || process.env.Path || '',
   PATHEXT: '.COM;.EXE;.BAT;.CMD',
+  ...(powershellModules ? { PSModulePath: powershellModules } : {}),
   HOME: home, USERPROFILE: home, HOMEDRIVE: 'C:', HOMEPATH: '\\Users\\fixture', CODEX_HOME: path.join(home, '.codex') });
 
 test('PowerShell and the cmd agent shim classify complete argv and forward it unchanged to an offline executable',
