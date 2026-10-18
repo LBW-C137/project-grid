@@ -532,6 +532,9 @@ jobs:
 
           ## Changes in $RELEASE_VERSION
 
+          - Observed local approval changes expire stale Codex and Claude choices; remote approvals are confirmed in the terminal.
+          - Reading view shows model routing, context and usage above active tasks.
+          - Fresh installs and the canonical README use English; explicitly saved language preferences are preserved.
           - Reading view groups skills and commands under their agent turn, preserves expanded groups in long conversations, and uses official OpenAI and Claude marks. File-tree icons keep their updated style.
           - Slash commands show immediate feedback, confirm terminal input before submission, and offer terminal recovery for slow responses. Queued terminal messages remain visible.
           - The backend refreshes remaining reset credits for supported local Codex accounts. Task cards retain their processing status without the animated progress bar.
