@@ -10,6 +10,27 @@ const { accountEnvironment } = require('../integration/codex-account-scope.cjs')
 const { createEventServer } = require('../electron/events.cjs');
 const exec = promisify(execFile), integration = path.resolve(__dirname, '../integration');
 const scopeHelper = path.join(integration, 'codex-account-scope.cjs');
+function ciStackStatus(output) {
+  const text = String(output || '');
+  return {
+    commandsBegin: /^\s*CI_STACK_COMMANDS_BEGIN\s*$/m.test(text),
+    sosAttempted: /^\s*CI_STACK_SOS_ATTEMPTED\s*$/m.test(text),
+    iterationComplete: /^\s*CI_STACK_ITERATION_COMPLETE\s*$/m.test(text),
+    clrUnavailable: /(?:no export.*clr|unable to find module.*clr|(?:clr|runtime).*(?:not loaded|not found))/i.test(text),
+    sosLoadError: /(?:unable to load.*sos|(?:loadlibrary|load extension).*(?:failed|error)|extension.*sos.*(?:failed|not found))/i.test(text),
+    dacError: /(?:failed to load data access|(?:mscordacwks|\bdac\b).*(?:failed|error|not found|mismatch)|unable to load.*data access)/i.test(text),
+    notAttached: /(?:not attached|no (?:current )?(?:process|target)|no debuggee)/i.test(text),
+    noninvasiveUnsupported: /(?:non.?invasive.*(?:not support|unavailable)|(?:not support|unavailable).*non.?invasive)/i.test(text),
+    noManagedFrames: /(?:not a managed thread|no managed (?:code|frames|stack)|unable to walk.*managed stack)/i.test(text),
+    contextError: /(?:(?:failed|unable).*\bcontext\b|context.*(?:failed|unavailable|not found))/i.test(text),
+    readError: /(?:memory read error|(?:failed|unable|cannot|could not) to read|readprocessmemory.*failed|(?:failed|unable) to request)/i.test(text),
+    unknownCommand: /(?:unknown (?:command|extension)|not a recognized.*command|no export.*(?:clrstack|sos)|extension command.*not found)/i.test(text),
+    symbolsMissing: /(?:symbols?.*(?:not loaded|not found|could not|unable|wrong|mismatch)|(?:could not|unable).*load.*symbols?)/i.test(text),
+    errorText: /\b(?:error|failed|failure|unable|cannot|could not|not supported)\b/i.test(text),
+    outputLines: text.split(/\r?\n/).filter(line => line.trim()).length,
+    stackRows: text.split(/\r?\n/).filter(line => /^\s*[\da-f\x60]{8,17}\s+[\da-f\x60]{8,17}\s+/i.test(line)).length,
+  };
+}
 function ciStackFrames(output) {
   const frames = new Set();
   for (const line of String(output || '').split(/\r?\n/)) {
@@ -38,24 +59,32 @@ function scheduleCIStack(pending, index, root, script, env) {
       const cdb = sdk && path.join(sdk, 'Windows Kits/10/Debuggers/x64/cdb.exe');
       if (!cdb || !fs.existsSync(cdb)) { console.log('CI_STACK_UNAVAILABLE'); return; }
       if (!alive()) return;
-      const capture = exec(cdb, ['-pv', '-pd', '-p', String(pid), '-y', root, '-c', '.loadby sos clr;~*e !clrstack -n'],
+      const commandFile = path.join(root, 'ci-stack.cdb');
+      fs.writeFileSync(commandFile, '.echo CI_STACK_COMMANDS_BEGIN\n.loadby sos clr\n.echo CI_STACK_SOS_ATTEMPTED\n~*e !clrstack -n\n.echo CI_STACK_ITERATION_COMPLETE\nqd\n', 'utf8');
+      const capture = exec(cdb, ['-pv', '-pd', '-p', String(pid), '-y', root, '-cf', commandFile],
         { env: { ...env, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root, _NT_SYMBOL_PATH: root, _NT_ALT_SYMBOL_PATH: root, _NT_SOURCE_PATH: root, _NT_SYMCACHE_PATH: root }, cwd: root, windowsHide: true, timeout: 8000, maxBuffer: 1024 * 1024 });
       debuggerChild = capture.child;
       debuggerChild.stdin?.on('error', noop);
-      // ~e consumes its input line; quit/detach is the next debugger-only line.
-      debuggerChild.stdin.end('qd\n');
+      debuggerChild.stdin.end();
       hard = setTimeout(() => { if (!canceled) { canceled = true; console.log('CI_STACK_TIMEOUT'); stopDebugger(); } }, 8500);
-      const { stdout } = await capture;
+      const { stdout, stderr } = await capture;
       if (!canceled) {
+        console.log('CI_STACK_STATUS ' + JSON.stringify(ciStackStatus(stdout + '\n' + stderr)));
         const frames = ciStackFrames(stdout);
         console.log(frames.length ? `CI_STACK_CAPTURED count=${frames.length}` : 'CI_STACK_NO_FRAMES');
         for (const method of frames) console.log('CI_STACK_FRAME ' + method);
       }
     } catch (error) {
-      if (!canceled) console.log(`CI_STACK_FAILED code=${Number.isInteger(error.code) ? error.code : 'none'}`);
+      const status = error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'CI_STACK_LIMIT' : error.killed ? 'CI_STACK_TIMEOUT' : `CI_STACK_FAILED code=${Number.isInteger(error.code) ? error.code : 'none'}`;
+      if (!canceled) {
+        console.log('CI_STACK_STATUS ' + JSON.stringify(ciStackStatus((error.stdout || '') + '\n' + (error.stderr || ''))));
+        console.log(status);
+      }
     } finally { clearTimeout(hard); stopDebugger(); }
   }, 5000);
-  return () => { canceled = true; clearTimeout(timer); clearTimeout(hard); stopDebugger(); };
+  const cancel = () => { canceled = true; clearTimeout(timer); clearTimeout(hard); stopDebugger(); };
+  target.once('exit', cancel);
+  return () => { target.removeListener('exit', cancel); cancel(); };
 }
 const cases = [
   { args: [], safe: true },
