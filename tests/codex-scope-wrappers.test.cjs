@@ -35,9 +35,12 @@ const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '', PATH: proce
 test('PowerShell and the cmd agent shim classify complete argv and forward it unchanged to an offline executable',
   { skip: process.platform !== 'win32', timeout: 60000 * timeoutScale }, async t => {
     const { root, home } = fixture(t), exe = path.join(root, 'codex.exe');
+    const ciTrace = process.env.CI === 'true';
+    const phase = stage => ciTrace ? `[Console]::WriteLine('TRACE=${stage}')` : '';
     const source = path.join(root, 'fixture.cs');
     fs.writeFileSync(source, `using System; using System.Linq; using System.Web.Script.Serialization;
 class Fixture { static int Main(string[] args) {
+${ciTrace ? 'Console.WriteLine("TRACE=executable-entry");' : ''}
 var expected = new JavaScriptSerializer().Deserialize<string[]>(Environment.GetEnvironmentVariable("QUOTA_EXPECTED"));
 bool ok = args.Length == expected.Length + 4 && args[0] == "-c" && args[2] == "-c"
  && args[3] == "tui.terminal_title=[\\\"session-id\\\"]" && args.Skip(4).SequenceEqual(expected);
@@ -53,8 +56,18 @@ Console.WriteLine(ok ? "FORWARD_OK" : "FORWARD_FAILED"); return ok ? 3 : 7;
       pipeName: server.name, nodePath: process.execPath, accountScopeHelper: scopeHelper }));
     const script = path.join(root, 'probe.ps1');
     fs.writeFileSync(script, `
+${phase('script-entry')}
 $env:AGENTRIX_AGENT_ONLY = '1'
 . (Join-Path $env:QUOTA_INTEGRATION 'bootstrap.ps1')
+${phase('bootstrap-return')}
+${ciTrace ? `
+$global:QuotaOriginalAccountLaunch = (Get-Item Function:Get-AgentrixAccountLaunch).ScriptBlock
+function global:Get-AgentrixAccountLaunch($arguments) {
+  ${phase('account-proof-before')}
+  & $global:QuotaOriginalAccountLaunch $arguments
+  ${phase('account-proof-after')}
+}
+` : ''}
 $global:AgentrixCodexCommand = $env:QUOTA_EXE
 $global:AgentrixCodexExecutable = $env:QUOTA_EXE
 $global:AgentrixCodexPrefix = @()
@@ -65,7 +78,9 @@ function global:Send-AgentrixEvent {
 if ($env:QUOTA_CHANGE -eq 'profile') { $env:CODEX_PROFILE = 'fixture' }
 if ($env:QUOTA_CHANGE -eq 'home') { $env:CODEX_HOME = Join-Path $env:HOME 'other' }
 $caseArgs = ConvertFrom-Json $env:QUOTA_EXPECTED
+${phase('codex-before')}
 codex @caseArgs
+${phase('codex-after')}
 if ($global:LASTEXITCODE -ne 3) { exit 9 }
 `);
     for (const [i, item] of cases.entries()) {
