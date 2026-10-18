@@ -31,7 +31,9 @@ function fixture(t) {
 const powershellModules = process.platform === 'win32' &&
   path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/Modules');
 if (powershellModules) assert.ok(fs.statSync(powershellModules).isDirectory(), 'system Windows PowerShell modules directory must exist');
-const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '', PATH: process.env.PATH || process.env.Path || '',
+const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '',
+  PATH: powershellModules ? [path.dirname(home), path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'),
+    path.dirname(process.execPath), path.dirname(powershellModules)].join(path.delimiter) : process.env.PATH || process.env.Path || '',
   PATHEXT: '.COM;.EXE;.BAT;.CMD',
   ...(powershellModules ? { PSModulePath: powershellModules } : {}),
   ...(powershellModules ? { PSModuleAnalysisCachePath: path.join(home, 'ModuleAnalysisCache') } : {}),
@@ -78,6 +80,7 @@ Console.WriteLine(ok ? "FORWARD_OK" : "FORWARD_FAILED"); return ok ? 3 : 7;
     const system = process.env.SystemRoot || 'C:\\Windows';
     await exec(path.join(system, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'),
       ['/nologo', '/target:exe', '/reference:System.Web.Extensions.dll', `/out:${exe}`, source], { windowsHide: true, timeout: 10000 * timeoutScale });
+    fs.copyFileSync(exe, path.join(root, 'claude.exe'));
     const bootstrap = path.join(root, 'bootstrap.json');
     const events = [], server = await createEventServer(event => events.push(event));
     t.after(() => server.close());
