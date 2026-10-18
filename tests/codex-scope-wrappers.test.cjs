@@ -16,6 +16,11 @@ function ciStackStatus(output) {
     commandsBegin: /^\s*CI_STACK_COMMANDS_BEGIN\s*$/m.test(text),
     sosAttempted: /^\s*CI_STACK_SOS_ATTEMPTED\s*$/m.test(text),
     iterationComplete: /^\s*CI_STACK_ITERATION_COMPLETE\s*$/m.test(text),
+    usageText: /^\s*(?:usage\s*:|(?:cdb|ntsd)\s+\[)/im.test(text),
+    helpText: /(?:for (?:command.line )?help|command.line (?:help|options)|^\s*[-/]\?\s+.*(?:help|usage))/im.test(text),
+    bannerText: /^\s*Microsoft\s+\(R\)\s+Windows Debugger\b/im.test(text),
+    attachText: /(?:non.?invasive (?:debugging|attach)|attach(?:ed|ing) to (?:process|target))/i.test(text),
+    eofText: /(?:\bend of (?:file|input)\b|\b(?:stdin|input).*\b(?:eof|closed)\b|\bEOF\b)/i.test(text),
     clrUnavailable: /(?:no export.*clr|unable to find module.*clr|(?:clr|runtime).*(?:not loaded|not found))/i.test(text),
     sosLoadError: /(?:unable to load.*sos|(?:loadlibrary|load extension).*(?:failed|error)|extension.*sos.*(?:failed|not found))/i.test(text),
     dacError: /(?:failed to load data access|(?:mscordacwks|\bdac\b).*(?:failed|error|not found|mismatch)|unable to load.*data access)/i.test(text),
@@ -61,11 +66,11 @@ function scheduleCIStack(pending, index, root, script, env) {
       if (!alive()) return;
       const commandFile = path.join(root, 'ci-stack.cdb');
       fs.writeFileSync(commandFile, '.echo CI_STACK_COMMANDS_BEGIN\n.loadby sos clr\n.echo CI_STACK_SOS_ATTEMPTED\n~*e !clrstack -n\n.echo CI_STACK_ITERATION_COMPLETE\nqd\n', 'utf8');
-      const capture = exec(cdb, ['-pv', '-pd', '-p', String(pid), '-y', root, '-cf', commandFile],
+      // Options precede the terminal target selector; keep stdin open through command-file qd.
+      const capture = exec(cdb, ['-pv', '-pd', '-y', root, '-cf', commandFile, '-p', String(pid)],
         { env: { ...env, APPDATA: root, LOCALAPPDATA: root, TEMP: root, TMP: root, _NT_SYMBOL_PATH: root, _NT_ALT_SYMBOL_PATH: root, _NT_SOURCE_PATH: root, _NT_SYMCACHE_PATH: root }, cwd: root, windowsHide: true, timeout: 8000, maxBuffer: 1024 * 1024 });
       debuggerChild = capture.child;
       debuggerChild.stdin?.on('error', noop);
-      debuggerChild.stdin.end();
       hard = setTimeout(() => { if (!canceled) { canceled = true; console.log('CI_STACK_TIMEOUT'); stopDebugger(); } }, 8500);
       const { stdout, stderr } = await capture;
       if (!canceled) {
