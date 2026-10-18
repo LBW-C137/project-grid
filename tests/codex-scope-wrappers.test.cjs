@@ -33,7 +33,16 @@ const powershellModules = process.platform === 'win32' &&
 if (powershellModules) assert.ok(fs.statSync(powershellModules).isDirectory(), 'system Windows PowerShell modules directory must exist');
 const nativeProfile = process.platform === 'win32' && path.resolve(process.env.USERPROFILE || os.homedir());
 const nativeDrive = nativeProfile && path.parse(nativeProfile).root.replace(/[\\/]+$/, '');
-const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '',
+// Windows process.env resolves these explicit OS names case-insensitively.
+const nativeWindowsOS = powershellModules ? Object.fromEntries([
+  'SystemRoot', 'SystemDrive', 'windir', 'ComSpec', 'OS',
+  'ProgramData', 'ALLUSERSPROFILE', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432',
+  'CommonProgramFiles', 'CommonProgramFiles(x86)', 'CommonProgramW6432', 'PUBLIC',
+  'USERNAME', 'USERDOMAIN', 'USERDOMAIN_ROAMINGPROFILE', 'COMPUTERNAME', 'LOGONSERVER',
+  'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL', 'PROCESSOR_REVISION',
+  'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP',
+].flatMap(key => process.env[key] === undefined ? [] : [[key, process.env[key]]])) : {};
+const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '', ...nativeWindowsOS,
   PATH: powershellModules ? [path.dirname(home), path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'),
     path.dirname(process.execPath), path.dirname(powershellModules)].join(path.delimiter) : process.env.PATH || process.env.Path || '',
   PATHEXT: '.COM;.EXE;.BAT;.CMD',

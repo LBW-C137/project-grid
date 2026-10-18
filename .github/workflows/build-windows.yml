@@ -67,7 +67,7 @@ jobs:
           cache: npm
 
       - name: Check normal Windows PowerShell filesystem startup (temporary)
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         timeout-minutes: 1
         run: Join-Path $env:SystemRoot 'System32' | Out-Null
 
