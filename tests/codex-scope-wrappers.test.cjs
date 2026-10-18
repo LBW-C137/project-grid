@@ -37,6 +37,30 @@ test('PowerShell and the cmd agent shim classify complete argv and forward it un
     const { root, home } = fixture(t), exe = path.join(root, 'codex.exe');
     const ciTrace = process.env.CI === 'true';
     const phase = stage => ciTrace ? `[Console]::WriteLine('TRACE=${stage}')` : '';
+    const probeIntegration = ciTrace ? path.join(root, 'integration') : integration;
+    if (ciTrace) {
+      fs.mkdirSync(probeIntegration);
+      fs.copyFileSync(path.join(integration, 'refresh-path.ps1'), path.join(probeIntegration, 'refresh-path.ps1'));
+      let subject = fs.readFileSync(path.join(integration, 'bootstrap.ps1'), 'utf8');
+      const eol = subject.includes('\r\n') ? '\r\n' : '\n';
+      for (const [anchor, stages] of [
+        ["[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)", ['input-encoding-before']],
+        ["[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)", ['input-encoding-after', 'output-encoding-before']],
+        ["$OutputEncoding = [Console]::OutputEncoding", ['output-encoding-after', 'pipeline-encoding-before']],
+        [". (Join-Path $PSScriptRoot 'refresh-path.ps1')", ['pipeline-encoding-after', 'refresh-path-before']],
+        ["$global:AgentrixSession = Get-Content -LiteralPath $env:AGENTRIX_BOOTSTRAP -Raw -Encoding UTF8 | ConvertFrom-Json", ['refresh-path-after', 'session-json-before']],
+        ["$global:AgentrixEventSequence = 0", ['session-json-after']],
+        ["$global:AgentrixCodexCommand = Get-Command codex -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source", ['codex-discovery-before']],
+        ["$global:AgentrixCodexExecutable = $global:AgentrixCodexCommand", ['codex-discovery-after', 'codex-resolver-before']],
+        ["$global:AgentrixClaudeCommand = Get-Command claude -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source", ['codex-resolver-after', 'claude-discovery-before']],
+        ["# Windows PowerShell 5 strips embedded quotes when forwarding native arguments.", ['claude-discovery-after']],
+        ["if ($global:AgentrixAgentOnly) { return }", ['agent-only-before']],
+      ]) {
+        assert.equal(subject.split(eol).filter(line => line === anchor).length, 1, 'unique bootstrap trace anchor');
+        subject = subject.replace(anchor, [...stages.map(stage => phase('bootstrap-' + stage)), anchor].join(eol));
+      }
+      fs.writeFileSync(path.join(probeIntegration, 'bootstrap.ps1'), subject);
+    }
     const source = path.join(root, 'fixture.cs');
     fs.writeFileSync(source, `using System; using System.Linq; using System.Web.Script.Serialization;
 class Fixture { static int Main(string[] args) {
@@ -59,6 +83,7 @@ Console.WriteLine(ok ? "FORWARD_OK" : "FORWARD_FAILED"); return ok ? 3 : 7;
 ${phase('script-entry')}
 $env:AGENTRIX_AGENT_ONLY = '1'
 . (Join-Path $env:QUOTA_INTEGRATION 'bootstrap.ps1')
+${phase('bootstrap-agent-only-after')}
 ${phase('bootstrap-return')}
 ${ciTrace ? `
 $global:QuotaOriginalAccountLaunch = (Get-Item Function:Get-AgentrixAccountLaunch).ScriptBlock
@@ -84,7 +109,7 @@ ${phase('codex-after')}
 if ($global:LASTEXITCODE -ne 3) { exit 9 }
 `);
     for (const [i, item] of cases.entries()) {
-      const env = { ...safeEnv(home), AGENTRIX_BOOTSTRAP: bootstrap, QUOTA_INTEGRATION: integration,
+      const env = { ...safeEnv(home), AGENTRIX_BOOTSTRAP: bootstrap, QUOTA_INTEGRATION: probeIntegration,
         QUOTA_EXE: exe, QUOTA_EXPECTED: JSON.stringify(item.args), QUOTA_CHANGE: item.change || '' };
       env.AGENTRIX_ACCOUNT_BASELINE = JSON.stringify(accountEnvironment(env));
       const result = await exec(path.join(system, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
