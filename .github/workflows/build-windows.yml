@@ -66,6 +66,11 @@ jobs:
           node-version: '24'
           cache: npm
 
+      - name: Check normal Windows PowerShell filesystem startup (temporary)
+        shell: powershell
+        timeout-minutes: 1
+        run: Join-Path $env:SystemRoot 'System32' | Out-Null
+
       - name: Diagnose Windows wrapper before dependency installation (temporary)
         run: node --test tests/codex-scope-wrappers.test.cjs
 

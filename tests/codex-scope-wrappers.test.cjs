@@ -31,13 +31,16 @@ function fixture(t) {
 const powershellModules = process.platform === 'win32' &&
   path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/Modules');
 if (powershellModules) assert.ok(fs.statSync(powershellModules).isDirectory(), 'system Windows PowerShell modules directory must exist');
+const nativeProfile = process.platform === 'win32' && path.resolve(process.env.USERPROFILE || os.homedir());
+const nativeDrive = nativeProfile && path.parse(nativeProfile).root.replace(/[\\/]+$/, '');
 const safeEnv = home => ({ SystemRoot: process.env.SystemRoot || '',
   PATH: powershellModules ? [path.dirname(home), path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'),
     path.dirname(process.execPath), path.dirname(powershellModules)].join(path.delimiter) : process.env.PATH || process.env.Path || '',
   PATHEXT: '.COM;.EXE;.BAT;.CMD',
   ...(powershellModules ? { PSModulePath: powershellModules } : {}),
   ...(powershellModules ? { PSModuleAnalysisCachePath: path.join(home, 'ModuleAnalysisCache') } : {}),
-  HOME: home, USERPROFILE: home, HOMEDRIVE: 'C:', HOMEPATH: '\\Users\\fixture', CODEX_HOME: path.join(home, '.codex') });
+  HOME: home, USERPROFILE: nativeProfile || home, HOMEDRIVE: nativeDrive || 'C:',
+  HOMEPATH: nativeProfile ? nativeProfile.slice(nativeDrive.length) : '\\Users\\fixture', CODEX_HOME: path.join(home, '.codex') });
 
 test('PowerShell and the cmd agent shim classify complete argv and forward it unchanged to an offline executable',
   { skip: process.platform !== 'win32', timeout: 60000 * timeoutScale }, async t => {
