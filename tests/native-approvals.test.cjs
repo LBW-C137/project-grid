@@ -9,6 +9,7 @@ const { NativeApprovals, MAX_BYTES } = require('../electron/features/terminal/na
 const { JsonLines, CodexProtocol, ClaudeProtocol, writeJson } = require('../electron/features/terminal/native-protocol.cjs');
 const { createNativeSession, resolveCli } = require('../electron/features/terminal/native-session.cjs');
 const { registerNativeIpc } = require('../electron/features/terminal/native-ipc.cjs');
+const { terminalLocale, shellEnvironment, zshEnvironment } = require('../electron/zsh-terminal.cjs');
 
 const binding = { provider: 'codex', projectId: 'project', terminalId: 'terminal', sessionId: 'generation-A' };
 const request = (id, overrides = {}) => ({ id, method: 'item/commandExecution/requestApproval', params: { threadId: 'thread', turnId: 'turn', itemId: `item-${id}`, command: 'same text', ...overrides } });
@@ -301,16 +302,20 @@ test('production startup/state/preload/UI path is connected; legacy permission e
   assert.throws(() => resolveCli('codex', { PATH: '' }));
 });
 
-test('actual main startTerminal binds native mode and generation without starting a shell', () => {
+for (const [platform, shellKind] of [['win32', 'powershell'], ['linux', 'bash'], ['darwin', 'zsh']]) test(`actual main startTerminal binds native mode and generation without starting a shell on ${platform}`, () => {
   const source = fs.readFileSync(path.join(__dirname, '../electron/main.cjs'), 'utf8'), sessions = new Map();
   const project = { id: 'project', path: process.cwd(), kind: 'local' }, writes = []; let options;
+  const languages = ['zh-Hans-CN', 'en-US'], localeCalls = [], integrations = []; let languageCalls = 0;
+  const environment = (kind, helper) => (env, integration) => { integrations.push({ kind, integration }); return helper(env, integration); };
   const terminal = { registry: { close() {} }, onData() {}, onExit() {}, write: data => writes.push(data) };
   const noOp = () => {}, dummy = class { reset() {} dispose() {} output() {} };
   let uuid = 0;
-  const context = vm.createContext({ sessions, findProject: () => project, disposeTerminal: noOp, process: { platform: process.platform, env: {} }, fs: { existsSync: () => true }, path,
-    randomUUID: () => `native-generation-${++uuid}`, restorePlans: new Map(), store: { findTerminal: () => ({ record: {} }), setRestore: noOp }, localShell: () => ({ kind: 'bash' }), runtimeDir: 'unused', eventServer: { address: 'unused' },
+  const context = vm.createContext({ sessions, findProject: () => project, disposeTerminal: noOp, process: { platform, env: {}, execPath: process.execPath }, fs: { existsSync: () => true }, path,
+    app: { getPreferredSystemLanguages() { languageCalls++; return languages; } },
+    terminalLocale(value) { localeCalls.push(value); return terminalLocale(value, name => name === 'zh_CN.UTF-8'); },
+    randomUUID: () => `native-generation-${++uuid}`, restorePlans: new Map(), store: { findTerminal: () => ({ record: {} }), setRestore: noOp }, localShell: () => ({ kind: shellKind }), runtimeDir: 'unused', eventServer: { address: 'unused' },
     createTerminalEnvironment: () => ({}), withoutAppImage: value => value, accountEnvironment: () => ({}), startupNote: () => 'note', READING_NOTE: 'note', handoffFile: () => 'unused', writeHandoff: async () => {}, memoryDir: () => 'unused',
-    shellEnvironment: value => value, zshEnvironment: value => value, zshStartup: 'unused', integrationDir: 'unused', pty: { spawn: () => assert.fail('native launch started a shell') },
+    shellEnvironment: environment('bash', shellEnvironment), zshEnvironment: environment('zsh', zshEnvironment), zshStartup: 'unused', integrationDir: 'unused', pty: { spawn: () => assert.fail('native launch started a shell') },
     createNativeSession: value => { options = value; return terminal; }, scheduleState: noOp, nativeSessionEvent: noOp,
     TerminalTitleTracker: dummy, SubmissionTracker: dummy, ApprovalGuard: require('../electron/features/terminal/approval-guard.cjs').ApprovalGuard,
     ActionLog: dummy, InputGate: class { constructor(write) { this.input = write; } }, PromptQueue: dummy, ConversationLog: dummy,
@@ -319,9 +324,26 @@ test('actual main startTerminal binds native mode and generation without startin
   });
   vm.runInContext(source.slice(source.indexOf('function startTerminal('), source.indexOf('function disposeTerminal(')), context);
   context.startTerminal('terminal', 'codex-native'); const s = sessions.get('terminal');
+  assert.equal(options.mode, 'codex-native'); assert.equal(options.binding.provider, 'codex');
   assert.equal(options.binding.sessionId, s.sessionId); assert.equal(options.binding.projectId, 'project'); assert.equal(options.binding.terminalId, 'terminal');
   assert.equal(s.native, terminal); assert.equal(s.codexActive, true); assert.equal(s.agent, 'codex'); s.gate.input('manual TUI input'); assert.deepEqual(writes, ['manual TUI input']);
   context.startTerminal('sdk-terminal', 'claude-sdk'); const sdk = sessions.get('sdk-terminal'); assert.equal(options.binding.provider, 'claude'); assert.equal(options.binding.sessionId, sdk.sessionId); assert.equal(sdk.agent, 'claude');
+  assert.equal(options.mode, 'claude-sdk'); assert.equal(options.binding.projectId, 'project'); assert.equal(options.binding.terminalId, 'sdk-terminal');
+  assert.equal(sdk.native, terminal); assert.equal(sdk.codexActive, true); assert.notEqual(s.sessionId, sdk.sessionId);
+  assert.equal(s.shellKind, shellKind); assert.equal(sdk.shellKind, shellKind); assert.equal(s.bootstrapFile, null); assert.equal(sdk.bootstrapFile, null);
+  assert.equal(languageCalls, platform === 'darwin' ? 2 : 0);
+  assert.deepEqual(localeCalls, platform === 'darwin' ? [languages, languages] : []);
+  assert.equal(integrations.length, platform === 'win32' ? 0 : 2);
+  for (const [index, { kind, integration }] of integrations.entries()) {
+    const session = index === 0 ? s : sdk;
+    assert.equal(kind, shellKind); assert.equal(integration.locale, platform === 'darwin' ? 'zh_CN.UTF-8' : 'C.UTF-8');
+    assert.equal(integration.projectId, session.terminalId); assert.equal(integration.sessionKey, session.sessionKey);
+    assert.equal(integration.node, process.execPath); assert.equal(integration.startDir, project.path);
+    assert.equal(integration.folder, 'unused'); assert.equal(integration.socket, 'unused'); assert.equal(integration.helper, path.join('unused', 'agent-event.cjs'));
+    assert.equal(session.usageEnv.LANG, integration.locale);
+    assert.equal(session.usageEnv.ZDOTDIR, platform === 'darwin' ? 'unused' : undefined);
+  }
+  if (platform === 'win32') assert.equal(options.env.LANG, undefined);
 });
 
 function mainExitFixture(terminal, native = true) {

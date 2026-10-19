@@ -1406,5 +1406,10 @@
   "新安装默认使用英语，可在设置中切换中文。": "New installs default to English; Chinese remains available in Settings.",
   "Agentrix 是桌面应用": "Agentrix is a desktop app",
   "请在项目目录运行 npm start，或双击打包后的应用。": "Run npm start in the project directory, or open the packaged app.",
-  "Agentrix 无法启动": "Agentrix could not start"
+  "Agentrix 无法启动": "Agentrix could not start",
+  "可在启动助手时主动选择原生审批，普通会话和 SSH 会话仍在终端确认。": "Choose native approvals when launching an assistant; ordinary and SSH sessions still require confirmation in the terminal.",
+  "Codex 保留交互终端界面，原生审批使用实验性远程连接。": "Codex keeps its interactive terminal interface; native approvals use an experimental remote connection.",
+  "Claude 托管会话支持对话和工具审批，暂不支持交互终端命令、历史会话恢复或终端输入。": "Claude managed sessions support conversations and tool approvals; interactive terminal commands, session resume and terminal input are unavailable.",
+  "审批卡片优先展示命令和操作详情，操作失败会提示原因。": "Approval cards show the command first, followed by operation details, and explain failures.",
+  "修复审批内容变化后又恢复相同时，旧卡片可能误确认新请求的问题。": "Fixed stale approval cards potentially confirming a new request when the displayed content changed and then returned to the same text."
 }
