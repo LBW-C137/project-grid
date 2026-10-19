@@ -47,14 +47,20 @@ An approval only shows after the model asks for a tool. Never use the real sign-
 
 ## Lessons
 
-- Permission text identifies a screen's content, never a unique approval request. Test Claude Code and Codex with a
-  mounted old card, A → B → identical A, including B hidden inside one transport batch. Observe parsed transitions
-  before the UI throttle and invalidate captured actions on raw output, input and lifecycle changes. Bind each action
-  to its terminal session and observation epoch, and check every delayed key again at the actual local PTY write.
-  Never queue approval keys behind InputGate, refresh a captured ticket to the newest screen, or call a local epoch a
-  native CLI request ID. SSH needs a guarded remote write; until then route card approvals to the terminal. Keep the
-  limits explicit in both READMEs. Verify `node --test tests/approval-aba.test.cjs` plus an isolated native probe that
-  asserts zero stale Enter writes and exactly one newly reviewed confirmation for both agents.
+- Current Electron permission cards are informative and terminal-only for local and SSH sessions: approval,
+  rejection, cancellation and navigation must happen manually in the source terminal. The backend independently
+  rejects all permission-card sends. Opening the source terminal must not send keys.
+
+- Permission text identifies screen content, never a unique approval request. Epochs and observation IDs are not
+  native CLI request IDs. A future structured adapter must atomically respond to the exact native pending
+  session/turn/request identity; local observation hashes and notifications are insufficient. Never restore an
+  epoch-only card approval route.
+
+- For Claude Code and Codex, the ABA regression covers mounted old cards and newly reviewed copies after
+  A → B → identical A, including B hidden inside one transport batch: expect ZERO card PTY keys, including
+  reject/cancel/navigation, while source-terminal navigation and explicit manual input still work. Native
+  experimental guard tests may check observed epoch semantics; they do not show that Electron card approvals
+  are enabled or safe.
 
 - An offline CLI fixture must retain the command's real output or error above its next empty input. Clearing it before
   the screen publisher observes it erases completion evidence. Test the final coalesced frame and keep empty idle alone

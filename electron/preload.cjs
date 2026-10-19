@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('agentrix', {
   restartTerminal: id => ipcRenderer.invoke('terminal:restart', id),
   attachTerminal: id => ipcRenderer.invoke('terminal:attach', id),
   writeTerminal: (id, data) => ipcRenderer.send('terminal:write', id, data),
+  // Compatibility endpoint for retained cards; main always returns terminal-only and never writes keys.
   writeApproval: (id, key, stamp, actionId) => ipcRenderer.invoke('terminal:approval', id, key, stamp, actionId),
   answerTerminal: (id, data) => ipcRenderer.send('terminal:write', id, data, true),
   resizeTerminal: (id, cols, rows) => ipcRenderer.send('terminal:resize', id, cols, rows),

@@ -10,8 +10,8 @@ import { reviewHistory } from './review-history';
 
 // Something one of the agents waits on you for, across every project: a permission to grant, a question to answer, a
 // choice to make (a model, a folder to trust), a sign-in, or a notice its CLI raised that only its terminal can take.
-// Permission decisions bind both to an observed screen incarnation and a backend epoch. Text equality alone
-// cannot authorize an action: a byte-identical later request must invalidate the earlier captured selection.
+// Permission screen instances and epochs track observations, never native request identity. Their cards only
+// open the source terminal; no screen-derived permission answer can authorize a PTY write.
 export type DecisionKind = 'approval' | 'question' | 'choice' | 'signin' | 'attention' | 'review';
 export type Decision = {
   id: string; kind: DecisionKind; projectId: string; projectName: string; terminalId: string; sessionId: string | null; terminalTitle: string; multipleTerminals: boolean;

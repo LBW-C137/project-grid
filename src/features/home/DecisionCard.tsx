@@ -5,10 +5,9 @@ import { snooze } from './decisions';
 import { parseAgentScreen } from '../agents/agent-screen';
 import { readScreen } from '../terminal/terminal-screen';
 import { choiceIdentity, selectedChoiceIndex, writeChoiceKeys } from '../reading/choice-keys';
-import { writeApprovalAction } from '../reading/approval-action';
-import type { ScreenChoice } from '../agents/agent-screen-types';
+import { terminalApprovalCopy } from '../reading/approval-action';
 import { ReadingQuestion } from '../reading/ReadingQuestion';
-import { t } from '../../shared/i18n';
+import { currentLanguage, t } from '../../shared/i18n';
 import { ReviewCard } from './ReviewCard';
 
 const KINDS: Record<DecisionKind, { label: string; Icon: typeof ShieldCheck }> = {
@@ -50,48 +49,45 @@ export function trustedFolder(decision: Decision) {
   return decision.context.map(line => line.trim()).find(line => /^([A-Za-z]:[\\/]|\/|~)/.test(line));
 }
 
-// One decision in full: what is asked, where from, what the CLI shows about it, and the answers. Picking an answer only
-// selects it; the button under them sends it, and only while the same choice is still on the agent's screen.
+// Permission cards display the CLI's request and open its terminal. Other choices retain their confirm action.
 export function DecisionCard({ decision, now, onOpen, onDone, onError }: {
   decision: Decision; now: number; onOpen: (decision: Decision) => void; onDone: (message: string) => void; onError: (message: string) => void;
 }) {
   const [picked, setPicked] = useState<number | null>(null), [state, setState] = useState<'idle' | 'sending' | 'expired'>('idle'), [later, setLater] = useState(false);
   const alive = useRef(true);
-  const [pickedFor, setPickedFor] = useState<ScreenChoice | null>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => { setPicked(null); setPickedFor(null); setState('idle'); setLater(false); }, [decision.id, decision.choice?.approval?.stamp?.sessionId, decision.choice?.approval?.stamp?.revision]);
+  useEffect(() => { setPicked(null); setState('idle'); setLater(false); }, [decision.id, decision.choice?.approval?.stamp?.sessionId, decision.choice?.approval?.stamp?.revision]);
   const { label, Icon } = KINDS[decision.kind];
   if (decision.kind === 'review') return <ReviewCard decision={decision} now={now} kind={<span className="decision-kind"><Icon size={15} weight="fill" />{t(label)}</span>} onOpen={onOpen} onDone={onDone} onError={onError} />;
   const options = decision.choice?.options ?? [];
+  const terminalOnly = decision.kind === 'approval' || decision.choice?.kind === 'permission', copy = terminalApprovalCopy(currentLanguage());
   const send = async () => {
+    if (terminalOnly) return;
     if (picked === null || state === 'sending') return;
     // The answer goes only to the choice it was picked for: read the screen again first.
     const rows = readScreen(decision.terminalId)?.rows;
     const current = rows ? parseAgentScreen(decision.agent, rows).choice : null;
-    if (!current || choiceIdentity(current) !== decision.identity) { setState('expired'); return; }
+    if (!current || current.kind === 'permission' || choiceIdentity(current) !== decision.identity) { setState('expired'); return; }
     setState('sending');
     try {
-      if (decision.kind === 'approval') {
-        if (!pickedFor) { setState('expired'); return; }
-        await writeApprovalAction(decision.terminalId, decision.agent, pickedFor, picked, () => alive.current);
-      } else await writeChoiceKeys(selectedChoiceIndex(current), picked, key => window.agentrix.writeTerminal(decision.terminalId, key), () => alive.current);
+      await writeChoiceKeys(selectedChoiceIndex(current), picked, key => window.agentrix.writeTerminal(decision.terminalId, key), () => alive.current);
       onDone(t('已回答「{project}」：{answer}', { project: decision.projectName, answer: options[picked]?.label ?? '' }));
     } catch (error) { if (alive.current) { setState('idle'); onError(error instanceof Error ? t(error.message) : String(error)); } }
   };
   const putOff = (minutes: number) => { snooze(decision.id, Date.now() + minutes * 60000); setLater(false); onDone(t('已暂缓，{time} 后再提醒；执行仍在等你。', { time: minutes < 60 ? t('{count} 分钟', { count: minutes }) : t('{count} 小时', { count: minutes / 60 }) })); };
-  return <article className={`decision-card is-${decision.kind}`} aria-label={decisionTitle(decision)}>
+  return <article className={`decision-card is-${decision.kind}`} data-approval-mode={terminalOnly ? 'terminal-only' : undefined} aria-label={decisionTitle(decision)}>
     <header className="decision-card-head">
       <span className="decision-kind"><Icon size={15} weight="fill" />{t(label)}</span>
       <span className="decision-source">{decision.projectName}{decision.multipleTerminals ? ` · ${decision.terminalTitle}` : ''} · {AGENTS[decision.agent]} · {waited(decision.since, now)}</span>
     </header>
     <h2 className="decision-title">{decisionTitle(decision)}</h2>
-    {decision.kind === 'approval' && <p className="decision-why">{t('这一步在等你批准；在你回答之前，它不会继续。')}</p>}
+    {terminalOnly && <p className="decision-why" role="status">{copy.message}</p>}
     {decision.context.length > 0 && decision.kind !== 'question' && <pre className="decision-evidence">{decision.context.join('\n')}</pre>}
     {decision.kind === 'question' && decision.choice
       ? <div className="decision-question"><ReadingQuestion key={decision.id} choice={decision.choice} terminalId={decision.terminalId} onError={onError} /></div>
       : options.length > 0 && <div className="decision-options" role="radiogroup" aria-label={decisionTitle(decision)}>
         {options.map((option, index) => <label key={option.number} className={`decision-option ${picked === index ? 'is-picked' : ''}`}>
-          <input type="radio" name={`decision-${decision.id}`} checked={picked === index} disabled={state === 'sending'} onChange={() => { setPickedFor(decision.choice); setPicked(index); }} />
+          <input type="radio" name={`decision-${decision.id}`} checked={picked === index} disabled={terminalOnly || state === 'sending'} onChange={() => { if (!terminalOnly) setPicked(index); }} />
           <span><b>{option.label}</b>{option.detail && <small>{option.detail}</small>}</span>
         </label>)}
       </div>}
@@ -99,9 +95,9 @@ export function DecisionCard({ decision, now, onOpen, onDone, onError }: {
     {decision.kind === 'attention' && <p className="decision-why">{t('这件事在它的终端里处理：打开来源，看它在问什么。')}</p>}
     {state === 'expired' && <p className="decision-state is-expired" role="status">{t('这个问题已经变了，没有发送。请看更新后的内容再决定。')}</p>}
     <footer className="decision-actions">
-      {options.length > 0 && decision.kind !== 'question' && <button type="button" className="button primary" disabled={picked === null || state !== 'idle'} onClick={() => void send()}>
+      {options.length > 0 && decision.kind !== 'question' && !terminalOnly && <button type="button" className="button primary" disabled={picked === null || state !== 'idle'} onClick={() => void send()}>
         {state === 'sending' && <CircleNotch size={14} className="loading-spinner" />}{picked === null ? t('先选一个答案') : t('确认：{answer}', { answer: options[picked].label })}</button>}
-      <button type="button" className="button secondary" onClick={() => onOpen(decision)}><ArrowSquareOut size={15} />{t('打开来源')}</button>
+      <button type="button" className="button secondary" data-approval-open-terminal={terminalOnly || undefined} onClick={() => onOpen(decision)}><ArrowSquareOut size={15} />{terminalOnly ? copy.open : t('打开来源')}</button>
       <span className="decision-later">
         <button type="button" className="text-button" aria-expanded={later} onClick={() => setLater(!later)}><Clock size={14} />{t('稍后处理')}</button>
         {later && <span className="decision-later-menu" role="menu">

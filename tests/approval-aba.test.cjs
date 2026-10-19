@@ -6,12 +6,11 @@ const Module = require('node:module');
 const ts = require('typescript');
 const React = require('react');
 const vm = require('node:vm');
-const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
 const { ApprovalGuard, approvalStamp } = require('../electron/features/terminal/approval-guard.cjs');
 const { registerTerminalIpc } = require('../electron/features/terminal/ipc.cjs');
 const main = fs.readFileSync(path.join(__dirname, '../electron/main.cjs'), 'utf8');
 
-const fixture = agent => fs.readFileSync(path.join(__dirname, `fixtures/screens/${agent}-permission.txt`), 'utf8').split(/\r?\n/);
+const fixture = (agent, kind = 'permission') => fs.readFileSync(path.join(__dirname, `fixtures/screens/${agent}-${kind === 'menu' ? 'model-menu' : 'permission'}.txt`), 'utf8').split(/\r?\n/);
 const nodes = node => Array.isArray(node) ? node.flatMap(nodes) : React.isValidElement(node) ? [node, ...nodes(node.props.children)] : [];
 
 function backend(agent) {
@@ -40,14 +39,15 @@ function backend(agent) {
   };
 }
 
-// Keep the real reading card mounted, including its live ref and its 25 ms delayed action. Only React/DOM and
-// terminal IO are stand-ins. A/B/A is actually drawn, without a React render or a 100 ms screen publication.
-function cardHarness(t, agent, view = 'reading') {
+// Keep the real cards mounted. Only React/DOM and terminal IO are stand-ins. A/B/A is actually drawn,
+// without a React render or a 100 ms screen publication.
+function cardHarness(t, agent, view = 'reading', kind = 'permission') {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const before = globalThis.window, slots = [], effects = [], errors = [], done = [], b = backend(agent), writes = b.writes;
-  let cursor = 0, parsed, rows = fixture(agent), beforeSend = () => {};
+  let cursor = 0, parsed, rows = fixture(agent, kind);
+  const opened = [], approvalCalls = [];
   globalThis.window = { setTimeout, agentrix: { writeTerminal: (_id, key) => writes.push(key),
-    writeApproval: (...args) => { beforeSend(...args); return b.invoke(...args); }, terminalFocus() {} } };
+    writeApproval: (...args) => { approvalCalls.push(args); return b.invoke(...args); }, terminalFocus() {} } };
   const service = require('../src/features/terminal/terminal-screen.ts');
   const terminal = { get rows() { return rows.length; }, buffer: { active: { baseY: 0, getLine: i => ({ translateToString: () => rows[i] ?? '' }) } },
     onWriteParsed(fn) { parsed = fn; return { dispose() {} }; }, onResize() { return { dispose() {} }; },
@@ -74,156 +74,140 @@ function cardHarness(t, agent, view = 'reading') {
   mod.filename = filename; mod.paths = Module._nodeModulePaths(path.dirname(filename));
   const original = mod.require.bind(mod);
   mod.require = name => name === 'react' ? hooks : name === '@phosphor-icons/react' ? new Proxy({}, { get: () => () => null })
-    : name.endsWith('/i18n') ? { t: text => text } : name === './decisions' ? { snooze() {} }
+    : name.endsWith('/i18n') ? { t: text => text, currentLanguage: () => 'en' } : name === './decisions' ? { snooze() {} }
     : /ReviewCard|ReadingQuestion/.test(name) ? {} : name.startsWith('.') ? original(name + '.ts') : original(name);
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, filename);
-  const choice = () => service.screenChoice ? service.screenChoice(agent, service.readScreen('aba')) : parseAgentScreen(agent, rows).choice;
+  const choice = () => service.screenChoice(agent, service.readScreen('aba'));
   let root;
   const render = () => {
     cursor = 0; const c = choice();
-    const props = { choice: c, terminalId: 'aba', agent, onError: error => errors.push(error) };
-    const decision = { id: `${c.approval?.instance}:${c.title}`, kind: 'approval', terminalId: 'aba', agent, choice: c,
+    const props = { choice: c, terminalId: 'aba', agent, onShowTerminal: () => opened.push('aba'), onError: error => errors.push(error) };
+    const decision = { id: `${c.approval?.instance}:${c.title}`, kind: kind === 'permission' ? 'approval' : 'choice', terminalId: 'aba', agent, choice: c,
       identity: require('../src/features/reading/choice-keys.ts').choiceIdentity(c), title: c.title, context: c.context, projectName: 'fixture' };
-    root = view === 'reading' ? mod.exports.ReadingChoice(props) : mod.exports.DecisionCard({ decision, now: 1, onDone: message => done.push(message), onError: props.onError });
+    root = view === 'reading' ? mod.exports.ReadingChoice(props) : mod.exports.DecisionCard({ decision, now: 1, onOpen: d => opened.push(d.terminalId), onDone: message => done.push(message), onError: props.onError });
     if (root.props.ref) root.props.ref.current = { focus() {}, querySelector() {} };
     while (effects.length) effects.shift()();
     return root;
   };
   render();
   t.after(() => { for (const slot of slots) if (typeof slot?.cleanup === 'function') slot.cleanup(); unregister(); globalThis.window = before; });
-  return { service, writes, errors, done, choice, draw, render, backend: b,
+  return { service, writes, errors, done, opened, approvalCalls, root: () => root, choice, draw, render, backend: b,
     paint(next) { rows = next; parsed(); },
-    beforeSend(fn) { beforeSend = fn; },
-    pick(index) { return nodes(root).filter(node => node.type === 'button' && /reading-choice-option/.test(node.props.className))[index].props.onClick(); },
-    capturePick(index) { return nodes(root).filter(node => node.type === 'button' && /reading-choice-option/.test(node.props.className))[index].props.onClick; },
-    select(index) { nodes(root).filter(node => node.type === 'input')[index].props.onChange(); render(); },
-    confirm() { return nodes(root).find(node => node.props.className === 'button primary').props.onClick(); },
-    captureConfirm() { return nodes(root).find(node => node.props.className === 'button primary').props.onClick; },
-    cancel() { return nodes(root).find(node => node.props.className === 'text-button').props.onClick(); },
     async tick(ms) { for (let i = 0; i < 20; i++) await Promise.resolve(); t.mock.timers.tick(ms); for (let i = 0; i < 20; i++) await Promise.resolve(); },
     a: rows, b: rows.map(row => row.replaceAll('hello.txt', 'different.txt')),
   };
 }
 
+
+const terminalOnly = { mode: 'terminal-only', reason: 'native-request-identity-unavailable' };
 for (const agent of ['claude', 'codex']) {
-  test(`${agent}: mounted reading card must stop a delayed old action after actual byte-identical A/B/A`, async t => {
-    const h = cardHarness(t, agent);
-    h.pick(1); // one navigation key, then a delayed Enter
-    assert.deepEqual(h.writes, ['\x1b[B']);
-    h.draw(h.b); h.draw(h.a);
-    await h.tick(25);
-    assert.equal(h.writes.includes('\r'), false, 'old A must never approve later A while the card is still mounted');
-  });
-
   for (const view of ['reading', 'decision']) {
-    test(`${agent}/${view}: retained old handler cannot borrow a later identical card's fresh selection`, async t => {
-      const h = cardHarness(t, agent, view);
-      if (view === 'decision') h.select(0);
-      const old = view === 'reading' ? h.capturePick(0) : h.captureConfirm();
-      h.draw(h.b); h.draw(h.a); h.render();
-      if (view === 'decision') h.select(0);
-      old(); await h.tick(0);
-      assert.deepEqual(h.writes, []); assert.equal(h.errors.length, 1); assert.deepEqual(h.done, []);
-      if (view === 'reading') h.pick(0); else h.confirm();
-      await h.tick(0); assert.deepEqual(h.writes, ['\r']);
-    });
-
-    test(`${agent}/${view}: an old captured action cannot be rebound to byte-identical later A`, async t => {
-      const h = cardHarness(t, agent, view), first = h.choice();
-      if (view === 'decision') h.select(0);
+    test(`${agent}/${view}: permission cards are informative, terminal-only and open their source without keys`, async t => {
+      const h = cardHarness(t, agent, view), root = h.root();
+      assert.equal(root.props['data-approval-mode'], 'terminal-only');
+      assert.ok(nodes(root).some(n => n.type === 'pre' && n.props.children.includes('hello.txt')));
+      const options = nodes(root).filter(n => (n.type === 'button' && /reading-choice-option/.test(n.props.className)) || n.type === 'input');
+      assert.ok(options.length > 0); assert.ok(options.every(n => n.props.disabled));
+      assert.ok(nodes(root).some(n => n.props.children === 'Confirm or reject this request in the source terminal. Permission cards cannot safely send approval keys.'));
+      const open = nodes(root).find(n => n.props['data-approval-open-terminal']);
+      assert.ok(open); open.props.onClick(); assert.deepEqual(h.opened, ['aba']);
+      // Retain the mounted A's callbacks, then draw B and byte-identical A without publication.
+      const held = nodes(root).filter(n => n.props.disabled && n.props.onClick).map(n => n.props.onClick);
+      if (view === 'reading') for (const key of ['Enter', 'Escape', 'ArrowUp', 'ArrowDown', '1', '2', '3']) {
+        root.props.onKeyDown({ key, nativeEvent: {}, preventDefault() {}, stopPropagation() {} });
+      }
+      for (const n of nodes(root).filter(n => n.type === 'input')) n.props.onChange();
       h.draw(h.b); h.draw(h.a);
-      assert.notEqual(h.choice().approval.instance, first.approval.instance);
-      if (view === 'reading') h.pick(0); else h.confirm();
-      await h.tick(0);
-      assert.deepEqual(h.writes, []); assert.equal(h.errors.length, 1); assert.deepEqual(h.done, []);
-    });
-
-    test(`${agent}/${view}: a final-send A/B/A after renderer recheck is rejected by the real IPC handler`, async t => {
-      const h = cardHarness(t, agent, view);
-      if (view === 'decision') h.select(0);
-      h.beforeSend((_id, key) => {
-        assert.equal(key, '\r');
-        // Both output callbacks have reached main, but neither its 16 ms batch nor xterm has seen the bytes.
-        h.backend.raw(JSON.stringify(h.b)); h.backend.raw(JSON.stringify(h.a));
-      });
-      if (view === 'reading') h.pick(0); else h.confirm();
-      await h.tick(0);
-      assert.deepEqual(h.writes, []); assert.equal(h.errors.length, 1); assert.deepEqual(h.done, []);
-    });
-
-    test(`${agent}/${view}: stable same-request repaints permit a fresh action and consume its final stamp once`, async t => {
-      const h = cardHarness(t, agent, view), first = h.choice();
-      h.paint(h.a); h.paint(h.a); // parsed redraw notifications with no new bytes
-      assert.deepEqual(h.choice().approval, first.approval);
-      h.draw(h.a); // new raw bytes: same request incarnation, fresh conservative output epoch
-      assert.equal(h.choice().approval.instance, first.approval.instance);
-      assert.notEqual(h.choice().approval.stamp.revision, first.approval.stamp.revision);
+      for (const callback of held) callback();
       h.render();
-      if (view === 'reading') h.pick(0); else { h.select(0); h.confirm(); }
-      await h.tick(0);
-      assert.deepEqual(h.writes, ['\r']); assert.deepEqual(h.errors, []);
-      assert.equal(h.done.length, view === 'decision' ? 1 : 0);
-      assert.throws(() => h.backend.send('\r', h.choice().approval.stamp), /审批操作已失效/);
-      assert.deepEqual(h.writes, ['\r']);
+      for (const n of nodes(h.root()).filter(n => n.props.disabled && n.props.onClick)) n.props.onClick();
+      if (view === 'reading') for (const key of ['Enter', 'Escape', 'ArrowUp', 'ArrowDown', '1']) {
+        root.props.onKeyDown({ key, nativeEvent: {}, preventDefault() {}, stopPropagation() {} });
+        h.root().props.onKeyDown({ key, nativeEvent: {}, preventDefault() {}, stopPropagation() {} });
+      }
+      await h.tick(100);
+      assert.deepEqual(h.writes, []); assert.deepEqual(h.done, []); assert.deepEqual(h.approvalCalls, []);
+    });
+    test(`${agent}/${view}: ordinary model menus remain interactive`, async t => {
+      const h = cardHarness(t, agent, view, 'menu'), choice = h.choice();
+      assert.equal(choice.kind, 'menu');
+      assert.equal(h.root().props['data-approval-mode'], undefined);
+      const selected = Math.max(0, choice.options.findIndex(option => option.selected));
+      if (view === 'reading') {
+        nodes(h.root()).filter(n => n.type === 'button' && /reading-choice-option/.test(n.props.className))[selected].props.onClick();
+      } else {
+        nodes(h.root()).filter(n => n.type === 'input')[selected].props.onChange(); h.render();
+        nodes(h.root()).find(n => n.props.className === 'button primary').props.onClick();
+      }
+      await h.tick(100);
+      assert.deepEqual(h.writes, ['\r']); assert.deepEqual(h.errors, []); assert.deepEqual(h.approvalCalls, []);
     });
   }
-
-  test(`${agent}: delayed decision action aborts before Enter, and a repaint cannot refresh a picked answer`, async t => {
-    const h = cardHarness(t, agent, 'decision');
-    h.select(1); h.confirm(); assert.deepEqual(h.writes, ['\x1b[B']);
-    h.draw(h.b); h.draw(h.a); await h.tick(25);
-    assert.deepEqual(h.writes, ['\x1b[B']); assert.deepEqual(h.done, []);
+  test(`${agent}: retained permission dispatch rejects all targets even with fresh, absent or fabricated identity`, async t => {
+    const h = cardHarness(t, agent), { writeApprovalAction } = require('../src/features/reading/approval-action.ts');
+    const held = h.choice();
+    for (const choice of [held, { ...held, approval: undefined }, { ...held, approval: { instance: 999, stamp: { sessionId: 'fake-native-request', revision: 1 } } }]) {
+      for (const target of [0, 1, 2, 'cancel', -1, 999]) {
+        assert.deepEqual(await writeApprovalAction('aba', agent, choice, target, () => true), terminalOnly);
+      }
+    }
+    h.draw(h.b); h.draw(h.a);
+    assert.deepEqual(await writeApprovalAction('aba', agent, held, 0, () => true), terminalOnly);
+    assert.deepEqual(await writeApprovalAction('aba', agent, h.choice(), 'cancel', () => true), terminalOnly);
+    await h.tick(100); assert.deepEqual(h.writes, []); assert.deepEqual(h.approvalCalls, []);
   });
-
-  test(`${agent}: an identical raw repaint invalidates an in-flight action, without inventing another request ID`, async t => {
-    const h = cardHarness(t, agent), first = h.choice();
-    h.pick(1); h.draw(h.a); await h.tick(25);
-    assert.equal(h.choice().approval.instance, first.approval.instance);
-    assert.deepEqual(h.writes, ['\x1b[B']); assert.equal(h.errors.length, 1);
+  test(`${agent}: backend independently returns terminal-only for every key, identity, gate and session state`, () => {
+    const h = backend(agent);
+    const states = [h.s, { ...h.s, approvalRemote: true }, { ...h.s, gate: { open: 1, held: ['pending'] } }, { ...h.s, status: 'exited' }, { ...h.s, status: 'starting' }, { ...h.s, approval: undefined }, null];
+    for (const state of states) {
+      h.session(state);
+      for (const key of ['\r', '\x1b', '\x1b[A', '\x1b[B', 'y', '1', '\r\r', '\x1b[B\r', 'echo hello\r']) {
+        for (const identity of [undefined, null, {}, h.s.approval.stamp(), { requestId: 'fake', sessionId: 'session', turnId: 'fake', revision: 1 }]) {
+          assert.deepEqual(h.handles['terminal:approval']('aba', key, identity, 'fake-request-id'), terminalOnly);
+        }
+      }
+    }
+    assert.deepEqual(h.writes, []); assert.equal(h.scheduled(), 0);
   });
-
-  test(`${agent}: parsed A/B/A and A/absent/A are observed before a throttled React publication`, async t => {
+  test(`${agent}: unobserved and coalesced A/B/A cannot authorize a card; manual terminal keys still work`, () => {
+    const h = backend(agent), old = h.s.approval.stamp(), a = fixture(agent).join('\n');
+    // No native identity exists: even a completely invisible replacement must be safe.
+    for (const stamp of [old, { ...old }]) assert.deepEqual(h.send('\r', stamp), terminalOnly);
+    h.raw(a.replaceAll('hello.txt', 'different.txt') + a);
+    assert.equal(h.s.approval.matches(old), false, 'raw output still invalidates observation stamps');
+    for (const key of ['\r', '\x1b', '\x1b[A', '\x1b[B']) assert.deepEqual(h.send(key, old), terminalOnly);
+    assert.deepEqual(h.writes, []);
+    for (const key of ['manual text', '\x1b[A', '\x1b[B', '\r', '\x1b']) h.listeners['terminal:write']('aba', key);
+    assert.deepEqual(h.writes, ['manual text', '\x1b[A', '\x1b[B', '\r', '\x1b']);
+    h.listeners['terminal:write']('aba', 'sign-in-code', true);
+    assert.equal(h.writes.at(-1), 'sign-in-code');
+    h.s.approvalRemote = true; h.listeners['terminal:write']('aba', 'manual SSH input');
+    assert.equal(h.writes.at(-1), 'manual SSH input');
+  });
+  test(`${agent}: parsed A/B/A and A/absent/A retain distinct observation instances`, t => {
     const h = cardHarness(t, agent), first = h.choice();
     h.paint(h.b); h.paint(h.a);
-    assert.equal(h.choice().approval.stamp.revision, first.approval.stamp.revision, 'isolate parsed-incarnation protection');
+    assert.equal(h.choice().approval.stamp.revision, first.approval.stamp.revision);
     assert.notEqual(h.choice().approval.instance, first.approval.instance);
-    h.pick(0); await h.tick(0); assert.deepEqual(h.writes, []);
     const second = h.choice(); h.paint([]); h.paint(h.a);
     assert.notEqual(h.choice().approval.instance, second.approval.instance);
   });
-
-  test(`${agent}: a decision selected before a raw repaint keeps its old stamp even after the card rerenders`, async t => {
-    const h = cardHarness(t, agent, 'decision');
-    h.select(0); h.draw(h.a); h.render(); h.confirm(); await h.tick(0);
-    assert.deepEqual(h.writes, []); assert.equal(h.errors.length, 1); assert.deepEqual(h.done, []);
+  test(`${agent}: raw repaint, manual input, resize and live binding still invalidate observation epochs`, t => {
+    const h = cardHarness(t, agent), first = h.choice();
+    h.paint(h.a); assert.deepEqual(h.choice().approval, first.approval);
+    h.draw(h.a);
+    assert.equal(h.choice().approval.instance, first.approval.instance);
+    assert.notEqual(h.choice().approval.stamp.revision, first.approval.stamp.revision);
+    const b = h.backend, guard = b.s.approval, beforeInput = guard.stamp();
+    b.listeners['terminal:write']('aba', 'manual'); assert.equal(guard.matches(beforeInput), false);
+    b.s.terminal.resize = () => {};
+    const beforeResize = guard.stamp(); b.listeners['terminal:resize']('aba', 80, 24);
+    assert.equal(guard.matches(beforeResize), false);
+    for (const change of [{ sessionId: 'next' }, { agent: agent === 'codex' ? 'claude' : 'codex' }, { rootThreadId: 'next-thread' }]) {
+      const before = approvalStamp(b.s); Object.assign(b.s, change); approvalStamp(b.s);
+      assert.equal(guard.matches(before), false);
+    }
   });
-
-  test(`${agent}: repaint clears the picked decision so the same option can be selected afresh`, async t => {
-    const h = cardHarness(t, agent, 'decision');
-    h.select(0); h.draw(h.a); h.render();
-    const root = h.render();
-    assert.ok(nodes(root).filter(node => node.type === 'input').every(node => !node.props.checked));
-    assert.equal(nodes(root).find(node => node.props.className === 'button primary').props.disabled, true);
-    h.select(0); h.confirm(); await h.tick(0);
-    assert.deepEqual(h.writes, ['\r']); assert.equal(h.done.length, 1);
-  });
-
-  test(`${agent}: permission Cancel sends one guarded Escape and never interrupts or approves another request`, async t => {
-    const h = cardHarness(t, agent); h.backend.s.needsInput = { message: 'Approve', since: 1 };
-    h.cancel(); await h.tick(0);
-    assert.deepEqual(h.writes, ['\x1b']); assert.deepEqual(h.errors, []);
-    assert.equal(h.backend.scheduled(), agent === 'claude' ? 1 : 0);
-    if (agent === 'claude') assert.equal(h.backend.s.needsInput, null);
-    assert.throws(() => h.backend.send('\r', h.choice().approval.stamp), /审批操作已失效/);
-  });
-
-  test(`${agent}: a changed terminal session between check and send rejects the old action`, async t => {
-    const h = cardHarness(t, agent);
-    h.beforeSend(() => h.backend.session({ ...h.backend.s, sessionId: 'next-session', approval: new ApprovalGuard('next-session') }));
-    h.pick(0); await h.tick(0);
-    assert.deepEqual(h.writes, []); assert.equal(h.errors.length, 1);
-  });
-
   test(`${agent}: production activity identity catches session/turn ABA and ignores duplicate observations`, () => {
     const h = backend(agent), s = h.s;
     Object.assign(s, { activitySince: 0, activityInputAt: 0, promptQueue: {} });
@@ -235,80 +219,53 @@ for (const agent of ['claude', 'codex']) {
     observe('thread-A', 'turn-A'); const first = s.approval.stamp();
     observe('thread-A', 'turn-A'); assert.deepEqual(s.approval.stamp(), first);
     observe('thread-A', 'turn-B'); observe('thread-A', 'turn-A');
-    assert.throws(() => h.send('\r', first), /审批操作已失效/);
+    assert.throws(() => h.s.approval.send(first, '\r', 'old', key => h.writes.push(key)), /审批操作已失效/);
     const second = s.approval.stamp();
     observe('thread-B', 'turn-A'); observe('thread-A', 'turn-A');
-    assert.throws(() => h.send('\r', second), /审批操作已失效/); assert.deepEqual(h.writes, []);
-  });
-
-  test(`${agent}: native input, resize, pending gate and competing transactions cannot sneak a final key through`, () => {
-    const h = backend(agent), first = h.s.approval.stamp();
-    h.listeners['terminal:write']('aba', '\x1b[B');
-    assert.throws(() => h.send('\r', first), /审批操作已失效/);
-    const afterInput = h.s.approval.stamp();
-    h.s.terminal.resize = () => {};
-    h.listeners['terminal:resize']('aba', 80, 24);
-    assert.throws(() => h.send('\r', afterInput), /审批操作已失效/);
-    const ready = h.s.approval.stamp(); h.writes.length = 0;
-    for (const gate of [{ open: 1 }, { held: ['queued'] }, { expecting: true }, { settling: true }]) {
-      const before = h.s.gate; h.s.gate = { ...before, ...gate };
-      assert.throws(() => h.send('\r', ready), /等待响应/); assert.deepEqual(h.writes, []); h.s.gate = before;
-    }
-    h.send('\x1b[B', ready, 'first');
-    assert.throws(() => h.send('\r', ready, 'other-card'), /另一项审批/);
-    h.send('\r', ready, 'first');
-    assert.throws(() => h.send('\r', ready, 'first'), /审批操作已失效/);
-    assert.deepEqual(h.writes, ['\x1b[B', '\r']);
-  });
-
-  test(`${agent}: SSH approval card routes fail closed before any queued remote write`, () => {
-    const h = backend(agent); h.s.approvalRemote = true;
-    for (const key of ['\r', '\x1b', '\x1b[B']) assert.throws(() => h.send(key), /SSH 审批请切换到终端/);
-    assert.deepEqual(h.writes, []);
-    h.listeners['terminal:write']('aba', '\r');
-    assert.deepEqual(h.writes, ['\r'], 'explicit terminal input remains available, with terminal-mode limitations');
-  });
-
-  test(`${agent}: IPC rechecks live session/agent/thread binding even if a lifecycle callback has not invalidated it`, () => {
-    for (const change of [{ sessionId: 'next' }, { agent: agent === 'codex' ? 'claude' : 'codex' }, { rootThreadId: 'next-thread' }]) {
-      const h = backend(agent), first = h.s.approval.stamp();
-      Object.assign(h.s, change);
-      assert.throws(() => h.send('\r', first), /审批操作已失效/); assert.deepEqual(h.writes, []);
-    }
+    assert.throws(() => h.s.approval.send(second, '\r', 'old', key => h.writes.push(key)), /审批操作已失效/); assert.deepEqual(h.writes, []);
   });
 }
 
-test('raw output epochs reject coalesced ABA even when no intermediate screen is ever parsed', () => {
-  for (const agent of ['claude', 'codex']) {
-    const h = backend(agent), a = fixture(agent).join('\n'), b = a.replaceAll('hello.txt', 'different.txt');
-    h.raw(a); const old = h.s.approval.stamp();
-    h.raw(b + a); // one data callback; no screen parser observes B
-    assert.throws(() => h.send('\r', old), /审批操作已失效/); assert.deepEqual(h.writes, []);
+test('observation guard still rejects stale epochs, competing transactions and consumed final stamps', () => {
+  const guard = new ApprovalGuard('session'), writes = [], write = key => writes.push(key), old = guard.stamp();
+  guard.invalidate(); assert.throws(() => guard.send(old, '\r', 'a', write), /\u5ba1\u6279\u64cd\u4f5c\u5df2\u5931\u6548/);
+  const fresh = guard.stamp(); guard.send(fresh, '\x1b[B', 'a', write);
+  assert.throws(() => guard.send(fresh, '\r', 'b', write), /\u53e6\u4e00\u9879\u5ba1\u6279/);
+  guard.send(fresh, '\r', 'a', write);
+  assert.throws(() => guard.send(fresh, '\r', 'a', write), /\u5ba1\u6279\u64cd\u4f5c\u5df2\u5931\u6548/);
+  assert.deepEqual(writes, ['\x1b[B', '\r']);
+  for (const malformed of [undefined, null, {}, { sessionId: 'other', revision: guard.revision }, { sessionId: 'session', revision: NaN }, { sessionId: 'session', revision: '1' }]) {
+    assert.equal(guard.matches(malformed), false);
   }
 });
 
-test('queued ordinary input invalidates an approval again at the actual InputGate release boundary', () => {
+test('Decide Open terminal switches the source terminal after accepted navigation, without sending input', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/App.tsx'), 'utf8').replace(/\r\n/g, '\n'), start = source.indexOf('  const openDecision =');
+  const body = source.slice(start, source.indexOf('\n\n', start)).replace('const openDecision =', 'globalThis.openDecision =');
+  const calls = [], frames = [];
+  let accepted = true;
+  const context = vm.createContext({ useCallback: fn => fn, focusProject: async id => { calls.push(['project', id]); return accepted; },
+    setReading: (...args) => calls.push(['reading', ...args]), focusTerminalWhenReady: id => calls.push(['focus', id]), requestAnimationFrame: fn => frames.push(fn) });
+  vm.runInContext(ts.transpileModule(body, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+  const decision = { kind: 'approval', projectId: 'project', terminalId: 'source-split' };
+  context.openDecision(decision); await Promise.resolve();
+  assert.deepEqual(calls, [['project', 'project'], ['reading', 'source-split', false]]);
+  assert.equal(frames.length, 1); frames.shift()(); assert.deepEqual(calls.at(-1), ['focus', 'source-split']);
+  calls.length = 0; accepted = false; context.openDecision(decision); await Promise.resolve();
+  assert.deepEqual(calls, [['project', 'project']]); assert.deepEqual(frames, []);
+  calls.length = 0; accepted = true; context.openDecision({ ...decision, kind: 'signin' }); await Promise.resolve();
+  assert.deepEqual(calls, [['project', 'project']]); assert.deepEqual(frames, []);
+});
+test('queued ordinary input still invalidates observation epochs at InputGate release', () => {
   const { InputGate, isTerminalResponse } = require('../electron/terminal-input.cjs');
   const h = backend('codex'), s = h.s;
   const context = vm.createContext({ s, id: 'aba', sessions: new Map([['aba', s]]), terminal: s.terminal, InputGate, isTerminalResponse });
   const start = main.indexOf('  s.gate = new InputGate(');
   vm.runInContext(main.slice(start, main.indexOf('  s.promptQueue =', start)), context);
-  s.gate.afterPrompt('queued-input');
-  const before = s.approval.stamp();
-  assert.throws(() => h.send('\r', before), /等待响应/);
-  s.gate.release();
-  assert.throws(() => h.send('\r', before), /审批操作已失效/);
+  s.gate.afterPrompt('queued-input'); const before = s.approval.stamp();
+  assert.deepEqual(h.send('\r', before), terminalOnly);
+  s.gate.release(); assert.equal(s.approval.matches(before), false);
   assert.deepEqual(h.writes, ['queued-input']); s.gate.dispose();
-});
-
-test('approval IPC rejects missing/malformed epochs, unavailable sessions and arbitrary key strings', () => {
-  const h = backend('codex');
-  for (const stamp of [undefined, null, {}, { sessionId: 'other', revision: 1 }, { sessionId: 'session', revision: NaN }, { sessionId: 'session', revision: '1' }]) {
-    assert.throws(() => h.handles['terminal:approval']('aba', '\r', stamp, 'action'), /审批操作已失效/);
-  }
-  for (const key of ['y', '1', '\r\r', '\x1b[B\r', 'echo hello\r']) assert.throws(() => h.send(key), /无效的审批按键/);
-  h.s.status = 'exited'; assert.throws(() => h.send('\r'), /尚未就绪/);
-  h.session(null); assert.throws(() => h.send('\r'), /尚未就绪/); assert.deepEqual(h.writes, []);
 });
 
 test('xterm pending writes and late callbacks cannot bind a new epoch to stale rows or a remounted terminal', t => {

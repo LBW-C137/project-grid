@@ -26,21 +26,9 @@ function registerTerminalIpc({ handle, listen, findProject, getSession, hasSessi
     s.flush();
     return { sessionId: s.sessionId, seq: s.seq, data: s.chunks.join(''), ...(s.approval ? { approval: approvalStamp(s) } : {}) };
   });
-  handle('terminal:approval', (id, key, stamp, actionId) => {
-    const s = getSession(id);
-    if (!s?.approval || !s.codexActive || !['claude', 'codex'].includes(s.agent) || ['starting', 'exited'].includes(s.status)) throw new Error('审批终端已变化或尚未就绪。');
-    if (!['\x1b[A', '\x1b[B', '\r', '\x1b'].includes(key)) throw new Error('无效的审批按键。');
-    // RemoteConnection.write queues input over SSH; a local stamp cannot guard the remote os.write boundary.
-    // Until the worker has an equivalent guarded operation, fail closed here, including Cancel/navigation.
-    if (s.approvalRemote) throw new Error('SSH 审批请切换到终端处理。阅读卡片无法校验远端最终发送时的请求。');
-    // InputGate may hold a key behind a cursor-position query. Never let an approval enter that queue.
-    if (s.gate.open || s.gate.held?.length || s.gate.expecting || s.gate.settling) throw new Error('终端正在等待响应，审批没有发送。请重新查看请求，或切换到终端处理。');
-    if (getSession(id) !== s) throw new Error('审批终端已变化。');
-    approvalStamp(s);
-    s.approval.send(stamp, key, actionId, data => s.terminal.write(data));
-    if (s.agent === 'claude' && s.needsInput && (key === '\r' || key === '\x1b')) { s.needsInput = null; scheduleState(); }
-    return true;
-  });
+  // Neither local TUI nor SSH exposes a response channel that atomically targets its pending native request.
+  // Keep this endpoint closed for old renderers too: no supplied epoch/request ID or key can authorize a PTY write.
+  handle('terminal:approval', () => ({ mode: 'terminal-only', reason: 'native-request-identity-unavailable' }));
   // answer: keys that answer the CLI itself while it signs in (a code from the browser, an API key, Enter, Escape). They
   // reach it as typed, but are never a prompt: no round starts, nothing is queued and the text is shown nowhere.
   function writeTerminal(id, data, answer = false) {
@@ -69,7 +57,7 @@ function registerTerminalIpc({ handle, listen, findProject, getSession, hasSessi
         if (project) applyActivity(project, s, { threadId: s.claudeSessionId, turnId: null, state: 'interrupted', updatedAt: now() });
       }
       // Claude runs no hook once its permission prompt is answered, so the key that answers it ends the waiting notice:
-      // Enter, a number or Escape, typed in the terminal or sent by the reading view's choice. Otherwise the notice
+      // Enter, a number or Escape, typed in the terminal. Otherwise the notice
       // (and the reading view's switch to the terminal) would last until the round ends.
       else if (s.needsInput && s.codexActive && s.agent === 'claude' && /^(?:\r|\x1b|[1-9])$/.test(data)) { s.needsInput = null; scheduleState(); }
       if (!s.codexActive && !isTerminalResponse(data)) {

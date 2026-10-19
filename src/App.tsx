@@ -7,6 +7,7 @@ import { AddProjectDialog } from './features/workspace/AddProjectDialog';
 import { SSHAuthDialog } from './features/ssh/SSHAuthDialog';
 import { useProjectReorder } from './features/workspace/useProjectReorder';
 import { pruneReadingCli } from './features/reading/useReadingCli';
+import { setReading } from './features/reading/reading-mode';
 import { useProjectFocusMotion } from './features/workspace/useProjectFocusMotion';
 import { applyTheme } from './shared/themes';
 import { applyMotion } from './shared/motion';
@@ -272,7 +273,13 @@ export function App() {
   useEffect(() => api?.onDecisionShow(() => setView('decisions')), []);
   // Under a home page the workbench keeps running but takes no keys: a terminal behind it must not get what is typed.
   useEffect(() => { if (shownView !== 'workspace') (document.activeElement as HTMLElement | null)?.closest('.main-workspace, .focus-sidebar') && (document.activeElement as HTMLElement).blur(); }, [shownView]);
-  const openDecision = useCallback((decision: Decision) => { void focusProject(decision.projectId); }, [focusProject]);
+  const openDecision = useCallback((decision: Decision) => {
+    void focusProject(decision.projectId).then(accepted => {
+      if (!accepted || (decision.kind !== 'approval' && decision.choice?.kind !== 'permission')) return;
+      setReading(decision.terminalId, false);
+      requestAnimationFrame(() => focusTerminalWhenReady(decision.terminalId));
+    });
+  }, [focusProject]);
 
   if (!api) return <div className="startup-message"><SquaresFour size={38} /><h1>{t('Agentrix 是桌面应用')}</h1><p>{t('请在项目目录运行 npm start，或双击打包后的应用。')}</p></div>;
   if (!workspace) return <div className="startup-message"><SquaresFour size={34} /><p>{error || t('正在打开工作区…')}</p></div>;

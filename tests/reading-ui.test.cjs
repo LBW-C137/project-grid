@@ -232,7 +232,9 @@ test('choice renders context, printed numbers, details, hotkeys and CLI selectio
   const html = renderToStaticMarkup(React.createElement(ReadingChoice, { choice: fakeChoice(), terminalId: 'test', onError: () => {} }));
   assert.match(html, /is-permission/); assert.match(html, /Run this command\?/); assert.match(html, /\$ echo hello/);
   assert.match(html, /Commands starting with echo/); assert.match(html, /<kbd>p<\/kbd>/);
-  assert.match(html, /is-cli-selected/); assert.match(html, /data-highlighted="true"/); assert.match(html, /Cancel/);
+  assert.match(html, /is-cli-selected/); assert.match(html, /data-highlighted="true"/);
+  assert.match(html, /data-approval-mode="terminal-only"/); assert.match(html, /Open terminal/);
+  assert.match(html, /Confirm or reject this request in the source terminal/); assert.doesNotMatch(html, /Enter to confirm|Cancel/);
 });
 
 function elements(node) {

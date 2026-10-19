@@ -801,7 +801,7 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}>{screen.choice.kind === 'question'
       ? <ReadingQuestion key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} />
-      : <ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} onError={onError} />}</div>}
+      : <ReadingChoice key={choiceKey} choice={screen.choice} terminalId={terminal.id} agent={terminal.agent === 'claude' ? 'claude' : 'codex'} onShowTerminal={onShowTerminal} onError={onError} />}</div>}
     {sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}><ReadingSessions key={`${terminal.id}-${terminal.sessionId}`} terminalId={terminal.id} agent={terminal.agent === 'codex' ? 'codex' : 'claude'} onError={onError} onClose={() => setSessionsOpen(false)} onSent={text => {

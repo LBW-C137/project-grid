@@ -37,6 +37,7 @@ export type Workspace = { desktopGlass?: { supported: boolean; compatibility: bo
   localShell: { kind: 'bash' | 'zsh'; zsh: boolean } | null };
 // A backend observation epoch; no native Claude Code/Codex approval request ID is exposed by terminal mode.
 export type ApprovalStamp = { sessionId: string; revision: number };
+export type ApprovalResult = { mode: 'terminal-only'; reason: 'native-request-identity-unavailable' };
 type TerminalSnapshot = { sessionId: string | null; seq: number; data: string; approval?: ApprovalStamp };
 export type TerminalPacket = TerminalSnapshot & { id: string };
 export type FileEntry = { name: string; path: string; kind: 'directory' | 'file' | 'link' };
@@ -154,7 +155,7 @@ type Bridge = {
   agentSessions(id: string): Promise<Result<AgentSession[]>>;
   followAgentSession(id: string, sessionId: string): Promise<Result<boolean>>;
   writeTerminal(id: string, data: string): void;
-  writeApproval(id: string, key: string, stamp: ApprovalStamp, actionId: string): Promise<Result<boolean>>;
+  writeApproval(id: string, key: string, stamp: ApprovalStamp, actionId: string): Promise<Result<ApprovalResult>>;
   answerTerminal(id: string, data: string): void;
   resizeTerminal(id: string, cols: number, rows: number): void;
   copy(text: string): Promise<Result<void>>;

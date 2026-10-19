@@ -1,30 +1,18 @@
 import type { ScreenAgent, ScreenChoice } from '../agents/agent-screen-types';
-import { readScreen, screenChoice } from '../terminal/terminal-screen.ts';
-import { choiceIdentity, choiceKeys, selectedChoiceIndex } from './choice-keys.ts';
+import type { ApprovalResult } from '../../shared/types';
 
-const expired = () => new Error('审批操作已失效，未发送本次按键。请重新查看请求，或切换到终端处理。');
+// Observation epochs and screen instances cannot target a native TUI request at key consumption.
+// Retained callbacks fail closed without invoking either terminal IPC route, even with a fabricated identity.
+export async function writeApprovalAction(_terminalId: string, _agent: ScreenAgent, _choice: ScreenChoice, _target: number | 'cancel', _active: () => boolean): Promise<ApprovalResult> {
+  return { mode: 'terminal-only', reason: 'native-request-identity-unavailable' };
+}
 
-// Capture the rendered incarnation and backend stamp, never latest.current or a fresh stamp at send time. Check
-// before every delayed key, and let the main process check again at its synchronous PTY write boundary.
-export async function writeApprovalAction(terminalId: string, agent: ScreenAgent, choice: ScreenChoice, target: number | 'cancel', active: () => boolean) {
-  const captured = choice.approval;
-  if (!captured?.stamp || !captured.instance) throw expired();
-  const stamp = { ...captured.stamp }, instance = captured.instance, identity = choiceIdentity(choice);
-  const actionId = crypto.randomUUID(); // one local transaction owns its navigation and final key
-  const current = () => {
-    const live = screenChoice(agent, readScreen(terminalId));
-    if (!active() || !live?.approval || live.approval.instance !== instance || choiceIdentity(live) !== identity
-      || live.approval.stamp?.sessionId !== stamp.sessionId || live.approval.stamp?.revision !== stamp.revision) throw expired();
-    return live;
+export function terminalApprovalCopy(language: 'zh' | 'en') {
+  return language === 'zh' ? {
+    message: '请在源终端中确认或拒绝此请求。权限卡片无法安全地发送审批按键。',
+    open: '打开终端',
+  } : {
+    message: 'Confirm or reject this request in the source terminal. Permission cards cannot safely send approval keys.',
+    open: 'Open terminal',
   };
-  const live = current();
-  if (target !== 'cancel' && !live.options[target]) throw expired();
-  const keys = target === 'cancel' ? ['\x1b'] : choiceKeys(selectedChoiceIndex(live), target);
-  for (let index = 0; index < keys.length; index++) {
-    current();
-    const result = await window.agentrix.writeApproval(terminalId, keys[index], stamp, actionId);
-    if (!result.ok) throw new Error(result.error);
-    if (result.value !== true) throw expired();
-    if (index < keys.length - 1) await new Promise(resolve => setTimeout(resolve, 25));
-  }
 }
