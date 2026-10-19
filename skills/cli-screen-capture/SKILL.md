@@ -47,12 +47,13 @@ An approval only shows after the model asks for a tool. Never use the real sign-
 
 ## Lessons
 
-- Current Electron permission cards are informative and terminal-only for local and SSH sessions: approval,
+- Screen-derived Electron permission cards are informative and terminal-only for legacy local TUI and SSH sessions: approval,
   rejection, cancellation and navigation must happen manually in the source terminal. The backend independently
-  rejects all permission-card sends. Opening the source terminal must not send keys.
+  rejects all screen-derived permission-card sends. Opening the source terminal must not send keys. Explicit native
+  modes use an owned structured CLI channel; follow `skills/native-approvals/SKILL.md` for those cards.
 
 - Permission text identifies screen content, never a unique approval request. Epochs and observation IDs are not
-  native CLI request IDs. A future structured adapter must atomically respond to the exact native pending
+  native CLI request IDs. A structured adapter must atomically respond to the exact native pending
   session/turn/request identity; local observation hashes and notifications are insufficient. Never restore an
   epoch-only card approval route.
 

@@ -75,7 +75,7 @@ function cardHarness(t, agent, view = 'reading', kind = 'permission') {
   const original = mod.require.bind(mod);
   mod.require = name => name === 'react' ? hooks : name === '@phosphor-icons/react' ? new Proxy({}, { get: () => () => null })
     : name.endsWith('/i18n') ? { t: text => text, currentLanguage: () => 'en' } : name === './decisions' ? { snooze() {} }
-    : /ReviewCard|ReadingQuestion/.test(name) ? {} : name.startsWith('.') ? original(name + '.ts') : original(name);
+    : /ReviewCard|ReadingQuestion|NativeApprovalCard/.test(name) ? {} : name.startsWith('.') ? original(name + '.ts') : original(name);
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, filename);
   const choice = () => service.screenChoice(agent, service.readScreen('aba'));
   let root;

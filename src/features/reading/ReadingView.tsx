@@ -12,6 +12,8 @@ import { parseAgentScreen } from '../agents/agent-screen';
 import { cliCloseKey, cliDialogShown, cliEscapeSafe, cliFooter, cliHistory, cliInputDraft, commandInputText, hasCliInput, isAtPrompt, isCliIdle, isSideConversation } from './cli-panel';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
+import { NativeApprovalCard } from './NativeApprovalCard';
+import { ManagedSession } from './ManagedSession';
 import { ReadingQuestion } from './ReadingQuestion';
 import { ReadingSessions } from './ReadingSessions';
 import { usesSessionPicker } from './reading-sessions';
@@ -225,7 +227,11 @@ function WorkingLine({ agent, label }: { agent: 'claude' | 'codex'; label: strin
   </div>;
 }
 
-export function ReadingView({ projectId, terminal, remote = false, autoFocus, onShowTerminal, onError, onOpenLink }: { projectId: string; terminal: ProjectTerminal; remote?: boolean; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
+export function ReadingView(props: Parameters<typeof LegacyReadingView>[0]) {
+  return props.terminal.nativeMode === 'claude-sdk' ? <ManagedSession key={props.terminal.sessionId} terminal={props.terminal} onError={props.onError} /> : <LegacyReadingView {...props} />;
+}
+
+function LegacyReadingView({ projectId, terminal, remote = false, autoFocus, onShowTerminal, onError, onOpenLink }: { projectId: string; terminal: ProjectTerminal; remote?: boolean; autoFocus: boolean; onShowTerminal: () => void; onError: (message: string) => void; onOpenLink: (target: string) => void }) {
   const conversationEntries = useReadingConversation(terminal.id, terminal.sessionId);
   const [hidden, setHidden] = useState(() => cleared.get(conversationKey(terminal.id, terminal.sessionId)));
   useEffect(() => { setHidden(cleared.get(conversationKey(terminal.id, terminal.sessionId))); }, [terminal.id, terminal.sessionId]);
@@ -797,7 +803,8 @@ export function ReadingView({ projectId, terminal, remote = false, autoFocus, on
     </div>
     {attachedCount > 0 && <div className="reading-attachments" role="status"><ImageIcon size={14} />{t('已附加 {count} 张图片，随下一条消息发送', { count: attachedCount })}<UserImages images={shownImages} />
       <button type="button" className="reading-attachments-remove" onClick={removeImages} title={t('移除图片')} aria-label={t('移除图片')}><X size={12} weight="bold" /></button></div>}
-    {screen.choice && !sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
+    {terminal.nativeApprovals?.map(request => <NativeApprovalCard key={request.token} request={request} onError={onError} />)}
+    {screen.choice && !(screen.choice.kind === 'permission' && terminal.nativeApprovals?.length) && !sessionsOpen && <div className="reading-choice-host" ref={choiceHost} onFocusCapture={() => { restoreComposer.current = true; }} onBlurCapture={event => {
       if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) restoreComposer.current = false;
     }}>{screen.choice.kind === 'question'
       ? <ReadingQuestion key={choiceKey} choice={screen.choice} terminalId={terminal.id} onError={onError} />

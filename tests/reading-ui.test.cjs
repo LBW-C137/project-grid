@@ -46,6 +46,8 @@ function loadUI(name, overrides = {}) {
     if (key === './ReadingSignIn') return { ReadingSignIn: () => null };
     if (key === './AgentCommandRun') return { AgentCommandRun: () => null };
     if (key === './AgentSettingsTag') return { AgentSettingsTag: () => null };
+    if (key === './NativeApprovalCard') return { NativeApprovalCard: () => null };
+    if (key === './ManagedSession') return { ManagedSession: () => null };
     if (key === './Timeline') return loadUI('features/reading/Timeline.tsx');
     if (key === './typing') return require('../src/features/reading/typing.ts');
     if (key === './composer-prefill') return require('../src/features/reading/composer-prefill.ts');
@@ -306,6 +308,8 @@ function dictationHarness(t, overrides = {}) {
   });
   const render = () => {
     cursor = 0; root = ReadingView(props);
+    // The public component routes managed SDK sessions before mounting the legacy TUI reader.
+    if (typeof root.type === 'function') root = root.type(root.props);
     const box = elements(root).find(element => element.type === 'textarea');
     box.props.ref.current = node; node.value = box.props.value;
     while (effects.length) effects.shift()();
@@ -732,6 +736,7 @@ test('an expanded visible tool group keeps its component state through rolling e
       if (Array.isArray(node)) { node.forEach(child => visit(child, path)); return; }
       const key = path + '/' + String(node.key ?? (typeof node.type === 'function' ? node.type.name : node.type));
       if (node.type?.name === 'ToolGroup') found = { key, node: run(key, node.type, node.props) };
+      else if (node.type?.name === 'LegacyReadingView') visit(run(key, node.type, node.props), key);
       else visit(node.props?.children, key);
     };
     visit(root); return found;

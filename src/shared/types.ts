@@ -26,7 +26,7 @@ export type AgentTokens = { input: number; cached: number; output: number };
 // null when unknown. resetQuery describes the bounded, automatically retried Codex background read.
 export type AgentCall = { agent: 'Claude Code' | 'Codex'; provider: string | null; model: string; effort: string | null; fast: boolean | null; runs: number; running: number; tasks: string[] };
 export type AgentUsage = { provider: string | null; context: { used: number; window: number } | null; round: AgentTokens | null; total: AgentTokens | null; limits: { minutes: number | null; percent: number; resetsAt: number | null }[]; limitsAt?: number | null; limitsFrom?: string | null; resets?: { kind?: 'session' | 'grants'; left: number | null; total: number | null } | null; resetQuery?: { state: 'loading' | 'ready' | 'unavailable' | 'error'; reason?: string; at?: number }; calls?: AgentCall[] };
-export type ProjectTerminal = { agentStartedAt?: number | null; agentSettings?: AgentSettings | null; agentUsage?: AgentUsage | null; agentCommand?: string | null; action: AgentActionBrief | null; task: string; prompts: PendingPrompt[]; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; needsInput: string | null; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
+export type ProjectTerminal = { nativeMode?: 'codex-native' | 'claude-sdk' | null; nativeApprovals?: NativeApproval[]; nativeMessages?: { role: string; text: string }[]; nativeReady?: boolean; agentStartedAt?: number | null; agentSettings?: AgentSettings | null; agentUsage?: AgentUsage | null; agentCommand?: string | null; action: AgentActionBrief | null; task: string; prompts: PendingPrompt[]; id: string; title: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; sessionId: string | null; status: Project['status']; codexActive: boolean; agent: Project['agent']; codexActivity: Project['codexActivity']; needsInput: string | null; shellReady: boolean; codexAvailable: boolean | null; lastActivityAt: number | null; lastCompletedAt: number | null; error: string | null };
 export type Settings = { startView: 'decisions' | 'workspace'; surface: 'glass' | 'solid'; glassBackground: 'theme' | 'desktop'; glassTransparency: number | null; terminalRenderer: 'gpu' | 'dom'; autoSave: boolean; activityPane: boolean; notifications: boolean; sound: boolean; closeToTray: boolean; explorerCollapsed: boolean; fontSize: number; terminalFontWeight: 400 | 500 | 600; terminalFontFamily: string; terminalCjkFontFamily: string; restoreSessions: boolean; focusAnimation: 'smooth' | 'system' | 'off'; theme: ThemeId; language: 'zh' | 'en'; shortcuts: Partial<Record<'search' | 'addProject' | 'voice' | 'overview' | 'decisions' | 'explorer' | 'settings' | 'nextProject' | 'previousProject' | 'projectAbove' | 'projectBelow' | 'maximize' | 'fullscreen' | 'newTerminal' | 'removeProject', string>>; guideVersion: string; shell: 'powershell' | 'cmd' | 'bash' | 'zsh'; voiceModel: string };
 export type RecentProject = { path: string; name: string; lastOpenedAt: number; exists: boolean };
 export type RecentSSH = { host: string; path: string; name: string; lastOpenedAt: number };
@@ -37,6 +37,7 @@ export type Workspace = { desktopGlass?: { supported: boolean; compatibility: bo
   localShell: { kind: 'bash' | 'zsh'; zsh: boolean } | null };
 // A backend observation epoch; no native Claude Code/Codex approval request ID is exposed by terminal mode.
 export type ApprovalStamp = { sessionId: string; revision: number };
+export type NativeApproval = { provider: 'codex' | 'claude'; projectId: string; terminalId: string; sessionId: string; token: string; requestId: string | number; method: string; params: Record<string, unknown>; decisions: string[]; at: number };
 export type ApprovalResult = { mode: 'terminal-only'; reason: 'native-request-identity-unavailable' };
 type TerminalSnapshot = { sessionId: string | null; seq: number; data: string; approval?: ApprovalStamp };
 export type TerminalPacket = TerminalSnapshot & { id: string };
@@ -151,7 +152,9 @@ type Bridge = {
   clipboardImage(terminalId: string): Promise<Result<string | null>>;
   fileCard(id: string, file: string): Promise<Result<FileCard>>;
   agentHistory(id: string): Promise<Result<{ claude: { id: string; at: number } | null; codex: { id: string; at: number } | null }>>;
-  agentLaunch(id: string, agent: 'claude' | 'codex', mode: 'new' | 'continue'): Promise<Result<boolean>>;
+  agentLaunch(id: string, agent: 'claude' | 'codex', mode: 'new' | 'continue' | 'native'): Promise<Result<boolean>>;
+  answerNativeApproval(id: string, answer: { token: string; decision: string }): Promise<Result<{ mode: 'native'; requestId: string | number }>>;
+  managedPrompt(id: string, sessionId: string, text: string): Promise<Result<boolean>>;
   agentSessions(id: string): Promise<Result<AgentSession[]>>;
   followAgentSession(id: string, sessionId: string): Promise<Result<boolean>>;
   writeTerminal(id: string, data: string): void;

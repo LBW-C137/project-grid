@@ -5,6 +5,7 @@ import { snooze } from './decisions';
 import { parseAgentScreen } from '../agents/agent-screen';
 import { readScreen } from '../terminal/terminal-screen';
 import { choiceIdentity, selectedChoiceIndex, writeChoiceKeys } from '../reading/choice-keys';
+import { NativeApprovalCard } from '../reading/NativeApprovalCard';
 import { terminalApprovalCopy } from '../reading/approval-action';
 import { ReadingQuestion } from '../reading/ReadingQuestion';
 import { currentLanguage, t } from '../../shared/i18n';
@@ -58,6 +59,7 @@ export function DecisionCard({ decision, now, onOpen, onDone, onError }: {
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { setPicked(null); setState('idle'); setLater(false); }, [decision.id, decision.choice?.approval?.stamp?.sessionId, decision.choice?.approval?.stamp?.revision]);
   const { label, Icon } = KINDS[decision.kind];
+  if (decision.native) return <NativeApprovalCard key={decision.native.token} request={decision.native} source={`${decision.projectName} · ${decision.terminalTitle}`} onOpen={() => onOpen(decision)} onError={onError} />;
   if (decision.kind === 'review') return <ReviewCard decision={decision} now={now} kind={<span className="decision-kind"><Icon size={15} weight="fill" />{t(label)}</span>} onOpen={onOpen} onDone={onDone} onError={onError} />;
   const options = decision.choice?.options ?? [];
   const terminalOnly = decision.kind === 'approval' || decision.choice?.kind === 'permission', copy = terminalApprovalCopy(currentLanguage());

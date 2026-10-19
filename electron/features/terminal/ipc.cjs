@@ -34,6 +34,7 @@ function registerTerminalIpc({ handle, listen, findProject, getSession, hasSessi
   function writeTerminal(id, data, answer = false) {
     if (typeof data !== 'string' || data.length > 1024 * 1024) return;
     const s = getSession(id);
+    if (s?.nativeMode === 'claude-sdk') return; // Managed prompts have a distinct structured IPC; keys cannot arm a round.
     if (s && !isTerminalResponse(data)) s.approval?.invalidate();
     if (s && s.status !== 'exited' && answer === true) { s.gate.input(data); return; }
     if (s && s.status !== 'exited') {
@@ -78,6 +79,7 @@ function registerTerminalIpc({ handle, listen, findProject, getSession, hasSessi
   });
   handle('terminal:paste', (id, text, sessionId) => {
     const session = getSession(id);
+    if (session?.nativeMode === 'claude-sdk') throw new Error('Use the Claude SDK managed composer');
     if (!session || session.sessionId !== sessionId || ['starting', 'exited'].includes(session.status)) throw new Error('终端已变化或尚未就绪，请复制文字后手动粘贴。');
     if (typeof text !== 'string' || text.length > 1024 * 1024) throw new Error('无效的文字。');
     // Codex on Windows takes a pasted line break as Enter, even inside a bracketed paste, and drops a bare "\n" after
