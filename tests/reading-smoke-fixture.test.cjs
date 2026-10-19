@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
+const { timeoutScale } = require('../scripts/wait.mjs');
 const { cliInputDraft, isCliIdle, hasCliInput, cliHistory, extractCliOutputRows, advanceCliCommand } = require('../src/features/reading/cli-panel.ts');
 const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
 
@@ -31,7 +32,7 @@ test('fixture readiness rejects partial frames, helper input and an ordinary she
   assert.equal(fixtureIdle([]), false);
 });
 
-test('reading smoke positions delayed real PTY input inside its frame and preserves later choices', { skip: process.platform !== 'win32', timeout: 20000 }, async t => {
+test('reading smoke positions delayed real PTY input inside its frame and preserves later choices', { skip: process.platform !== 'win32', timeout: 20000 * timeoutScale }, async t => {
   const { Terminal } = require('@xterm/xterm');
   const pty = require('node-pty');
   assert.ok(literals.fixturePrompt); assert.ok(literals.idle);
@@ -48,7 +49,7 @@ test('reading smoke positions delayed real PTY input inside its frame and preser
   t.after(() => { disposed = true; output.dispose(); replies.dispose(); shell.kill(); terminal.dispose(); });
   const rows = () => Array.from({ length: terminal.rows }, (_, index) => terminal.buffer.active.getLine(terminal.buffer.active.baseY + index)?.translateToString(true) ?? '');
   const wait = async (check, label) => {
-    const until = Date.now() + 5000;
+    const until = Date.now() + 5000 * timeoutScale;
     while (Date.now() < until) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 20)); }
     assert.fail(label + '\n' + rows().join('\n'));
   };
