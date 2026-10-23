@@ -4,6 +4,10 @@ const path = require('node:path');
 const os = require('node:os');
 const { createHash } = require('node:crypto');
 const { Worker } = require('node:worker_threads');
+const { gunzip } = require('node:zlib');
+const { promisify } = require('node:util');
+
+const unzip = promisify(gunzip);
 
 const HOSTS = ['https://huggingface.co', 'https://hf-mirror.com'];
 // Every file is pinned to one repository revision, so a repository update can never change the verified bytes.
@@ -41,15 +45,34 @@ const MODELS = {
     config: file => ({ qwen3Asr: { convFrontend: file('conv_frontend.onnx'), encoder: file('encoder.int8.onnx'), decoder: file('decoder.int8.onnx'), tokenizer: file('tokenizer'), hotwords: '' } }),
   },
 };
+// Version and SHA-512 integrities must follow package-lock.json when sherpa-onnx is upgraded.
+const RUNTIME_VERSION = '1.13.8';
+const RUNTIME_HOSTS = ['https://registry.npmjs.org', 'https://registry.npmmirror.com'];
+const RUNTIMES = {
+  'win-x64': { size: 8894875, integrity: 'sha512-oZF1c9VPOKtMwn83Bboc5XSWL+76BRoyB3eUuVnCknBKxwSULZU2Foia9VHWzU+n4I12rPsP6z6H9Rp1hD9o8g==' },
+  'darwin-arm64': { size: 10047754, integrity: 'sha512-FPNgJMgnWVl/KhRTIhG3KL3A4Om63Rn4YKXc9/uHY7SzLcvqLJLc/h7UBWJwduXvv7K18t5NpxHR6XgXn4sjWw==' },
+  'linux-x64': { size: 11089653, integrity: 'sha512-6plnhjagsSeTntCgnlag86hWbs/uZE9Crms1LgOb68/1nKsIQjMd+WG519m+aPwT6TrsBOiEMzrx41t8sL5L5g==' },
+  'linux-arm64': { size: 13910679, integrity: 'sha512-Tlg7a70b/Wge3OF8IgTHF9jhSVCsLyKQKhwc4BsJ5A+dL/SrFtGBjzuHp4XeLhiiOT7afCxX5PdSn/D4c8Lnuw==' },
+};
+for (const [platform, runtime] of Object.entries(RUNTIMES)) {
+  runtime.name = `sherpa-onnx-${platform}`;
+  runtime.urls = RUNTIME_HOSTS.map(host => `${host}/${runtime.name}/-/${runtime.name}-${RUNTIME_VERSION}.tgz`);
+  const extension = platform.startsWith('darwin-') ? 'dylib' : 'so';
+  runtime.files = ['package.json', 'sherpa-onnx.node', ...(platform.startsWith('win-')
+    ? ['onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'sherpa-onnx-c-api.dll', 'sherpa-onnx-cxx-api.dll']
+    : [`libonnxruntime.${extension}`, `libsherpa-onnx-c-api.${extension}`, `libsherpa-onnx-cxx-api.${extension}`])];
+}
+const CURRENT_RUNTIME = RUNTIMES[`${process.platform === 'win32' ? 'win' : process.platform}-${process.arch}`];
 // Downloaded after installation, and used while a model chosen later is still downloading.
 const DEFAULT_MODEL = 'sensevoice';
-const downloadBytes = id => MODELS[id].files.reduce((total, file) => total + file.size, 0);
+const downloadBytes = (id, runtime = CURRENT_RUNTIME) => MODELS[id].files.reduce((total, file) => total + file.size, runtime?.size || 0);
 // Files from the previous Whisper engine, removed once so they stop occupying about 64 MB.
 // A loaded model holds a few hundred MB or more. It is released after this long without dictation and loaded
 // again while the next recording is being spoken (warm).
 const IDLE_RELEASE = 5 * 60 * 1000;
 
-async function digest(filename) { const hash = createHash('sha256'); for await (const chunk of fs.createReadStream(filename)) hash.update(chunk); return hash.digest('hex'); }
+async function digest(filename, algorithm = 'sha256') { const hash = createHash(algorithm); for await (const chunk of fs.createReadStream(filename)) hash.update(chunk); return hash.digest(algorithm === 'sha512' ? 'base64' : 'hex'); }
+async function verified(asset, filename) { return asset.integrity ? `sha512-${await digest(filename, 'sha512')}` === asset.integrity : await digest(filename) === asset.sha256; }
 
 async function downloadFrom(url, asset, filename, fetcher, signal, progress) {
   const partial = filename + '.partial';
@@ -71,15 +94,15 @@ async function downloadFrom(url, asset, filename, fetcher, signal, progress) {
     } finally { await file.close(); }
   }
   if (offset !== asset.size) throw new Error('下载中断，稍后会自动继续。');
-  if (await digest(partial) !== asset.sha256) { await fsp.unlink(partial); throw new Error('下载文件校验失败，请重试。'); }
+  if (!await verified(asset, partial)) { await fsp.unlink(partial); throw new Error('下载文件校验失败，请重试。'); }
   await fsp.rename(partial, filename);
 }
 
 // Tries each mirror in turn. A partial file is shared between mirrors because every mirror
-// serves identical bytes, and the final SHA-256 check rejects anything that is not.
+// serves identical bytes, and the pinned checksum rejects anything that is not.
 async function downloadAsset(asset, filename, fetcher, signal, progress) {
   await fsp.mkdir(path.dirname(filename), { recursive: true });
-  try { if ((await fsp.stat(filename)).size === asset.size && await digest(filename) === asset.sha256) { progress(asset.size); return; } } catch { }
+  try { if ((await fsp.stat(filename)).size === asset.size && await verified(asset, filename)) { progress(asset.size); return; } } catch { }
   let failure;
   for (const url of asset.urls || [asset.url]) {
     if (signal.aborted) break;
@@ -87,6 +110,76 @@ async function downloadAsset(asset, filename, fetcher, signal, progress) {
     catch (error) { failure = error; }
   }
   throw failure || new Error('下载已暂停。');
+}
+
+async function extractTarball(filename, directory, signal, keep = () => true) {
+  const invalidFormat = '语音引擎压缩包格式无效。';
+  const unsafePath = '语音引擎压缩包包含不安全路径。';
+  const tar = await unzip(await fsp.readFile(filename));
+  const links = [];
+  for (let offset = 0; offset < tar.length;) {
+    signal?.throwIfAborted();
+    if (offset + 512 > tar.length) throw new Error('语音引擎压缩包不完整。');
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every(byte => byte === 0)) break;
+    const field = (start, length) => header.subarray(start, start + length).toString('utf8').split('\0', 1)[0];
+    const number = (start, length) => {
+      const value = field(start, length).trim();
+      if (!/^[0-7]+$/.test(value)) throw new Error(invalidFormat);
+      const parsed = parseInt(value, 8);
+      if (!Number.isSafeInteger(parsed)) throw new Error(invalidFormat);
+      return parsed;
+    };
+    const checksum = header.reduce((sum, byte, index) => sum + (index >= 148 && index < 156 ? 32 : byte), 0);
+    if (field(257, 6) !== 'ustar' || checksum !== number(148, 8)) throw new Error(invalidFormat);
+    const name = [field(345, 155), field(0, 100)].filter(Boolean).join('/');
+    if (name.startsWith('/') || /[\\:]/.test(name) || name.split('/').includes('..') || !/^package(?:\/|$)/.test(name)) throw new Error(unsafePath);
+    const relative = name.replace(/^package\/?/, ''), size = number(124, 12), mode = number(100, 8) & 0o777;
+    const type = field(156, 1), next = offset + 512 + Math.ceil(size / 512) * 512;
+    if (next > tar.length || !['', '0', '2', '5'].includes(type)) throw new Error(invalidFormat);
+    const target = path.join(directory, relative);
+    if (type === '2') {
+      const link = field(157, 100);
+      if (!link || link.startsWith('/') || /[\\:]/.test(link) || link.split('/').includes('..')) throw new Error(unsafePath);
+      if (relative && keep(relative)) links.push({ target, link });
+    } else if (type === '5') await fsp.mkdir(target, { recursive: true, mode });
+    else if (relative && keep(relative)) {
+      await fsp.mkdir(path.dirname(target), { recursive: true });
+      await fsp.writeFile(target, tar.subarray(offset + 512, offset + 512 + size), { flag: 'wx', mode });
+      await fsp.chmod(target, mode);
+    }
+    offset = next;
+  }
+  // Links are created last, so later file entries cannot write through an archive's symlink.
+  for (const { target, link } of links) {
+    signal?.throwIfAborted();
+    await fsp.mkdir(path.dirname(target), { recursive: true });
+    await fsp.symlink(link, target);
+  }
+}
+
+async function runtimePresent(directory, runtime) {
+  try {
+    const metadata = JSON.parse(await fsp.readFile(path.join(directory, 'package.json'), 'utf8'));
+    if (metadata.name !== runtime.name || metadata.version !== RUNTIME_VERSION) return false;
+    for (const name of runtime.files) { const file = await fsp.stat(path.join(directory, name)); if (!file.isFile() || !file.size) return false; }
+    return true;
+  } catch { return false; }
+}
+
+async function downloadRuntime(runtime, directory, fetcher, signal, progress) {
+  if (await runtimePresent(directory, runtime)) { progress(runtime.size); return; }
+  const filename = directory + '.tgz';
+  await downloadAsset(runtime, filename, fetcher, signal, progress);
+  const temporary = await fsp.mkdtemp(directory + '.tmp-');
+  try {
+    await extractTarball(filename, temporary, signal, name => name === 'package.json' || /\.(?:node|dll|dylib|so(?:\.\d+)*)$/.test(name));
+    if (!await runtimePresent(temporary, runtime)) throw new Error('语音引擎文件不完整，请重试。');
+    signal.throwIfAborted();
+    await fsp.rm(directory, { recursive: true, force: true });
+    await fsp.rename(temporary, directory);
+    await fsp.unlink(filename);
+  } finally { await fsp.rm(temporary, { recursive: true, force: true }); }
 }
 
 function validateAudio(value) {
@@ -105,8 +198,9 @@ function samplesFromWav(bytes) {
 // One model is chosen in settings. Recordings go to it once it is downloaded; until then they go to the
 // default model, so choosing a larger one never interrupts dictation.
 class VoiceManager {
-  constructor({ directory, model = DEFAULT_MODEL, fetcher = fetch, changed = () => {}, idle = IDLE_RELEASE, worker = path.join(__dirname, 'voice-worker.cjs') }) {
-    Object.assign(this, { directory, fetcher, changed, idle, workerFile: worker });
+  constructor({ directory, model = DEFAULT_MODEL, fetcher = fetch, changed = () => {}, idle = IDLE_RELEASE, worker = path.join(__dirname, 'voice-worker.cjs'), runtime = CURRENT_RUNTIME }) {
+    Object.assign(this, { directory, fetcher, changed, idle, workerFile: worker, runtime });
+    this.runtimeDirectory = runtime ? path.join(directory, 'runtime', `${runtime.name}-${RUNTIME_VERSION}`) : null;
     this.choice = MODELS[model] ? model : DEFAULT_MODEL;
     this.status = Object.fromEntries(Object.keys(MODELS).map(id => [id, { phase: 'missing', percent: 0, error: null }]));
     this.transcribing = false;
@@ -122,19 +216,31 @@ class VoiceManager {
     const active = this.active(), shown = this.status[active || this.choice];
     return {
       phase: !active ? shown.phase : this.transcribing ? 'transcribing' : 'ready', ready: !!active, percent: shown.percent, error: shown.error,
-      model: MODELS[active || this.choice].label, downloadBytes: downloadBytes(this.choice), choice: this.choice, active,
-      models: Object.keys(MODELS).map(id => ({ id, label: MODELS[id].label, downloadBytes: downloadBytes(id), ...this.status[id] })),
+      model: MODELS[active || this.choice].label, downloadBytes: downloadBytes(this.choice, this.runtime), choice: this.choice, active,
+      models: Object.keys(MODELS).map(id => ({ id, label: MODELS[id].label, downloadBytes: downloadBytes(id, this.runtime), ...this.status[id] })),
     };
   }
   emit() { const next = this.snapshot(); if (JSON.stringify(next) === JSON.stringify(this.state)) return; this.state = next; this.changed(next); }
   set(id, patch) { Object.assign(this.status[id], patch); this.emit(); }
+  async readyModels() {
+    if (!this.runtimeReady) return;
+    // Size is enough at startup; the full hash already ran when each file was downloaded.
+    await Promise.all(Object.keys(MODELS).map(async id => {
+      if (this.status[id].phase === 'downloading') return;
+      try { for (const file of MODELS[id].files) if ((await fsp.stat(this.file(id, file.name))).size !== file.size) return; } catch { return; }
+      this.set(id, { phase: 'ready', percent: 100, error: null });
+    }));
+  }
   async getState() {
     this.initialized ??= (async () => {
-      // Size is enough at startup; the full hash already ran when each file was downloaded.
-      await Promise.all(Object.keys(MODELS).map(async id => {
-        try { for (const file of MODELS[id].files) if ((await fsp.stat(this.file(id, file.name))).size !== file.size) return; } catch { return; }
-        this.set(id, { phase: 'ready', percent: 100 });
-      }));
+      if (!this.runtime) {
+        for (const id of Object.keys(MODELS)) this.set(id, { phase: 'error', error: '本地识别引擎不支持当前平台。' });
+        return;
+      }
+      try { this.engineDirectory = path.dirname(require.resolve(`${this.runtime.name}/sherpa-onnx.node`, { paths: [path.dirname(require.resolve('sherpa-onnx-node'))] })); }
+      catch { this.engineDirectory = this.runtimeDirectory; }
+      this.runtimeReady = await runtimePresent(this.engineDirectory, this.runtime);
+      await this.readyModels();
     })();
     await this.initialized; return this.snapshot();
   }
@@ -142,6 +248,7 @@ class VoiceManager {
   // and its partial files resume later.
   async prepare(id = this.choice) {
     await this.getState();
+    if (!this.runtime) throw new Error(this.status[id].error);
     if (this.status[id].phase === 'ready') return this.snapshot();
     // A live download of this model is the one to wait for; any other (or one being stopped) ends first, so two
     // writers never share a partial file.
@@ -155,7 +262,15 @@ class VoiceManager {
     this.set(id, { phase: 'downloading', error: null });
     const promise = (async () => {
       try {
-        let completed = 0; const total = downloadBytes(id);
+        const total = downloadBytes(id, this.runtime);
+        if (!this.runtimeReady) {
+          await downloadRuntime(this.runtime, this.runtimeDirectory, this.fetcher, controller.signal, count => this.set(id, { percent: Math.floor(count / total * 100) }));
+          this.engineDirectory = this.runtimeDirectory;
+          this.runtimeReady = true;
+          await this.readyModels();
+        }
+        let completed = this.runtime.size;
+        this.set(id, { percent: Math.floor(completed / total * 100) });
         for (const file of MODELS[id].files) {
           await downloadAsset(file, this.file(id, file.name), this.fetcher, controller.signal, count => this.set(id, { percent: Math.floor((completed + count) / total * 100) }));
           completed += file.size;
@@ -184,7 +299,7 @@ class VoiceManager {
     // A different model is now in use; the previous one has no recognition pending (transcribe runs one at a time).
     const previous = this.worker; this.worker = null; void previous?.terminate();
     const threads = Math.min(4, Math.max(1, os.availableParallelism() - 2));
-    const worker = this.worker = new Worker(this.workerFile, { workerData: { model: MODELS[id].config(name => this.file(id, name)), threads } });
+    const worker = this.worker = new Worker(this.workerFile, { workerData: { model: MODELS[id].config(name => this.file(id, name)), threads, runtimeDirectory: this.engineDirectory } });
     this.workerModel = id;
     worker.on('message', ({ id, text, error }) => {
       const request = this.requests.get(id); if (!request) return;
@@ -242,4 +357,4 @@ class VoiceManager {
     const worker = this.worker; this.worker = null; void worker?.terminate();
   }
 }
-module.exports = { VoiceManager, MODELS, DEFAULT_MODEL, downloadBytes, digest, downloadAsset, validateAudio, samplesFromWav };
+module.exports = { VoiceManager, MODELS, DEFAULT_MODEL, RUNTIME_VERSION, RUNTIMES, downloadBytes, digest, downloadAsset, downloadRuntime, extractTarball, validateAudio, samplesFromWav };

@@ -94,6 +94,14 @@ jobs:
       - name: Verify installer and automatic update metadata
         run: node scripts/verify-update-artifacts.cjs
 
+      - name: Verify voice packaging
+        run: |
+          $packed = (npx --no-install @electron/asar list release/win-unpacked/resources/app.asar --is-pack) -replace '\\', '/'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Test-Path -LiteralPath release/win-unpacked/resources/app.asar.unpacked/node_modules/sherpa-onnx-win-x64) { throw 'Speech engine is in the Windows app.' }
+          if ($packed -match '/node_modules/sherpa-onnx-(win|darwin|linux)-') { throw 'Speech engines are in the Windows app.' }
+          if ($packed -notcontains 'pack   : /node_modules/sherpa-onnx-node/sherpa-onnx.js') { throw 'Speech wrapper is missing from app.asar.' }
+
       - name: Verify desktop with actual terminal button clicks
         run: node scripts/retry.mjs npm run test:desktop -- --packaged
 
@@ -287,7 +295,10 @@ jobs:
           codesign --verify --deep --strict "$app"
           codesign -dv "$app" 2>&1 | grep -q 'Signature=adhoc'
           test -x "$app/Contents/Resources/app.asar.unpacked/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper"
-          test -f "$app/Contents/Resources/app.asar.unpacked/node_modules/sherpa-onnx-darwin-arm64/sherpa-onnx.node"
+          test ! -e "$app/Contents/Resources/app.asar.unpacked/node_modules/sherpa-onnx-darwin-arm64"
+          packed=$(npx --no-install @electron/asar list "$app/Contents/Resources/app.asar" --is-pack)
+          if grep -E '/node_modules/sherpa-onnx-(win|darwin|linux)-' <<< "$packed"; then echo 'Speech engines are in the macOS app.'; exit 1; fi
+          grep -Fx 'pack   : /node_modules/sherpa-onnx-node/sherpa-onnx.js' <<< "$packed"
           test -f "$app/Contents/Resources/integration/zsh-integration.zsh"
           test -f "$app/Contents/Resources/integration/agent-event.cjs"
           test -x "$app/Contents/Resources/integration/ssh-askpass.sh"
@@ -379,7 +390,7 @@ jobs:
           if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" ]]; then echo 'The version tag must match package.json.'; exit 1; fi
           image_arch=${{ matrix.arch == 'x64' && 'x86_64' || 'arm64' }}
           echo "image=Agentrix-$version-linux-$image_arch.AppImage" >> "$GITHUB_OUTPUT"
-          echo "archive=Agentrix-$version-linux-${{ matrix.arch }}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "archive=Agentrix-$version-linux-${{ matrix.arch }}.tar.xz" >> "$GITHUB_OUTPUT"
           echo "unpacked=release/${{ matrix.arch == 'x64' && 'linux-unpacked' || 'linux-arm64-unpacked' }}" >> "$GITHUB_OUTPUT"
 
       - name: Install zsh, a virtual display and FUSE for the AppImage
@@ -395,7 +406,7 @@ jobs:
       - name: Run unit and integration tests, including real Bash and zsh terminals
         run: npm test
 
-      - name: Build the AppImage and tar.gz
+      - name: Build the AppImage and tar.xz
         run: npm run dist:linux
 
       - name: Verify the package
@@ -407,7 +418,10 @@ jobs:
           test -f "release/${{ steps.version.outputs.image }}"
           test -f "release/${{ steps.version.outputs.archive }}"
           test -f "$app/resources/app.asar.unpacked/node_modules/node-pty/prebuilds/linux-${{ matrix.arch }}/pty.node"
-          test -f "$app/resources/app.asar.unpacked/node_modules/sherpa-onnx-linux-${{ matrix.arch }}/sherpa-onnx.node"
+          test ! -e "$app/resources/app.asar.unpacked/node_modules/sherpa-onnx-linux-${{ matrix.arch }}"
+          packed=$(npx --no-install @electron/asar list "$app/resources/app.asar" --is-pack)
+          if grep -E '/node_modules/sherpa-onnx-(win|darwin|linux)-' <<< "$packed"; then echo 'Speech engines are in the Linux app.'; exit 1; fi
+          grep -Fx 'pack   : /node_modules/sherpa-onnx-node/sherpa-onnx.js' <<< "$packed"
           for name in bash-integration.bash zsh-integration.zsh agent-event.cjs; do test -f "$app/resources/integration/$name"; done
           test -x "$app/resources/integration/ssh-askpass.sh"
           if ls "$app/resources/integration" | grep -Ei '\.(ps1|cmd|exe|cs)$'; then echo 'Windows integration files are in the Linux app.'; exit 1; fi
@@ -508,7 +522,7 @@ jobs:
           test -f "$MAC_IMAGE"
           sha256sum --check SHA256SUMS.txt
           sha256sum --check SHA256SUMS-mac.txt
-          linux=("Agentrix-$RELEASE_VERSION-linux-x86_64.AppImage" "Agentrix-$RELEASE_VERSION-linux-x64.tar.gz" "Agentrix-$RELEASE_VERSION-linux-arm64.AppImage" "Agentrix-$RELEASE_VERSION-linux-arm64.tar.gz")
+          linux=("Agentrix-$RELEASE_VERSION-linux-x86_64.AppImage" "Agentrix-$RELEASE_VERSION-linux-x64.tar.xz" "Agentrix-$RELEASE_VERSION-linux-arm64.AppImage" "Agentrix-$RELEASE_VERSION-linux-arm64.tar.xz")
           for file in "${linux[@]}"; do test -f "$file"; done
           sha256sum --check SHA256SUMS-linux-x64.txt SHA256SUMS-linux-arm64.txt
           assets=("$RELEASE_INSTALLER" "$RELEASE_INSTALLER.blockmap" latest.yml SHA256SUMS.txt BUILD-INFO.txt "$MAC_IMAGE" "$MAC_ARCHIVE" SHA256SUMS-mac.txt "${linux[@]}" SHA256SUMS-linux-x64.txt SHA256SUMS-linux-arm64.txt)
@@ -526,7 +540,7 @@ jobs:
 
           Or download **$MAC_IMAGE** and drag Agentrix to Applications. The app is signed ad hoc, not notarized by Apple: on first open, allow it once in System Settings › Privacy & Security (Open Anyway), or run \`xattr -dr com.apple.quarantine "/Applications/Agentrix.app"\`. The macOS edition does not update itself; run the command again to update.
 
-          **Linux (x64 and arm64):** download the AppImage for your processor (**Agentrix-$RELEASE_VERSION-linux-x86_64.AppImage** or **Agentrix-$RELEASE_VERSION-linux-arm64.AppImage**), make it executable with \`chmod +x\` and run it. The **.tar.gz** archives hold the same app: unpack and run \`./agentrix\` (on Ubuntu 23.10 or later, add \`--no-sandbox\`; the AppImage does that by itself when needed). Local terminals run Bash or zsh, chosen in Settings. The Linux edition does not update itself; download the new version to update.
+          **Linux (x64 and arm64):** download the AppImage for your processor (**Agentrix-$RELEASE_VERSION-linux-x86_64.AppImage** or **Agentrix-$RELEASE_VERSION-linux-arm64.AppImage**), make it executable with \`chmod +x\` and run it. The **.tar.xz** archives hold the same app: unpack and run \`./agentrix\` (on Ubuntu 23.10 or later, add \`--no-sandbox\`; the AppImage does that by itself when needed). Local terminals run Bash or zsh, chosen in Settings. The Linux edition does not update itself; download the new version to update.
 
           Install Codex CLI on the computer or Linux SSH host where your project runs.
 

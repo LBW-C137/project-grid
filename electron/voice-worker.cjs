@@ -1,6 +1,10 @@
 // Runs the recognizer off the main thread: loading a model of hundreds of MB and decoding
 // block for hundreds of milliseconds, which would otherwise stall terminal IPC.
 const { parentPort, workerData } = require('node:worker_threads');
+const path = require('node:path');
+// addon.js only searches package-relative paths. Seed its exports so every sherpa wrapper shares this addon.
+const bridge = require.resolve('sherpa-onnx-node/addon.js');
+require.cache[bridge] = { id: bridge, filename: bridge, loaded: true, exports: require(path.join(workerData.runtimeDirectory, 'sherpa-onnx.node')) };
 const sherpa = require('sherpa-onnx-node');
 
 let engine;

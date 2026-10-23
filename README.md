@@ -152,7 +152,7 @@ New installs default to English. Choose 中文 under **Settings → Appearance �
 | --- | --- | --- |
 | **Windows** | `Agentrix-Setup-<version>-x64.exe` | Updates itself |
 | **macOS** | Run the command below in Terminal | The same command installs and updates; the app is signed ad hoc, not notarized |
-| **Linux** | `Agentrix-<version>-linux-<arch>.AppImage` | `chmod +x` and run; a `.tar.gz` is also available |
+| **Linux** | `Agentrix-<version>-linux-<arch>.AppImage` | `chmod +x` and run; a `.tar.xz` is also available |
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | bash

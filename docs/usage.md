@@ -244,20 +244,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=1.3.2`：安装指定版本。
+- `AGENTRIX_VERSION=1.3.3`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 1.3.2：
+例如，安装 1.3.3：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.3.2 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.3.3 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-1.3.2-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-1.3.3-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：
@@ -276,7 +276,7 @@ xattr -dr com.apple.quarantine "/Applications/Agentrix.app"
 
 ### Linux 安装
 
-支持 x64 和 arm64。GitHub [Releases](https://github.com/noeigenstate/Agentrix/releases/latest) 提供 `Agentrix-<version>-linux-x86_64.AppImage`、`Agentrix-<version>-linux-arm64.AppImage`、同内容的 `.tar.gz` 压缩包，以及校验文件 `SHA256SUMS-linux-x64.txt` / `SHA256SUMS-linux-arm64.txt`。
+支持 x64 和 arm64。GitHub [Releases](https://github.com/noeigenstate/Agentrix/releases/latest) 提供 `Agentrix-<version>-linux-x86_64.AppImage`、`Agentrix-<version>-linux-arm64.AppImage`、同内容的 `.tar.xz` 压缩包，以及校验文件 `SHA256SUMS-linux-x64.txt` / `SHA256SUMS-linux-arm64.txt`。
 
 推荐用 AppImage，下载后无需安装：
 
@@ -285,7 +285,7 @@ chmod +x Agentrix-*-linux-*.AppImage
 ./Agentrix-*-linux-*.AppImage
 ```
 
-也可以解压 `.tar.gz`，运行其中的 `./agentrix`。Ubuntu 23.10 及更新版本默认禁止未登记的程序使用 Chromium 沙箱所需的用户命名空间，这时运行压缩包里的程序要加上 `--no-sandbox`；AppImage 会自动检测并处理。**Linux 版不会自动更新**，下载新版本替换即可。
+也可以用 `tar -xJf` 解压 `.tar.xz`，运行其中的 `./agentrix`。Ubuntu 23.10 及更新版本默认禁止未登记的程序使用 Chromium 沙箱所需的用户命名空间，这时运行压缩包里的程序要加上 `--no-sandbox`；AppImage 会自动检测并处理。**Linux 版不会自动更新**，下载新版本替换即可。
 
 ### Linux 终端与快捷键
 
@@ -348,11 +348,11 @@ npm run dist
 - 推送到 `main`、推送 `v*` 标签、提交面向 `main` 的 PR，或在 Actions 页面点击 **Run workflow** 都会触发。
 - 流程：`npm ci` → 单元测试 → 生成 Windows 安装版 → 校验自动更新文件 → 打包版桌面测试 → 上传可执行文件和 SHA-256 校验信息。
 - 独立的 Ubuntu job 使用真实 OpenSSH 连接测试服务，运行 Linux Python worker、Bash PTY、文件读取与 Codex 通知测试；发布前必须同时通过 Windows 和 Linux 检查。
-- Linux 桌面版在 `ubuntu-24.04`（x64）和 `ubuntu-24.04-arm`（arm64）上构建：单元测试（含真实 Bash 和 zsh 终端）→ 生成 AppImage 与 tar.gz → 检查包内容 → 在虚拟显示器中用打包版分别验证 Bash 与 zsh 终端和 Codex 状态 → 检查 AppImage 的终端环境，产物为 **Agentrix-linux-x64** 和 **Agentrix-linux-arm64**。
+- Linux 桌面版在 `ubuntu-24.04`（x64）和 `ubuntu-24.04-arm`（arm64）上构建：单元测试（含真实 Bash 和 zsh 终端）→ 生成 AppImage 与 tar.xz → 检查包内容 → 在虚拟显示器中用打包版分别验证 Bash 与 zsh 终端和 Codex 状态 → 检查 AppImage 的终端环境，产物为 **Agentrix-linux-x64** 和 **Agentrix-linux-arm64**。
 - 桌面回归测试会实际点击「只打开终端」，覆盖网格和全屏，确认按键不被遮挡，再检查真实 PowerShell 与 Codex CLI 启动。
 - Codex 检查只运行版本和配置命令，不调用模型，不需要 API 密钥或 ChatGPT 登录。
 - 构建通过后，在对应运行的 **Artifacts** 中下载 **Agentrix-windows-x64**，解压后双击 `.exe`。产物保留 30 天；测试截图保留 7 天。
-- 推送与 `package.json` 一致的版本标签（如 `v0.3.0`）时，构建与测试通过后会自动创建 GitHub Release，附上两个 `.exe`、`latest.yml`、`.blockmap`、macOS 的 DMG 与 ZIP、Linux 两种架构的 AppImage 与 tar.gz、SHA-256 校验文件和构建信息；普通 `main` 推送只生成 Artifacts。
+- 推送与 `package.json` 一致的版本标签（如 `v0.3.0`）时，构建与测试通过后会自动创建 GitHub Release，附上两个 `.exe`、`latest.yml`、`.blockmap`、macOS 的 DMG 与 ZIP、Linux 两种架构的 AppImage 与 tar.xz、SHA-256 校验文件和构建信息；普通 `main` 推送只生成 Artifacts。
 - 发布任务会重新校验下载产物，只为发布阶段申请仓库写权限。已发布的版本不会被重跑任务覆盖；预发布版本会标为 prerelease。
 - GitHub Packages 面向 npm、NuGet、容器等软件包；本项目以 Windows 可执行文件交付，下载入口是 Releases。
 

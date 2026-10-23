@@ -152,7 +152,7 @@ flowchart LR
 | --- | --- | --- |
 | **Windows** | `Agentrix-Setup-<版本>-x64.exe` | 安装后自动更新 |
 | **macOS** | 终端运行下面的命令 | 安装或更新都用同一条命令；应用为临时签名，未经 Apple 公证 |
-| **Linux** | `Agentrix-<版本>-linux-<架构>.AppImage` | `chmod +x` 后直接运行；也提供 `.tar.gz` |
+| **Linux** | `Agentrix-<版本>-linux-<架构>.AppImage` | `chmod +x` 后直接运行；也提供 `.tar.xz` |
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | bash

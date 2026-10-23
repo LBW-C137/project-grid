@@ -18,14 +18,15 @@ ideas; debugging goes to Codex too, and the lead steps in only when Codex cannot
 | Drawing concepts to choose from | Codex's image tool | See `design-polish` |
 | Ideas, the plan, choosing between options, reviewing, verifying, releasing | Lead (Opus) | Itself |
 
-Split a big request: run independent parts in parallel, but never let two workers touch the same files.
+Split a big request into small tasks, one Codex run per task, and run independent ones in parallel; never let two
+workers touch the same files. Every brief carries `skills/code-standard/SKILL.md`.
 
 ## 2. Codex
 
 Write the prompt to a scratch file, then run it in the background:
 
 ```
-codex exec -m gpt-6.1-sol -c model_reasoning_effort=high -c service_tier='"fast"' -C <repo> -o <scratch>/out.md - < <scratch>/prompt.md > <scratch>/log.txt 2>&1
+codex exec -m gpt-6.1-sol -c model_reasoning_effort=max -c service_tier='"fast"' -C <repo> -o <scratch>/out.md - < <scratch>/prompt.md > <scratch>/log.txt 2>&1
 ```
 
 Codex runs with no approvals and full access, so the scope comes from the prompt alone:

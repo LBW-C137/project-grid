@@ -70,7 +70,7 @@ test('the recognizer is released when idle and loads again for the next recordin
   const voice = new VoiceManager({ directory: os.tmpdir(), idle: 40, worker: path.join(__dirname, 'helpers/voice-worker-stub.cjs') });
   t.after(() => voice.close());
   // Stands for a downloaded model; the stub worker never opens it.
-  voice.initialized = Promise.resolve(); voice.status.sensevoice.phase = 'ready';
+  voice.initialized = Promise.resolve(); voice.runtimeReady = true; voice.status.sensevoice.phase = 'ready';
   const released = async () => { for (let tries = 0; voice.worker && tries < 2000; tries++) await new Promise(resolve => setTimeout(resolve, 1)); return !voice.worker; };
   await voice.warm();
   const first = voice.worker;
@@ -89,7 +89,7 @@ test('a chosen model downloads while dictation keeps using the default, then tak
   const states = [];
   const voice = new VoiceManager({ directory: folder, idle: 1000, worker: path.join(__dirname, 'helpers/voice-worker-stub.cjs'), changed: state => states.push(state), fetcher: async () => { await served; return new Response(bytes); } });
   t.after(async () => { voice.close(); delete MODELS.fixture; assert.ok(path.resolve(folder).startsWith(prefix)); await fs.rm(folder, { recursive: true, force: true }); });
-  voice.initialized = Promise.resolve(); voice.status.sensevoice.phase = 'ready';
+  voice.initialized = Promise.resolve(); voice.runtimeReady = true; voice.status.sensevoice.phase = 'ready';
   voice.choose('fixture'); await new Promise(resolve => setImmediate(resolve));
   let state = await voice.getState();
   assert.deepEqual([state.choice, state.active, state.ready, state.model], ['fixture', 'sensevoice', true, 'SenseVoice Small']);
@@ -124,7 +124,7 @@ test('choosing a model back while its download is being stopped starts it again'
   const fetcher = async (_url, { signal }) => { calls++; if (calls === 1) await new Promise((_, reject) => signal.addEventListener('abort', () => setTimeout(() => reject(new Error('aborted')), 30))); return new Response(bytes); };
   const voice = new VoiceManager({ directory: folder, fetcher });
   t.after(async () => { voice.close(); delete MODELS.fixture; await fs.rm(folder, { recursive: true, force: true }); });
-  voice.initialized = Promise.resolve(); voice.status.sensevoice.phase = 'ready';
+  voice.initialized = Promise.resolve(); voice.runtimeReady = true; voice.status.sensevoice.phase = 'ready';
   voice.choose('fixture');
   for (let tries = 0; tries < 200 && !calls; tries++) await new Promise(resolve => setTimeout(resolve, 5));
   voice.choose('sensevoice'); voice.choose('fixture');
