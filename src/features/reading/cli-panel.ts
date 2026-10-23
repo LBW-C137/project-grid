@@ -49,15 +49,20 @@ export function cliInputDraft(agent: ScreenAgent, rows: string[], screen: AgentS
   return placeholder(agent, text) ? '' : commandInputText(text);
 }
 
+// Busy agents can take queued messages; dialogs and pickers own the keys even when the input stays visible.
+export function cliDialogShown(agent: ScreenAgent, rows: string[], screen: AgentScreen): boolean {
+  if (screen.choice || screen.overlay !== 'none') return true;
+  if (agent !== 'codex') return false;
+  const input = cliInputArea(agent, rows, screen);
+  return !!codexDialog(rows) || !!input && codexPickerBelow(rows, input.row);
+}
+
 // The agent waits at its own input: no question or popup, no working line, and its input box with the footer drawn.
 export function isAtPrompt(agent: ScreenAgent, rows: string[], screen: AgentScreen): boolean {
-  if (screen.choice || screen.overlay !== 'none' || (agent === 'claude' && claudeWorking(rows))) return false;
-  // A dialog Codex drew over its conversation (/usage, /memories) still waits, its input showing below it.
-  if (agent === 'codex' && codexDialog(rows)) return false;
+  if (cliDialogShown(agent, rows, screen) || (agent === 'claude' && claudeWorking(rows))) return false;
   const input = cliInputArea(agent, rows, screen);
   if (agent === 'claude' && input && claudeShellRunning(rows, input.start)) return false;
-  // A Codex picker open under the input (/copy) is still waiting for a choice.
-  return !!input?.hasFooter && !(agent === 'codex' && codexPickerBelow(rows, input.row));
+  return !!input?.hasFooter;
 }
 
 // A dialog (Claude's /usage, /status, /config) takes the input's place; its content is the command's result.

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
-const { cliInputDraft, hasCliInput, isCliIdle, isAtPrompt } = require('../src/features/reading/cli-panel.ts');
+const { cliDialogShown, cliInputDraft, hasCliInput, isCliIdle, isAtPrompt } = require('../src/features/reading/cli-panel.ts');
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures/screens', name + '.txt'), 'utf8').split('\n');
 const inspect = (agent, rows) => parseAgentScreen(agent, rows);
 const footer = agent => agent === 'claude' ? ['  ⏺ Opus 5.5 · demo · ctx 4%   ● high · /effort', '  ⏸ manual mode on · ← for agents'] : ['  GPT-6.1-Sol high · C:\\work\\demo · 90% left', '? for shortcuts'];
@@ -27,6 +27,7 @@ for (const agent of ['claude', 'codex']) {
     test(agent + ': ' + suffix + ' is not the agent prompt', () => {
       const rows = fixture(agent + '-' + suffix);
       assert.equal(isAtPrompt(agent, rows, inspect(agent, rows)), false);
+      assert.equal(cliDialogShown(agent, rows, inspect(agent, rows)), true);
     });
   }
   test(agent + ': a historical input above a panel is not a live prompt', () => {
@@ -65,4 +66,29 @@ test('captured config, usage, plugins and under-input menus cannot take a normal
   }
   const rows = [...input('codex'), 'Copy user message', '↑/↓ select · Enter confirm · Esc cancel'];
   assert.equal(isAtPrompt('codex', rows, inspect('codex', rows)), false);
+  assert.equal(cliDialogShown('codex', rows, inspect('codex', rows)), true);
+});
+
+test('message availability is read-only and independent of activity and pictures in the input', () => {
+  for (const agent of ['claude', 'codex']) {
+    for (const output of [[], [agent === 'claude' ? '✶ Swooping… (12s)' : '• Working (12s • esc to interrupt)'], ['! sleep 10', '  ⎿ Running…']]) {
+      for (const draft of ['', '[Image #1]', '[Image #1] next message']) {
+        const rows = [...output, ...input(agent, draft)], before = rows.slice(), screen = inspect(agent, rows);
+        assert.equal(hasCliInput(agent, rows, screen), true);
+        assert.equal(cliDialogShown(agent, rows, screen), false);
+        assert.equal(cliInputDraft(agent, rows, screen), draft);
+        assert.deepEqual(rows, before);
+        assert.deepEqual(screen, inspect(agent, before));
+      }
+    }
+  }
+});
+
+test('Codex usage dialogs block delivery even with a visible input and no parsed choice', () => {
+  const rows = ['                Usage', '                Daily limit  75% left', '                esc close', ...input('codex', '[Image #1]')];
+  const screen = inspect('codex', rows);
+  assert.equal(screen.choice, null); assert.equal(screen.overlay, 'none');
+  assert.equal(hasCliInput('codex', rows, screen), true);
+  assert.equal(cliDialogShown('codex', rows, screen), true);
+  assert.equal(isAtPrompt('codex', rows, screen), false);
 });

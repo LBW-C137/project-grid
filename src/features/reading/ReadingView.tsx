@@ -9,7 +9,7 @@ import { dictateInto } from '../voice/voice-input';
 import { createDictationSend } from './dictation-send';
 import { readScreen, useScreen } from '../terminal/terminal-screen';
 import { parseAgentScreen } from '../agents/agent-screen';
-import { cliInputDraft, hasCliInput, isAtPrompt } from './cli-panel';
+import { cliDialogShown, cliInputDraft, hasCliInput, isAtPrompt } from './cli-panel';
 import { ReadingWelcome } from './ReadingWelcome';
 import { ReadingChoice } from './ReadingChoice';
 import { NativeApprovalCard } from './NativeApprovalCard';
@@ -54,6 +54,8 @@ const history = new Map<string, string[]>();
 // conversation at once, but its file only appears with the next message; until then these stay hidden.
 const cleared = new Map<string, ReadonlySet<string>>();
 const clears = (agent: ProjectTerminal['agent'], text: string) => (agent === 'claude' ? /^\/clear(?:\s|$)/ : /^\/(?:clear|new)(?:\s|$)/).test(text.trim());
+// Picture previews may still be decoding after the CLI has accepted the attachment.
+const IMAGE_PLACEHOLDER = /\[Image #\d+\]/;
 // A Markdown block the agent shows (a file's content, a draft) is laid out like the answer around it, its source a
 // click away; inside it, Markdown blocks stay source. A very long one stays source too: this runs on the window's thread.
 const DOCUMENT = /^(?:markdown|md|mdx)$/i, DOCUMENT_LIMIT = 20000;
@@ -414,8 +416,9 @@ function LegacyReadingView({ projectId, terminal, remote = false, autoFocus, act
       return;
     }
     // A closed popup can leave the CLI's dialog open. Looking is harmless; guessing a close key is not.
-    const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', current = readScreen(terminal.id);
-    if (!current || !isAtPrompt(agentKind, current.rows, parseAgentScreen(agentKind, current.rows))) { setTerminalPopup({ command: '' }); return; }
+    const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', rows = readScreen(terminal.id)?.rows ?? [];
+    const parsed = parseAgentScreen(agentKind, rows);
+    if (!hasCliInput(agentKind, rows, parsed) || cliDialogShown(agentKind, rows, parsed)) { setTerminalPopup({ command: '' }); return; }
     if (inputBlocked) return;
     const pendingId = text ? echo(text, attached) : null;
     if (pendingId) toBottom();
@@ -426,7 +429,7 @@ function LegacyReadingView({ projectId, terminal, remote = false, autoFocus, act
       remember(); return;
     }
     if (left && pending.some(prompt => sameMessage(prompt.text, left))) { window.agentrix.writeTerminal(terminal.id, '\r'); await submitted(agentKind, left, owner); }
-    else if (left) await clearInput(agentKind, owner);
+    else if (left && !IMAGE_PLACEHOLDER.test(left)) await clearInput(agentKind, owner);
     if (!ownsSend(owner)) return;
     if (text) {
       const pasted = await window.agentrix.pasteTerminal(terminal.id, text, terminal.sessionId);
@@ -519,7 +522,7 @@ function LegacyReadingView({ projectId, terminal, remote = false, autoFocus, act
     // The first picture goes into a clean input: text left there (a prompt Claude put back after an interrupt) would be
     // sent with this message, and once pictures are in it Ctrl+U would take them too. One of ours still waiting stays.
     const agentKind = terminal.agent === 'claude' ? 'claude' : 'codex', left = !images.length && !remote ? inputDraft(agentKind) : '';
-    const clearFirst = !!left && !pending.some(prompt => sameMessage(prompt.text, left));
+    const clearFirst = !!left && !IMAGE_PLACEHOLDER.test(left) && !pending.some(prompt => sameMessage(prompt.text, left));
     // The clipboard is read during the event; clearing the input and pressing the paste key follow it.
     const cleared = clearFirst ? clearInput(agentKind, owner) : Promise.resolve();
     // Over SSH the CLI cannot reach this computer's clipboard: the picture goes over as a file on that computer, whose

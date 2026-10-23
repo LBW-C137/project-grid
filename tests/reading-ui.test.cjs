@@ -247,6 +247,13 @@ function elements(node) {
   return [node, ...elements(node.props.children)];
 }
 
+const composerRows = (agent, activity = 'idle', draft = '') => [
+  ...(activity === 'working' ? [agent === 'claude' ? '✶ Swooping… (12s)' : '• Working (12s • esc to interrupt)'] : []),
+  ...(activity === 'shell' ? ['! sleep 10', '  ⎿ Running…'] : []),
+  ...(agent === 'claude' ? ['────', '❯ ' + draft, '────', '  ⏸ manual mode on']
+    : ['› ' + draft, '', 'GPT-6.1-Sol high · C:\\work', '? for shortcuts']),
+];
+
 // Run ReadingView's composer handlers and effect cleanup without starting a browser or Electron.
 function dictationHarness(t, overrides = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -820,6 +827,85 @@ test('a question renders as its own card: progress, the question, options, an ow
 });
 
 for (const agent of ['claude', 'codex']) {
+  for (const activity of ['idle', 'working', 'shell']) {
+    for (const picture of ['none', 'ready', 'loading']) {
+      test(`${agent}: a ${picture} picture and message send while ${activity} without opening the popup`, async t => {
+        let draft = '';
+        const actions = [], received = [], pasteKey = agent === 'claude' ? '\x1bv' : '\x16';
+        const h = dictationHarness(t, {
+          './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows: composerRows(agent, activity, draft) }) },
+          './agent-screen': { parseAgentScreen },
+          './image-thumbnail': { thumbnail: () => picture === 'loading' ? new Promise(() => {}) : Promise.resolve('data:image/png;base64,picture') },
+        });
+        h.props.terminal.agent = agent; h.props.terminal.codexActivity = activity === 'idle' ? 'idle' : 'working';
+        window.agentrix.writeTerminal = (id, key) => {
+          assert.equal(id, h.props.terminal.id); actions.push(key);
+          if (key === pasteKey) draft += '[Image #1]';
+          if (key === '\x15') draft = '';
+          if (key === '\r') { received.push(draft); draft = ''; }
+        };
+        window.agentrix.pasteTerminal = async (id, text, sessionId) => {
+          assert.equal(id, h.props.terminal.id); assert.equal(sessionId, h.props.terminal.sessionId);
+          actions.push(text); draft += text; return { ok: true };
+        };
+        if (picture !== 'none') {
+          h.render().props.onPaste({ preventDefault() {}, clipboardData: { getData: () => '', items: [{ kind: 'file', type: 'image/png', getAsFile: () => ({ size: 1 }) }] } });
+          await h.tick(0);
+          assert.equal(draft, '[Image #1]');
+        }
+        h.edit('next message'); h.press('Enter'); await h.tick(0);
+        assert.equal(h.popup(), undefined); assert.equal(h.node.value, '');
+        assert.equal(draft, (picture === 'none' ? '' : '[Image #1]') + 'next message');
+        await h.tick(399); assert.deepEqual(received, []);
+        await h.tick(1); await h.tick(700); await h.tick(3000);
+        assert.deepEqual(actions, [...(picture === 'none' ? [] : [pasteKey]), 'next message', '\r']);
+        assert.deepEqual(received, [(picture === 'none' ? '' : '[Image #1]') + 'next message']);
+        assert.deepEqual(h.echoed, [{ text: 'next message', images: picture === 'ready' ? ['data:image/png;base64,picture'] : [] }]);
+        assert.equal(h.popup(), undefined);
+      });
+    }
+  }
+
+  test(agent + ': consecutive picture pastes keep the first placeholder while previews load', async t => {
+    let draft = '';
+    const h = dictationHarness(t, {
+      './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows: composerRows(agent, 'working', draft) }) },
+      './agent-screen': { parseAgentScreen }, './image-thumbnail': { thumbnail: () => new Promise(() => {}) },
+    });
+    h.props.terminal.agent = agent;
+    window.agentrix.writeTerminal = (id, key) => {
+      h.written.push({ id, text: key });
+      if (key === '\x15') draft = '';
+      else draft += `[Image #${h.written.length}]`;
+    };
+    for (let index = 0; index < 2; index++) {
+      h.render().props.onPaste({ preventDefault() {}, clipboardData: { getData: () => '', items: [{ kind: 'file', type: 'image/png', getAsFile: () => ({ size: 1 }) }] } });
+      await h.tick(0);
+    }
+    await h.tick(1000);
+    assert.deepEqual(h.written.map(item => item.text), [agent === 'claude' ? '\x1bv' : '\x16', agent === 'claude' ? '\x1bv' : '\x16']);
+    assert.equal(draft, '[Image #1][Image #2]');
+  });
+
+  test(agent + ': a message already left with a picture retries Enter without clearing or pasting again', async t => {
+    let draft = '[Image #1] next message';
+    const h = dictationHarness(t, {
+      './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows: composerRows(agent, 'working', draft) }) },
+      './agent-screen': { parseAgentScreen },
+    });
+    h.props.terminal.agent = agent;
+    window.agentrix.writeTerminal = (id, key) => {
+      h.written.push({ id, text: key });
+      assert.equal(draft, '[Image #1] next message');
+      if (h.written.length === 2) draft = '';
+    };
+    h.edit('next message'); h.press('Enter'); await h.tick(0);
+    assert.deepEqual(h.written.map(item => item.text), ['\r']);
+    await h.tick(700); await h.tick(700); await h.tick(3000);
+    assert.deepEqual(h.written.map(item => item.text), ['\r', '\r']);
+    assert.deepEqual(h.pasted, []); assert.equal(h.popup(), undefined);
+  });
+
   for (const command of ['/status', '/init', '!echo SAME_OUTPUT']) {
     test(agent + ': ' + command + ' opens the live popup and types with fixed pauses without screen reads', async t => {
       const h = dictationHarness(t, { './terminal-screen': { useScreen: () => null, readScreen: () => assert.fail('typed commands never read the screen') } });
@@ -842,13 +928,20 @@ for (const agent of ['claude', 'codex']) {
   }
 
   test(agent + ': a dialog or missing prompt opens the popup with the message and attachments still in the composer', async t => {
-    let rows = null;
+    let rows = composerRows(agent);
     const h = dictationHarness(t, { './terminal-screen': { useScreen: () => null, readScreen: () => rows && ({ rows }) }, './agent-screen': { parseAgentScreen } });
     h.props.terminal.agent = agent;
-    for (const frame of [null, ['Settings', 'Esc to close']]) {
+    h.render().props.onPaste({ preventDefault() {}, clipboardData: { getData: () => '', items: [{ kind: 'file', type: 'image/png', getAsFile: () => ({ size: 1 }) }] } });
+    await h.tick(0); h.written.length = 0;
+    const dialog = agent === 'claude' ? ['✶ Swooping… (12s)', 'Settings  Status  Config  Usage', '❯ Auto-compact    true', 'Type to filter · Enter/↓ to select · Esc to clear']
+      : ['                Usage', '                Daily limit  75% left', '                esc close', ...composerRows(agent)];
+    const picker = agent === 'claude' ? ['Select model', '❯ 1. Opus', '  2. Sonnet', 'Enter to confirm · Esc to cancel']
+      : [...composerRows(agent), 'Copy user message', '↑/↓ select · Enter confirm · Esc cancel'];
+    for (const frame of [null, ['Settings', 'Esc to close'], dialog, picker]) {
       rows = frame;
       h.edit('keep this message'); h.press('Enter'); await h.tick(1000);
       assert.ok(h.popup()); assert.equal(h.node.value, 'keep this message');
+      assert.ok(elements(h.tree()).some(element => element.props.className === 'reading-attachments'));
       assert.deepEqual(h.written, []); assert.deepEqual(h.pasted, []); assert.deepEqual(h.echoed, []);
       h.popup().props.onClose(); h.render();
     }

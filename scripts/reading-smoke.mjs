@@ -204,10 +204,20 @@ try {
   await write(hook('start', { session_id: 's1', prompt: 'test interrupt' }));
   await waitFor(async () => (await state()).codexActivity === 'working', 'working fixture');
   // Claude's spinner line while it works (an idle input on screen would mean it has finished).
-  await write("Clear-Host; Write-Host ([string][char]0x2736 + ' Osmosing' + [char]0x2026)\r");
+  await write("Clear-Host; Write-Host ([string][char]0x2736 + ' Osmosing' + [char]0x2026); Show-ReadingFixtureInput\r");
   await waitFor(async () => await terminal.locator('.reading-status.is-working').count() > 0, 'working status rendered');
   assert.equal(await terminal.locator('.reading-content .reading-status.is-working').count(), 1, 'the working line ends the conversation, not a corner');
   await page.screenshot({ path: path.join(output, 'working.png') });
+  await waitFor(async () => {
+    const rows = await physicalRows();
+    return hasCliInput('claude', rows, parseAgentScreen('claude', rows));
+  }, 'working CLI still has its input');
+  await resetWrites();
+  await composer.fill("Write-Output 'READING_WORKING_SENT'; Show-ReadingFixtureInput"); await composer.press('Enter');
+  await waitFor(async () => (await physicalRows()).some(row => row.trim().startsWith('READING_WORKING_SENT')), 'normal message submitted while Claude works');
+  assert.equal(await popup.count(), 0, 'a message during work never opens the terminal popup');
+  assert.equal(await composer.inputValue(), ''); assert.deepEqual((await writes()).map(item => item.data), ["Write-Output 'READING_WORKING_SENT'; Show-ReadingFixtureInput", '\r']);
+  checks.push('normal messages while Claude works reach the CLI with one Enter and no terminal popup');
   await composer.fill('/'); await palette.waitFor(); await resetWrites(); await composer.press('Escape');
   await waitFor(async () => await composer.getAttribute('aria-expanded') === 'false', 'palette Escape closes the list');
   assert.deepEqual(await writes(), [], 'palette Escape does not interrupt');
