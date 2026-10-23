@@ -1425,5 +1425,8 @@
   "设置里可以上传自己的头像，阅读视图里你的消息会显示它。": "You can upload your own avatar in Settings; your messages in the reading view show it.",
   "模型路由列出每个调用的模型担任什么角色、在处理什么任务，以及正在准备、运行中还是审核中；审核完就从面板移除。正在处理的任务排到了模型路由下面。": "The model route lists each called model's role, its task and whether it is preparing, running or being reviewed, and drops it once reviewed. Active tasks now sit right below the model route.",
   "用量刷新更及时：每轮结束、额度文件变化和额度窗口重置时都会自动更新；窗口已重置的额度会标明「已重置，等待更新」。": "Usage refreshes sooner: after each round, when the usage cache changes and when a limit window resets; a window that has reset says \"Reset, waiting for an update\".",
-  "Claude Code 不再显示它并不支持的「重置额度」按钮。": "Claude Code no longer shows a limit-reset button it does not support."
+  "Claude Code 不再显示它并不支持的「重置额度」按钮。": "Claude Code no longer shows a limit-reset button it does not support.",
+  "阅读视图里斜杠命令打开的终端改成输入框上方的小窗口，上面的对话仍然看得见。": "The terminal a slash command opens in the reading view is now a small window above the message box, so the conversation stays in view.",
+  "Claude 或 Codex 工作时在阅读视图里发消息（包括先贴图片再打字），会直接排队发送，不再误弹出终端。": "A message sent from the reading view while Claude or Codex works (pictures first, then text, too) is queued and sent, instead of opening the terminal by mistake.",
+  "活动栏「正在处理的任务」显示一句话总结；后台通知、子代理回报等系统消息不再被当成你的任务。": "The activity pane's task card shows a one-sentence summary, and system messages such as background notifications and subagent reports are no longer taken for your tasks."
 }
