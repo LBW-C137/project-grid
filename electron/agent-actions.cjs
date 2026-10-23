@@ -3,6 +3,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { transcriptWindow, LIVE_READ_LIMIT } = require('./transcript-window.cjs');
 const { ClaudeImageLine } = require('./oversized-record.cjs');
+const { messageText, ownMessage, promptText } = require('./prompt-queue.cjs');
 
 // What an agent is doing, step by step: each tool it calls becomes one action the window can show
 // ("editing src/App.tsx", "running npm test", "skill code-review", "MCP github · create_issue").
@@ -31,16 +32,12 @@ const resolvePath = (cwd, file) => (cwd?.startsWith('/') || file.startsWith('/')
 function claudeOwnRecord(record) {
   if (record?.isCompactSummary || record?.isVisibleInTranscriptOnly) return true;
   if (record?.type !== 'user') return false;
-  const content = record.message?.content;
-  const text = (typeof content === 'string' ? content : Array.isArray(content) ? content.filter(block => block?.type === 'text').map(block => block.text).join('\n') : '').trim();
-  return /^\[Request interrupted by user(?: for tool use)?\]$/.test(text) || text.startsWith('This session is being continued from a previous conversation');
+  return ownMessage(messageText(record.message?.content));
 }
 
 // A prompt sent to Claude, which starts a round; tool results come back as user records too.
 function claudePrompt(record) {
-  const content = record?.message?.content;
-  return record?.type === 'user' && !record.isSidechain && !record.isMeta && !claudeOwnRecord(record)
-    && (typeof content === 'string' || Array.isArray(content) && content.some(block => block?.type === 'text') && !content.some(block => block?.type === 'tool_result'));
+  return record?.type === 'user' && promptText(record.message?.content, record) !== null;
 }
 
 // mcp__server__tool, the name both agents give a tool that an MCP server provides.

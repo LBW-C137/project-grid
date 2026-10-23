@@ -1,5 +1,6 @@
 const { claudeAction, claudeOwnRecord, codexActions, codexFailed, resolvePath } = require('./agent-actions.cjs');
 const { IMAGE_LIMIT } = require('./oversized-record.cjs');
+const { messageText, promptText, promptCommand } = require('./prompt-queue.cjs');
 
 // The conversation of a terminal's agent, for the reading view: what the user asked, what the agent
 // answered (Markdown), and the tools it called in between. It is read from the records each agent already
@@ -63,12 +64,12 @@ const brief = (action, cwd = action.cwd) => ({ kind: action.kind, tool: action.t
 // Entries keep their order; a later record about the same entry (a tool that finished) replaces it.
 class ConversationLog {
   // cwd: the folder Codex works in (its session's and each turn's), which relative file paths in its steps start from.
-  constructor(changed = () => {}, limit = 400) { this.changed = changed; this.limit = limit; this.list = []; this.cwd = null; }
+  constructor(changed = () => {}, limit = 400) { this.changed = changed; this.limit = limit; this.list = []; this.cwd = null; this.queue = []; }
   // Records still feed activity tracking during replay, but reading snapshots wait for the file tail.
   beginHistory() { this.loading = true; }
   endHistory() { if (!this.loading) return; this.loading = false; this.changed({ reset: true }); }
   snapshot() { return this.loading ? [] : this.list; }
-  reset() { if (!this.list.length) return; this.list = []; this.changed({ reset: true }); }
+  reset() { this.queue = []; if (!this.list.length) return; this.list = []; this.changed({ reset: true }); }
   // inOrder: a new entry goes before those stamped after it, and the window gets the whole list again.
   put(entry, inOrder = false) {
     const index = this.list.findIndex(item => item.id === entry.id);
@@ -110,25 +111,31 @@ class ConversationLog {
 // the oldest). Until then it stands in the list marked queued, which the reading view shows on the message it sent and
 // is never shown as a message itself.
 function claudeQueue(log, record) {
-  const queued = log.list.filter(entry => entry.queued), text = typeof record.content === 'string' ? clean(record.content) : '';
+  const original = promptText(record.content, record), text = original === null ? '' : clean(original);
   if (record.operation === 'enqueue') {
     // A slash command or shell line sent while it works is not a message (the reading view's isTypedCommand).
     const command = (/^\/[^\s/]+(?:\s|$)/.test(text) || text.startsWith('!')) && !/[\r\n]/.test(text);
-    if (text && !command) log.put({ id: `q:${record.timestamp}:${log.list.length}`, at: Date.parse(record.timestamp) || Date.now(), role: 'user', text: bounded(text), queued: true });
+    const id = original !== null && !command ? `q:${record.timestamp}:${log.queue.length}` : null;
+    log.queue.push({ id, text: record.content });
+    if (id) log.put({ id, at: Date.parse(record.timestamp) || Date.now(), role: 'user', text: bounded(text), original, queued: true });
     return;
   }
   if (record.operation !== 'remove' && record.operation !== 'dequeue') return;
-  const entry = (text && queued.find(item => item.text === bounded(text))) || (record.operation === 'dequeue' || !text ? queued[0] : null);
-  if (entry) log.drop(entry.id);
+  const index = record.content ? log.queue.findIndex(item => item.text === record.content || original !== null && item.id && clean(item.text) === text) : 0;
+  if (index < 0 || !log.queue[index]) return;
+  const [entry] = log.queue.splice(index, 1);
+  if (entry.id) log.drop(entry.id);
 }
 
 function claudeConversation(log, record, cwd) {
   if (record?.type === 'queue-operation') { if (!record.isSidechain) claudeQueue(log, record); return; }
   if (claudeOwnRecord(record)) return;
-  const queued = record?.type === 'attachment' && record.attachment?.type === 'queued_command' && record.attachment.commandMode !== 'bash' ? record.attachment : null;
+  const queued = record?.type === 'attachment' && record.attachment?.type === 'queued_command' ? record.attachment : null;
   if (queued && !record.isSidechain) {
-    const text = clean(typeof queued.prompt === 'string' ? queued.prompt : Array.isArray(queued.prompt) ? queued.prompt.filter(block => block?.type === 'text').map(block => block.text).join('\n') : '');
-    const entry = withImages({ id: `u:${record.uuid || record.timestamp}`, at: Date.parse(record.timestamp) || Date.now(), role: 'user', text: bounded(text) }, queued.prompt);
+    const original = promptText(queued.prompt, { ...record, ...queued });
+    if (original === null) return;
+    const text = promptCommand(original) || clean(original);
+    const entry = withImages({ id: `u:${record.uuid || record.timestamp}`, at: Date.parse(record.timestamp) || Date.now(), role: 'user', text: bounded(text), original }, queued.prompt);
     if (text || entry.images) log.put(entry);
     return;
   }
@@ -139,16 +146,19 @@ function claudeConversation(log, record, cwd) {
       for (const block of content) if (block.type === 'tool_result') log.finish(String(block.tool_use_id || ''), block.is_error === true);
       return;
     }
-    const text = clean(typeof content === 'string' ? content : Array.isArray(content) ? content.filter(block => block.type === 'text').map(block => block.text).join('\n') : '');
-    const entry = withImages({ id: `u:${base}`, at, role: 'user', text: bounded(text) }, content);
+    const original = promptText(content, record);
+    if (original === null) return;
+    const text = promptCommand(original) || clean(original);
+    const entry = withImages({ id: `u:${base}`, at, role: 'user', text: bounded(text), original }, content);
     // A conversation's first prompt, which Claude Code writes after the reply to it, goes before that reply.
     if (text || entry.images) log.put(entry, record.parentUuid === null);
     return;
   }
   if (record.type !== 'assistant' || !Array.isArray(content)) return;
+  const original = messageText(content);
   content.forEach((block, index) => {
     const text = block.type === 'text' ? clean(block.text) : '';
-    if (text) log.put({ id: `a:${base}:${index}`, at, role: 'assistant', text: bounded(text) });
+    if (text) log.put({ id: `a:${base}:${index}`, at, role: 'assistant', text: bounded(text), original });
     else if (block.type === 'tool_use') { const action = claudeAction(block, at, record.cwd || cwd); log.put({ id: action.id, at, role: 'tool', tool: brief(action, record.cwd || cwd) }); }
   });
 }
@@ -167,10 +177,6 @@ function questionReply(text) {
     .map(([question, answer]) => question && answer ? `${question}\n→ ${answer}` : question || `→ ${answer}`).join('\n\n');
 }
 // Newer Codex reports each message once as a completed item; older versions as event messages.
-function codexMessage(item) {
-  const parts = Array.isArray(item?.content) ? item.content : [];
-  return clean(parts.map(part => typeof part?.text === 'string' ? part.text : '').join('\n'));
-}
 function codexConversation(log, record, cwd) {
   if (!record?.payload) return;
   const payload = record.payload, at = Date.parse(record.timestamp) || Date.now();
@@ -180,13 +186,19 @@ function codexConversation(log, record, cwd) {
     const picture = payload.type === 'item_completed' ? generatedImage(payload.item, at) : null;
     if (picture) log.put(picture);
     else if (payload.type === 'item_completed' && ['UserMessage', 'AgentMessage'].includes(payload.item?.type)) {
-      const raw = codexMessage(payload.item), user = payload.item.type === 'UserMessage', reply = user ? questionReply(raw) : null, text = reply ?? raw;
-      const entry = { id: `${user ? 'u' : 'a'}:${payload.item.id || at}`, at, role: user ? 'user' : 'assistant', text: bounded(text), ...(reply !== null ? { answer: true } : {}) };
+      const raw = messageText(payload.item.content), user = payload.item.type === 'UserMessage', reply = user ? questionReply(raw) : null;
+      const original = user && reply === null ? promptText(payload.item.content, { ...record, ...payload, ...payload.item }) : raw;
+      if (original === null) return;
+      const text = reply ?? (user && promptCommand(original) || clean(original));
+      const entry = { id: `${user ? 'u' : 'a'}:${payload.item.id || at}`, at, role: user ? 'user' : 'assistant', text: bounded(text), original, ...(reply !== null ? { answer: true } : {}) };
       const shown = user ? withImages(entry, payload.item.content) : entry;
       if (text || shown.images) log.put(shown);
-    } else if (['user_message', 'agent_message'].includes(payload.type) && typeof payload.message === 'string' && clean(payload.message)) {
-      const user = payload.type === 'user_message', reply = user ? questionReply(clean(payload.message)) : null, text = reply ?? clean(payload.message);
-      if (text) log.put({ id: `${payload.type[0]}:${at}:${payload.message.length}`, at, role: user ? 'user' : 'assistant', text: bounded(text), ...(reply !== null ? { answer: true } : {}) });
+    } else if (['user_message', 'agent_message'].includes(payload.type) && typeof payload.message === 'string') {
+      const user = payload.type === 'user_message', reply = user ? questionReply(payload.message) : null;
+      const original = user && reply === null ? promptText(payload.message, { ...record, ...payload }) : payload.message;
+      if (original === null) return;
+      const text = reply ?? (user && promptCommand(original) || clean(original));
+      if (text || user) log.put({ id: `${payload.type[0]}:${at}:${payload.message.length}`, at, role: user ? 'user' : 'assistant', text: bounded(text), original, ...(reply !== null ? { answer: true } : {}) });
     } else if (['task_complete', 'turn_completed', 'turn_aborted', 'turn_interrupted'].includes(payload.type)) log.settle();
     return;
   }

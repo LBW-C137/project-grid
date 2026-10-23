@@ -7,6 +7,7 @@ const { rolloutFiles, sessionMeta } = require('./session-files.cjs');
 const { transcriptWindow, LIVE_READ_LIMIT, codexMetadata } = require('./transcript-window.cjs');
 const { OversizedLine } = require('./oversized-record.cjs');
 const { sameThread } = require('./terminal-title.cjs');
+const { promptText } = require('./prompt-queue.cjs');
 
 // Only interactive rollout files can own a project card. A child agent can
 // inherit notify, but its completion does not end the interactive parent turn.
@@ -45,7 +46,11 @@ class CodexActivityReader {
     if (record.type !== 'event_msg') return;
     const item = record.payload || {}, turn = item.turn_id;
     // The prompt of the round, so its completion can be announced by what it worked on.
-    if (item.type === 'user_message' && typeof item.message === 'string') { this.snapshot = { ...this.snapshot, prompt: item.message.slice(0, 2000) }; return; }
+    if (item.type === 'user_message' || item.type === 'item_completed' && item.item?.type === 'UserMessage') {
+      const prompt = item.type === 'user_message' ? promptText(item.message, { ...record, ...item }) : promptText(item.item.content, { ...record, ...item, ...item.item });
+      if (prompt !== null) this.snapshot = { ...this.snapshot, prompt };
+      return;
+    }
     if (['task_started', 'turn_started'].includes(item.type)) {
       if (typeof turn !== 'string' || !turn) return;
       this.snapshot = { ...this.snapshot, turnId: turn, state: 'working', updatedAt: Date.parse(record.timestamp) || 0 };

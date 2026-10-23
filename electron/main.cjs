@@ -50,7 +50,7 @@ const { WorkspaceStore } = require('./state.cjs');
 const { createEventServer } = require('./events.cjs');
 const { ProjectGit } = require('./project-git.cjs');
 const { acceptShellEvent, SubmissionTracker, PromptMarkers, InputGate, isTerminalResponse } = require('./terminal-input.cjs');
-const { PromptQueue } = require('./prompt-queue.cjs');
+const { PromptQueue, promptText, promptSummary: summarizeTask } = require('./prompt-queue.cjs');
 const { createTerminalEnvironment } = require('./terminal-env.cjs');
 const { adoptSystemProxy } = require('./system-proxy.cjs');
 const { PreviewResources, resourceResponse } = require('./preview-resources.cjs');
@@ -65,7 +65,6 @@ const { TerminalTitleTracker, wholeThread } = require('./terminal-title.cjs');
 const { FileOperations } = require('./file-operations.cjs');
 const { ClipboardWrites } = require('./clipboard-writes.cjs');
 const { VoiceManager } = require('./voice.cjs');
-const { summarizeTask } = require('./task-summary.cjs');
 const { ActionLog, TranscriptTail, claudeRecord, codexRecord, skillDescription } = require('./agent-actions.cjs');
 const { ConversationLog, claudeConversation, codexConversation } = require('./conversation.cjs');
 const { conversationBatchDelay, pollAfterSubmission } = require('./conversation-timing.cjs');
@@ -188,7 +187,8 @@ function publicState() {
           // The step a working agent is on, for the card's one-line status; the full list is sent separately.
           action: s?.codexActive && s.codexActivity === 'working' ? briefAction(s.actions.current()) : null,
           // What the round was asked to do, in a few words, for the activity overview.
-          task: s?.codexActive ? s.lastTask || '' : '',
+          task: s?.codexActive ? s.promptQueue.task?.summary || s.lastTaskSummary || s.lastTask || '' : '',
+          taskTitle: s?.codexActive ? s.promptQueue.task?.title || s.lastTaskTitle || '' : '',
           // The prompts sent and not finished yet: the ones being worked on, then the ones waiting.
           prompts: s?.codexActive ? s.promptQueue.list() : [] };
       });
@@ -570,9 +570,9 @@ function applyActivity(project, s, snapshot) {
   if (snapshot.updatedAt < Math.max(s.activitySince, s.activityInputAt)) return;
   s.rootThreadId = snapshot.threadId;
   s.approval?.context('activity', [snapshot.threadId, snapshot.turnId, snapshot.state]);
-  // Keep the last prompt that named some work; a bare "继续" or "continue" keeps the one before it.
-  const task = summarizeTask(snapshot.prompt);
-  if (task) s.lastTask = task;
+  // Keep the last prompt that named work; bare continuations and background callbacks cannot replace it.
+  const task = summarizeTask(snapshot.prompt, { spoken: true });
+  if (task) { s.lastTask = task; s.lastTaskSummary = summarizeTask(snapshot.prompt); s.lastTaskTitle = snapshot.prompt; }
   if (s.agent === 'codex') store.setRestore(s.terminalId, { threadId: snapshot.threadId });
   s.codexActivity = snapshot.state;
   if (s.agent === 'claude') {
@@ -586,7 +586,7 @@ function applyActivity(project, s, snapshot) {
       });
     }
   }
-  if (['complete', 'interrupted'].includes(snapshot.state) && (s.agent === 'claude' || project.kind === 'ssh')) s.promptQueue.finish(snapshot.updatedAt);
+  if (['complete', 'interrupted'].includes(snapshot.state) && (s.agent === 'claude' || project.kind === 'ssh' || s.native)) s.promptQueue.finish(snapshot.updatedAt);
   if (snapshot.state === 'complete' && snapshot.turnId) {
     s.lastCompletedAt = snapshot.updatedAt;
     if (store.complete(project.id, `${snapshot.threadId}:${snapshot.turnId}`, snapshot.updatedAt)) notifyCompletion(project);
@@ -867,15 +867,19 @@ function nativeSessionEvent(id, sessionId, message) {
   const project = findProject(id), at = Date.now(), p = message.params;
   const add = (role, text, entryId) => {
     if (typeof text !== 'string' || !text) return;
-    s.conversation.put({ id: entryId || randomUUID(), at, role, text: text.slice(0, 20000) });
+    if (role === 'user' && promptText(text) === null) return;
+    s.conversation.put({ id: entryId || randomUUID(), at, role, text: text.slice(0, 20000), original: text });
     if (s.nativeMode === 'claude-sdk') {
       s.nativeMessages = [...s.nativeMessages, { role, text: text.slice(0, 20000) }].slice(-100);
       scheduleState();
     }
   };
   if (message.type === 'managed-ready') { s.nativeReady = true; scheduleState(); }
-  if (message.type === 'managed-prompt') {
-    add('user', message.text); s.lastTask = message.text.slice(0, 200); s.activityInputAt = at;
+  if (message.type === 'managed-prompt' && promptText(message.text) !== null) {
+    add('user', message.text);
+    const task = summarizeTask(message.text, { spoken: true });
+    if (task) { s.lastTask = task; s.lastTaskSummary = summarizeTask(message.text); s.lastTaskTitle = message.text; }
+    s.activityInputAt = at;
     s.codexActivity = 'working'; store.expectCompletion(project.id); scheduleState();
   }
   if (s.nativeMode === 'claude-sdk') {
@@ -975,14 +979,16 @@ function startTerminal(id, nativeMode = null) {
   s.conversation = new ConversationLog(change => {
     publishConversation(s, change);
     const entry = change.entry;
+    if (entry?.role === 'assistant' && s.codexActive) s.promptQueue.reply(entry);
     // An answer to the agent's own question is not a prompt: it goes on with the round it answered.
     if (entry?.role === 'user' && !entry.answer && !entry.queued && s.codexActive) {
-      if (entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.text, entry.at, entry.id);
+      const localCommand = isLocalAgentCommand(s.agent, entry.text);
+      if (entry.at >= (s.activitySince || 0) - 1000) s.promptQueue.start(entry.original ?? entry.text, entry.at, entry.id, localCommand);
       // Recalled prompts, custom slash commands and command-line prompts are not always visible to the key
       // tracker. Codex's received user message confirms them. A time watermark excludes history and replays;
       // working/completion snapshots alone can never grant another alert. Claude has UserPromptSubmit hooks.
       const at = entry.at + (s.activityClockOffset || 0);
-      if (s.agent === 'codex' && at >= Math.max(s.activitySince || 0, s.activityInputAt || 0) && at > Math.max(s.activityPromptAt || 0, s.lastCompletedAt || 0)) {
+      if (s.agent === 'codex' && !localCommand && at >= Math.max(s.activitySince || 0, s.activityInputAt || 0) && at > Math.max(s.activityPromptAt || 0, s.lastCompletedAt || 0)) {
         s.activityPromptAt = at;
         store.expectCompletion(project.id);
       }

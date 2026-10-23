@@ -96,7 +96,9 @@ try {
   const before = await routeTop();
   await input('给登录页加上验证码。然后跑一下测试\r');
   const prompts = () => overview.locator('.activity-prompts li').evaluateAll(items => items.map(item => `${item.classList.contains('is-working') ? 'working' : 'queued'}:${item.querySelector('p').textContent}`));
-  await waitFor(async () => JSON.stringify(await prompts()) === JSON.stringify(['working:first instruction', 'queued:给登录页加上验证码。然后跑一下测试']), 'prompt list shows the working and the waiting prompt');
+  // Each prompt shows its first sentence; the whole text is its hover title.
+  await waitFor(async () => JSON.stringify(await prompts()) === JSON.stringify(['working:first instruction', 'queued:给登录页加上验证码。']), 'prompt list shows the working and the waiting prompt');
+  assert.equal(await overview.locator('.activity-prompts li').nth(1).getAttribute('title'), '给登录页加上验证码。然后跑一下测试');
   assert.equal(await overview.locator('.activity-progress').count(), 0, 'task cards show state without an invented progress bar');
   assert.equal(await overview.locator('li.is-working .activity-prompt-state').innerText(), '正在处理');
   assert.equal(await routeTop(), before, 'a second prompt leaves the cards under the task list where they were');

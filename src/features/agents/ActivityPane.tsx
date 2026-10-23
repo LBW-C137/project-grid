@@ -230,15 +230,15 @@ function resetTime(at: number) {
 function PromptList({ terminal }: { terminal: ProjectTerminal }) {
   const prompts = terminal.prompts || [];
   if (!prompts.length) {
-    const text = !terminal.codexActive ? t('还没有开始任务') : terminal.codexActivity === 'complete' && terminal.task ? t('已完成：{task}', { task: terminal.task }) : t('没有待处理的提示');
-    return <p className="activity-task-quiet" title={text}>{text}</p>;
+    const text = !terminal.codexActive ? t('还没有开始任务') : terminal.codexActivity === 'complete' && terminal.task ? t('已完成：{task}', { task: terminal.task }) : terminal.task || t('没有待处理的提示');
+    return <p className="activity-task-quiet" title={terminal.taskTitle || text}>{text}</p>;
   }
   return <ol className="activity-prompts" aria-label={t('提示')}>
     {prompts.map(prompt => prompt.state === 'working'
       ? <li key={prompt.id} className="is-working" title={prompt.text}>
         <span className="activity-prompt-state"><CircleNotch size={20} weight="bold" className="loading-spinner" aria-hidden="true" />{t('正在处理')}</span>
-        <p>{prompt.text}</p>
+        <p>{prompt.summary}</p>
       </li>
-      : <li key={prompt.id} title={prompt.text}><span className="activity-prompt-state">{t('排队中')}</span><p>{prompt.text}</p></li>)}
+      : <li key={prompt.id} title={prompt.text}><span className="activity-prompt-state">{t('排队中')}</span><p>{prompt.summary}</p></li>)}
   </ol>;
 }

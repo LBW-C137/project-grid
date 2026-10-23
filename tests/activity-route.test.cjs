@@ -220,7 +220,7 @@ test('Codex reset count arrives automatically, shows zero and bounded query stat
 
 test('working task keeps its real status, spinner and text, with no fake progress or dead theme overrides', () => {
   const html = activityMarkup([], 'zh', { agent: 'codex',
-    prompts: [{ id: 'work', text: 'Continue responding while usage hangs', state: 'working' }],
+    prompts: [{ id: 'work', text: 'Continue responding while usage hangs', summary: 'Continue responding while usage hangs', state: 'working' }],
     agentUsage: { provider: 'OpenAI', context: { used: 25000, window: 100000 },
       limits: [{ minutes: 300, percent: 60 }], resets: { left: 2 }, resetQuery: { state: 'ready' } },
   });
@@ -246,4 +246,19 @@ test('inactive terminal keeps its empty card above tasks, whose height is bounde
   assert.doesNotMatch(tasks, /flex:\s*1|min-height:\s*(?:96|120)px/);
   assert.match(css, /\.activity-prompts\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(css, /\.activity-call-title\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
+});
+
+test('task cards display source summaries and retain the complete original only in their hovers', () => {
+  const original = 'Please fix the button.\n<pasted_content id="1">Synthetic hidden details.</pasted_content>';
+  const html = activityMarkup([], 'zh', { prompts: [
+    { id: 'working', text: original, summary: 'Please fix the button.', state: 'working' },
+    { id: 'queued', text: '```js\nconst synthetic = 1;\n```', summary: '（代码）', state: 'queued' },
+  ] });
+  assert.match(html, /<p>Please fix the button\.<\/p>/); assert.match(html, /<p>（代码）<\/p>/);
+  assert.ok(html.includes('title="Please fix the button.\n&lt;pasted_content id=&quot;1&quot;&gt;Synthetic hidden details.&lt;/pasted_content&gt;"'));
+  assert.doesNotMatch(html.replace(/title="[^"]*"/g, ''), /pasted_content|Synthetic hidden details|const synthetic/);
+  const completed = activityMarkup([], 'zh', { codexActivity: 'complete', task: '按钮现在可以正常点击。', taskTitle: original });
+  assert.match(completed, /已完成：按钮现在可以正常点击。/); assert.ok(completed.includes('title="Please fix the button.'));
+  const command = activityMarkup([], 'zh', { codexActivity: 'unknown', task: '/model', taskTitle: '<command-name>/model</command-name>' });
+  assert.match(command, />\/model<\/p>/); assert.doesNotMatch(command.replace(/title="[^"]*"/g, ''), /command-name/);
 });
