@@ -30,7 +30,7 @@ endpoint, provider, profile or config-directory environment overrides, checked b
 hashing credential values. Unknown/missing proof, malformed flags, changed home facts and arbitrary overrides stay
 unavailable. Keep the proof in account binding/cache scope, and still require recorded official-provider metadata
 and config checks; neither a model name nor this capability alone proves an official account. SSH remains unsupported.
-The sidebar keeps the existing model routing, context length and usage/reset controls above the task list, which is
+The sidebar keeps the existing model routing, context length, usage and Codex reset controls above the task list, which is
 fixed at the bottom; retain real context/quota meters and existing content/accessibility.
 
 ## Where each agent writes it
@@ -70,12 +70,8 @@ fixed at the bottom; retain real context/quota meters and existing content/acces
 - **Claude Code account** (`<config>/.claude.json`, or `<home>/.claude.json` without `CLAUDE_CONFIG_DIR`):
   - `cachedUsageUtilization.utilization`: `five_hour` / `seven_day` with `utilization` (percent) and `resets_at`
     (ISO), from its last `/usage`.
-  - Limit resets come in two kinds, each behind a flag in `cachedGrowthBookFeatures`: `tengu_nifty_lemur` is the
-    hidden `/limit-reset` that clears the 5-hour limit once a week; `tengu_cedar_ember` is a plan's grants, counted in
-    `utilization.cedar_ember.grants`.
-  - Claude Code fetches whether the reset is still there only at the limit, so `cedar_ember: null` and a missing flag
-    mean "no word", never "none left". Never grey out the button on a guess; what Claude says on screen ("Weekly reset
-    used · available again <date>") is the only "used".
+  - `cachedUsageUtilization.fetchedAtMs`: when the limits were fetched. The usage card keeps their source and update
+    time; use CodePulse's status line record when it is newer than Claude Code's cache.
 
 ## The three places to change
 

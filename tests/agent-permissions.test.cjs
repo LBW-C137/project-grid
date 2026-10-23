@@ -22,7 +22,7 @@ function handlers() {
   });
   // onEvent owns account-query cleanup on real agent/shell exit. Include that
   // legitimate dependency, with an observable subscription instead of a PTY.
-  vm.runInContext(main.slice(main.indexOf('function stopUsageAccount('), main.indexOf("// Claude's plan limits and resets,")), context);
+  vm.runInContext(main.slice(main.indexOf('function stopUsageAccount('), main.indexOf('let claudeAccountTimer =')), context);
   vm.runInContext(main.slice(main.indexOf('function claudeActivity('), main.indexOf('async function resumeAfterPrompt(')), context);
   return { context, project, session, calls, send: event => context.onEvent({ projectId: 't', sessionKey: 'key', type: 'agent-activity', sessionId: 'session', eventId: 'session:1', ...event }) };
 }

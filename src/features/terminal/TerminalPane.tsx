@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Terminal } from '@xterm/xterm';
+import { registerReadingTerminal } from '../reading/reading-terminal';
 import { fitTerminal } from './terminal-fit';
 import type { TerminalPacket } from '../../shared/types';
 import { createTerminalLinkProvider } from './terminal-links';
@@ -120,6 +121,13 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-terminal-weight', 'data-terminal-font-family'] });
     term.current = terminal;
     const unregister = registerScreen(id, terminal, sessionId);
+    const unregisterPopup = registerReadingTerminal(id, sessionId, terminal);
+    const contextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 230)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)), selection: terminal.getSelection() });
+    };
+    // xterm moves into the reading popup; its menu must follow its DOM rather than React's original host.
+    terminal.element?.addEventListener('contextmenu', contextMenu);
     let disposed = false;
     let ready = false;
     let lastSeq = 0;
@@ -210,6 +218,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
       disposed = true; queued = [];
       unsubscribe(); offPaste(); input.dispose(); selection.dispose(); resized.dispose(); links.dispose(); clipboardWrites.dispose(); styling.dispose(); themeObserver.disconnect(); observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(settle);
       terminal.textarea?.removeEventListener('focus', focusIn); terminal.textarea?.removeEventListener('blur', focusOut); focusOut();
+      terminal.element?.removeEventListener('contextmenu', contextMenu); unregisterPopup();
       gpu.current?.dispose(); gpu.current = null; unregister();
       terminal.dispose(); term.current = null;
     };
@@ -231,10 +240,7 @@ export function TerminalPane({ id, sessionId, fontSize, onError, focused, onOpen
     }
   }, [focused, sessionId]);
   const action = (callback: () => void) => { callback(); setMenu(null); term.current?.focus(); };
-  return <><div className="terminal-host" ref={host} aria-label={t('项目终端')} onContextMenu={event => {
-    event.preventDefault();
-    setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 230)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)), selection: term.current?.getSelection() || '' });
-  }} />{menu && createPortal(<div ref={menuRef} className="dropdown terminal-context-menu" role="menu" aria-label={t('终端操作')} style={{ left: menu.x, top: menu.y }}>
+  return <><div className="terminal-host" ref={host} aria-label={t('项目终端')} />{menu && createPortal(<div ref={menuRef} className="dropdown terminal-context-menu" role="menu" aria-label={t('终端操作')} style={{ left: menu.x, top: menu.y }}>
     <button role="menuitem" disabled={!menu.selection} onClick={() => action(() => { void copy(menu.selection); })}>{t('复制')}<span>Ctrl C</span></button>
     <button role="menuitem" onClick={() => action(copyAll)}>{t('复制全部终端文字')}</button>
     <button role="menuitem" onClick={() => action(() => term.current?.selectAll())}>{t('全选')}<span>Ctrl Shift A</span></button>

@@ -145,6 +145,12 @@ for (const agent of agents) {
     await turn('queued', '从 1 数到 40，每行一个数字。最后单独一行写 MARK-6A。', 'MARK-6B', { during: async ({ elapsed }) => {
       if (queued || elapsed < 2500) return;
       queued = true; await composer.fill('再只回复：MARK-6B'); await composer.press('Enter');
+      const popup = terminal.locator('.reading-terminal-popup');
+      if (await popup.count()) {
+        check(agent, 'queued', 'busy CLI kept the composer draft', await composer.inputValue() === '再只回复：MARK-6B');
+        await popup.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('再只回复：MARK-6B'); await page.keyboard.press('Enter');
+        await popup.getByRole('button', { name: '关闭', exact: true }).click(); await composer.fill('');
+      }
     } });
     const queuedText = await readingText();
     check(agent, 'queued', 'first answer kept', queuedText.includes('MARK-6A'));
@@ -192,6 +198,9 @@ for (const agent of agents) {
     check(agent, 'switch views', 'back on the latest message', await terminal.locator('.reading-scroll').evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight < 40));
 
     await composer.fill('/clear'); await composer.press('Enter');
+    const clearPopup = terminal.locator('.reading-terminal-popup');
+    await clearPopup.waitFor();
+    check(agent, 'clear', 'real terminal opened', await clearPopup.locator('.xterm').count() === 1);
     const cleared = Date.now();
     await sleep(1500);
     check(agent, 'clear', 'old conversation gone after /clear', !(await readingText()).includes('MARK-4'));
@@ -199,6 +208,8 @@ for (const agent of agents) {
     check(agent, 'clear', 'message box usable soon after /clear', Date.now() - cleared < 4000, `${Date.now() - cleared} ms`);
     await fs.writeFile(path.join(output, agent, 'clear.screen.txt'), await screenText());
     await shot('clear');
+    await clearPopup.getByRole('button', { name: '关闭', exact: true }).click();
+    await clearPopup.waitFor({ state: 'detached' });
     await turn('after clear', '只回复：MARK-5', 'MARK-5');
     if (agent === 'codex') {
       await composer.focus(); await composer.press('Shift+Tab'); await sleep(1500);

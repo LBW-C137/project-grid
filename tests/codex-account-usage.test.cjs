@@ -85,6 +85,24 @@ test('official background protocol: count 0 and 2, split JSON, notifications, sa
   }
 });
 
+test('valid account limits survive missing reset credits without inventing a reset count', () => {
+  for (const rateLimitResetCredits of [undefined, null, {}, { availableCount: null }, { availableCount: 0 }]) {
+    const account = accountResult({ rateLimits: { primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: 123 } }, rateLimitResetCredits }, 2000);
+    assert.deepEqual(account.limits, [{ minutes: 300, percent: 5, resetsAt: 123000 }]);
+    assert.equal(account.at, 2000);
+    const known = rateLimitResetCredits?.availableCount === 0;
+    assert.deepEqual(account.resets, known ? { left: 0, total: null } : null);
+    assert.equal(account.resetQuery.state, known ? 'ready' : 'unavailable');
+    const meter = new UsageMeter('codex');
+    meter.apply({ type: 'event_msg', payload: { type: 'token_count', rate_limits: { primary: { used_percent: 80 } } } });
+    assert.equal(meter.codexAccount(account), true);
+    assert.equal(meter.snapshot().limits[0].percent, 5);
+    assert.equal(meter.snapshot().limitsAt, 2000);
+  }
+  assert.equal(accountResult(null).resets, null);
+  assert.equal(accountResult({ rateLimits: { primary: { usedPercent: 'bad' } } }).limits, undefined);
+});
+
 test('null/old protocol is unsupported, never zero; errors, exits, malformed and oversized output are bounded', async t => {
   for (const mode of ['null', 'old']) {
     const value = await fakeRead(t, mode);
@@ -114,7 +132,8 @@ test('hung read times out without blocking the event loop, kills its child, and 
   assert.equal((await fakeRead(t, 'hang', { timeout: 1000, defaultStop: true })).resetQuery.reason, 'timeout', 'production cleanup also terminates the owned child');
 });
 
-test('cache deduplicates, isolates home/account environment and drops stale/disposed results', async () => {
+test('cache deduplicates, isolates home/account environment and drops stale/disposed results', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 100000 });
   const pending = [], values = [], other = [];
   const service = new CodexAccountUsage({ scope: async () => null, read: opts => new Promise(resolve => pending.push({ opts, resolve })) });
   const first = service.watch(options, value => values.push(value));
@@ -126,13 +145,16 @@ test('cache deduplicates, isolates home/account environment and drops stale/disp
   service.watch({ ...options, codexHome: options.codexHome + '-other' }, () => {});
   service.watch({ ...options, env: { HOME: 'another-account-environment' } }, () => {});
   await flush(); assert.equal(pending.length, 3);
-  first.refresh(); await flush(); const beforeReset = pending.at(-1);
+  first.refresh(); t.mock.timers.tick(5000); await flush(); const beforeReset = pending.at(-1);
   // Split terminal output of an actual reset cancels the read begun before it.
   first.output('\x1b[32mUsage re'); first.output('set. You have 0 resets left.\x1b[0m');
   await flush(); assert.equal(beforeReset.opts.signal.aborted, true);
-  beforeReset.resolve(ready(2)); pending.at(-1).resolve(ready(0)); await flush();
+  const inFlight = pending.length;
+  beforeReset.resolve(ready(2)); await flush();
+  t.mock.timers.tick(4999); await flush(); assert.equal(pending.length, inFlight);
+  t.mock.timers.tick(1); await flush(); pending.at(-1).resolve(ready(0)); await flush();
   assert.equal(values.at(-1).resets.left, 0);
-  second.dispose(); first.refresh(); await flush();
+  second.dispose(); first.refresh(); t.mock.timers.tick(5000); await flush();
   const stale = pending.at(-1), previousLength = values.length;
   first.dispose(); assert.equal(stale.opts.signal.aborted, true);
   stale.resolve(ready(2)); await flush(); assert.equal(values.length, previousLength);
@@ -216,29 +238,62 @@ test('proven benign complete flags reach watch preflight and a ready count; late
 });
 
 test('failed refreshes back off, retry automatically and recover without an endless loading status', async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 100000 });
   let calls = 0; const values = [];
-  const service = new CodexAccountUsage({ scope: async () => null, interval: 100, read: async () => ++calls < 3
+  const service = new CodexAccountUsage({ scope: async () => null, read: async () => ++calls < 5
     ? { resets: null, resetQuery: { state: 'error', reason: 'query' } } : ready(2) });
-  service.watch(options, value => values.push(value)); await flush();
+  const watch = service.watch(options, value => values.push(value)); await flush();
   assert.equal(values.at(-1).resetQuery.state, 'error');
-  t.mock.timers.tick(199); await flush(); assert.equal(calls, 1);
-  t.mock.timers.tick(1); await flush(); assert.equal(calls, 2);
-  t.mock.timers.tick(399); await flush(); assert.equal(calls, 2);
-  t.mock.timers.tick(1); await flush(); assert.equal(calls, 3);
+  for (const delay of [60000, 120000, 240000, 300000]) {
+    const before = calls;
+    watch.refresh();
+    t.mock.timers.tick(delay - 1); await flush(); assert.equal(calls, before, 'active requests preserve failure back-off');
+    t.mock.timers.tick(1); await flush(); assert.equal(calls, before + 1);
+  }
   assert.equal(values.at(-1).resets.left, 2);
+  t.mock.timers.tick(29999); await flush(); assert.equal(calls, 5);
+  t.mock.timers.tick(1); await flush(); assert.equal(calls, 6, 'a successful read restores the normal cadence');
   service.dispose();
 });
 
-test('main lifecycle follows recorded provider, replaces sessions safely and never uses local queries for SSH/Claude', async () => {
+test('active reads share the scope throttle, coalesce in flight and read aged token counts only after 30 seconds', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 100000 });
+  const pending = [];
+  const service = new CodexAccountUsage({ scope: async () => null, interval: 120000, read: opts => new Promise(resolve => pending.push({ opts, resolve, at: Date.now() })) });
+  t.after(() => service.dispose());
+  const first = service.watch(options, () => {}), second = service.watch(options, () => {});
+  await flush(); pending[0].resolve(ready(2)); await flush();
+  t.mock.timers.tick(30000); first.refresh(30000); second.refresh(30000); await flush();
+  assert.equal(pending.length, 1);
+  t.mock.timers.tick(1); first.refresh(30000); second.refresh(30000); await flush();
+  assert.equal(pending.length, 2);
+  for (let i = 0; i < 10; i++) { first.refresh(); second.refresh(); }
+  t.mock.timers.tick(6000); await flush();
+  assert.equal(pending.length, 2, 'forced refreshes never overlap the running read');
+  assert.equal(pending[1].opts.signal.aborted, false, 'turn notifications coalesce without cancelling the read');
+  pending[1].resolve(ready(1)); await flush(); assert.equal(pending.length, 3);
+  pending[2].resolve(ready(0)); await flush();
+  first.refresh(); second.refresh();
+  t.mock.timers.tick(4999); await flush(); assert.equal(pending.length, 3);
+  t.mock.timers.tick(1); await flush(); assert.equal(pending.length, 4);
+  assert.ok(pending.slice(1).every((read, i) => read.at - pending[i].at >= 5000));
+  first.dispose(); second.dispose();
+  assert.equal(pending[3].opts.signal.aborted, true);
+  pending[3].resolve(ready(0)); await flush();
+  t.mock.timers.tick(120000); await flush(); assert.equal(pending.length, 4);
+});
+
+test('main lifecycle follows recorded provider, replaces sessions safely and never uses local queries for SSH/Claude', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 100000 });
   const main = fs.readFileSync(path.join(__dirname, '../electron/main.cjs'), 'utf8');
   // Exercise the real lifecycle functions without loading Electron or a PTY.
-  const functions = main.slice(main.indexOf('function startUsage('), main.indexOf("// Claude's plan limits and resets, from Claude Code's own state file,"));
+  const functions = main.slice(main.indexOf('function startUsage('), main.indexOf('let claudeAccountTimer ='));
   const notes = main.slice(main.indexOf('function noteSettings('), main.indexOf('// A skill step names the skill;'));
   const pending = [], sessions = new Map();
   const service = new CodexAccountUsage({ scope: async () => null, read: opts => new Promise(resolve => pending.push({ opts, resolve })) });
   const { startUsage, stopUsageAccount, noteSettings } = vm.runInNewContext(`${functions}\n${notes}\n({ startUsage, stopUsageAccount, noteSettings })`, {
-    UsageMeter, codexAccounts: service, sessions, process, scheduleState() {},
+    UsageMeter, codexAccounts: service, sessions, process, scheduleState() {}, scheduleUsageRollover() {},
+    localClaudeMeters: () => [], disposeClaudeAccounts() {},
     codexProvider: async () => id => id, claudeProvider: async () => 'Anthropic', claudeConfigDir: () => '', refreshClaudeAccounts() {},
     agentSettings: previous => previous,
   });
@@ -256,9 +311,11 @@ test('main lifecycle follows recorded provider, replaces sessions safely and nev
   const previous = pending[0];
   startUsage(project, s, event); noteSettings(s, 'codex', meta('openai')); await flush();
   assert.equal(previous.opts.signal.aborted, true);
-  previous.resolve(ready(2)); pending[1].resolve(ready(0)); await flush();
+  assert.equal(pending.length, 1, 'rebinding a scope waits for its cancelled read to settle');
+  previous.resolve(ready(2)); await flush(); t.mock.timers.tick(5000); await flush();
+  pending[1].resolve(ready(0)); await flush();
   assert.equal(s.usage.snapshot().resets.left, 0);
-  s.usageAccount.refresh(); await flush(); const exiting = pending[2];
+  s.usageAccount.refresh(); t.mock.timers.tick(5000); await flush(); const exiting = pending[2];
   stopUsageAccount(s); assert.equal(exiting.opts.signal.aborted, true);
   exiting.resolve(ready(2)); await flush(); assert.equal(s.usage.snapshot().resetQuery.state, 'loading');
   startUsage({ ...project, kind: 'ssh' }, s, event); noteSettings(s, 'codex', meta('openai')); await flush();
@@ -267,12 +324,14 @@ test('main lifecycle follows recorded provider, replaces sessions safely and nev
   assert.equal(pending.length, 3); assert.equal(s.usage.agent, 'claude');
   s.agent = 'codex'; const proofEvent = { ...event };
   startUsage(project, s, proofEvent); noteSettings(s, 'codex', meta('openai')); await flush();
+  t.mock.timers.tick(5000); await flush();
   pending.at(-1).resolve(ready(2)); await flush();
   assert.equal(s.usage.snapshot().resets.left, 2);
   proofEvent.accountLaunch = 'unavailable'; s.bindUsageAccount(); await flush();
   assert.equal(s.usage.snapshot().resets, null); assert.equal(s.usage.snapshot().resetQuery.reason, 'scope');
   assert.equal(pending.length, 4, 'a scope-proof change invalidates the cached count without querying');
   proofEvent.accountLaunch = 'model-only-v1'; s.bindUsageAccount(); await flush();
+  t.mock.timers.tick(5000); await flush();
   const untrustedLate = pending.at(-1);
   noteSettings(s, 'codex', meta('relay')); assert.equal(untrustedLate.opts.signal.aborted, true);
   untrustedLate.resolve(ready(2)); await flush();

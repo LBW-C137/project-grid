@@ -24,17 +24,3 @@ export function codexResetCount(usage: { resets?: { left: number | null } | null
   if (usage?.resetQuery) return usage.resetQuery.state === 'ready' ? usage.resets?.left ?? null : null;
   return usage?.resets?.left ?? said;
 }
-
-// What Claude Code last said of its weekly session reset (/limit-reset): offered when the 5-hour limit is reached ("/limit-
-// reset to reset your session limit now · … · 1/week"), used ("Session limit reset · next reset available Oct 23 · …"),
-// or already used this week ("Weekly reset used · available again Oct 23"). again: when it comes back, as Claude wrote
-// it. null: it has not said.
-export function claudeResetsSaid(rows: readonly string[]): { left: number; again: string | null } | null {
-  // Rows apart, so a date ends with its row; the words before it may wrap.
-  const text = rows.map(row => row.trim()).join('\n');
-  const said = [
-    ...[...text.matchAll(/\/limit-reset\s+to\s+reset\s+your\s+session\s+limit\s+now/gi)].map(match => ({ at: match.index, left: 1, again: null as string | null })),
-    ...[...text.matchAll(/(?:Weekly\s+reset\s+used\s+·\s+available\s+again|Session\s+limit\s+reset\s+·\s+next\s+reset\s+available)\s+([^·\n]+)/gi)].map(match => ({ at: match.index, left: 0, again: match[1].trim() })),
-  ].sort((a, b) => a.at - b.at).at(-1);
-  return said ? { left: said.left, again: said.again } : null;
-}

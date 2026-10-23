@@ -31,51 +31,173 @@ function activityMarkup(calls, language = 'zh', terminal = {}) {
   } }));
 }
 
-test('the activity route hides empty calls, formats model names, counts and tasks, and marks running groups', () => {
+test('the activity route hides empty calls and shows active counts, tasks and each state in both languages', () => {
   const empty = activityMarkup([]);
   assert.ok(empty.includes('Opus 5.5'));
   assert.ok(!empty.includes('调用的模型'));
   assert.ok(!activityMarkup(undefined).includes('activity-route-calls'));
   const calls = [
-    { agent: 'Claude Code', provider: 'Anthropic', model: 'claude-sonnet-5-5', effort: null, fast: null, runs: 2, running: 1, tasks: ['Polish <card>', 'Check spacing'] },
-    { agent: 'Codex', provider: 'OpenAI', model: 'gpt-6.1-sol', effort: 'high', fast: true, runs: 5, running: 0, tasks: ['parser.md'] },
+    { agent: 'Claude Code', provider: 'Anthropic', model: 'claude-sonnet-5-5', effort: null, fast: null, preparing: 0, running: 1, reviewing: 1, tasks: ['Polish <card>', 'Check spacing'], items: [] },
+    { agent: 'Codex', provider: 'OpenAI', model: 'gpt-6.1-sol', effort: 'max', fast: true, preparing: 2, running: 3, reviewing: 1, tasks: ['parser.md'], items: [] },
   ];
   const html = activityMarkup(calls);
-  for (const text of ['调用的模型', 'Sonnet 5.5', 'GPT-6.1-Sol', '子代理 ×2 · 1 个运行中', 'Codex 子任务 ×5 · 思考 high · 快速', 'title="Polish &lt;card&gt;\nCheck spacing"']) assert.ok(html.includes(text), text);
-  assert.equal((html.match(/class="activity-call-running"/g) || []).length, 1);
-  const english = activityMarkup(calls, 'en');
-  for (const text of ['Models called', 'Subagents ×2 · 1 running', 'Codex subtasks ×5 · effort high · Fast']) assert.ok(english.includes(text), text);
+  const plain = html.replace(/<[^>]*>/g, '');
+  for (const text of ['调用的模型', 'Sonnet 5.5', 'GPT-6.1-Sol', '子代理 ×2 · 1 个运行中 · 1 个审核中', 'Codex 子任务 ×6 · 2 个正在准备 · 3 个运行中 · 1 个审核中 · 思考 max · 快速']) assert.ok(plain.includes(text), text);
+  assert.ok(html.includes('title="Polish &lt;card&gt;\nCheck spacing"'));
+  for (const [state, count] of [['preparing', 1], ['running', 2], ['reviewing', 2]]) assert.equal((html.match(new RegExp(`class="activity-call-${state}"`, 'g')) || []).length, count);
+  assert.doesNotMatch(plain, /0 个/);
+  const english = activityMarkup(calls, 'en').replace(/<[^>]*>/g, '');
+  for (const text of ['Models called', 'Subagents ×2 · 1 running · 1 reviewing', 'Codex subtasks ×6 · 2 preparing · 3 running · 1 reviewing · effort max · Fast']) assert.ok(english.includes(text), text);
 });
 
-test("Claude's weekly session reset explains it requires an exhausted 5-hour limit without disabling the button", () => {
-  const render = (percent, left = null, language = 'zh', kind = 'session', agent = 'claude') => activityMarkup([], language, {
-    agent, agentUsage: { limits: [{ minutes: 10080, percent: 100 }, ...(percent === undefined ? [] : [{ minutes: 300, percent }])], resets: { kind, left } },
-  });
-  const caption = '5 小时额度用完后可用 · 每周 1 次';
-  for (const percent of [0, 6, 99.9]) {
-    for (const left of [null, 1]) {
-      const html = render(percent, left);
-      assert.ok(html.includes(`<small>${caption}</small>`));
-      assert.ok(html.includes(`title="${caption}。`));
-      assert.doesNotMatch(html, /<button[^>]*disabled/);
-      assert.match(html, /点击后有 10 秒可以取消/);
+test('a single preparing or reviewing group uses its own dot and reviewed routes disappear', () => {
+  for (const state of ['preparing', 'reviewing']) {
+    const html = activityMarkup([{ agent: 'Codex', model: 'gpt-6.1-sol', provider: null, effort: null, fast: null, preparing: 0, running: 0, reviewing: 0, [state]: 1, tasks: [], items: [] }], 'en');
+    assert.match(html, new RegExp(`class="activity-call-${state}"`));
+    assert.ok(html.replace(/<[^>]*>/g, '').includes(`Codex subtasks ×1 · 1 ${state}`));
+    assert.doesNotMatch(html, /activity-call-running|0 preparing|0 reviewing|0 running/);
+  }
+  const { AgentCalls } = require('../electron/features/agents/agent-calls.cjs');
+  const calls = new AgentCalls();
+  calls.apply({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Agent', id: 'a', input: { model: 'sonnet', description: 'Check layout' } }] } });
+  calls.apply({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: 'Checked' }] } });
+  assert.match(activityMarkup(calls.snapshot()), /activity-call-reviewing/);
+  calls.apply({ type: 'system', subtype: 'stop_hook_summary', hookCount: 1 });
+  assert.doesNotMatch(activityMarkup(calls.snapshot()), /activity-route-calls|Check layout|调用的模型/);
+});
+
+test('called models show four ordered role and title rows with state dots, full hovers and localized overflow', () => {
+  const long = 'Inspect <parser> ' + 'and preserve every detail '.repeat(20);
+  const items = [
+    { state: 'preparing', role: '调查', title: long },
+    { state: 'running', role: '执行', title: 'Implement parser' },
+    { state: 'reviewing', role: '规划', title: 'Plan the checks' },
+    { state: 'running', role: 'custom-worker', title: 'Custom task' },
+    { state: 'running', role: '通用', title: 'Older task' },
+    { state: 'running', role: '分身', title: 'Oldest task' },
+  ];
+  const call = { agent: 'Codex', provider: 'OpenAI', model: 'gpt-6.1-sol', effort: null, fast: null, preparing: 1, running: 4, reviewing: 1, tasks: [], items };
+  for (const language of ['zh', 'en']) {
+    const html = activityMarkup([call], language);
+    const rows = /<ol class="activity-call-items">([\s\S]*?)<\/ol>/.exec(html)[1];
+    const plain = rows.replace(/<[^>]*>/g, '');
+    assert.equal((rows.match(/<li title=/g) || []).length, 4);
+    assert.ok(rows.includes(`title="${long.replace('<parser>', '&lt;parser&gt;')}"`));
+    assert.ok(plain.indexOf('Inspect') < plain.indexOf('Implement parser'));
+    assert.ok(plain.indexOf('Implement parser') < plain.indexOf('Plan the checks'));
+    assert.ok(plain.indexOf('Plan the checks') < plain.indexOf('Custom task'));
+    for (const role of language === 'en' ? ['Investigate', 'Execute', 'Plan', 'custom-worker'] : ['调查', '执行', '规划', 'custom-worker']) assert.ok(plain.includes(`${role} ·`));
+    for (const state of ['preparing', 'running', 'reviewing']) assert.ok(rows.includes(`class="activity-call-${state}"`));
+    assert.ok(plain.includes(language === 'en' ? '+2 more' : '+2 个'));
+    assert.doesNotMatch(plain, /Older task|Oldest task/);
+    assert.doesNotMatch(activityMarkup([{ ...call, items: items.slice(0, 4) }], language), /activity-call-more/);
+    for (const [role, translated] of [['搜索', 'Search'], ['通用', 'General'], ['分身', 'Fork']]) assert.ok(activityMarkup([{ ...call, items: [{ ...items[0], role }] }], 'en').includes(`${translated} ·`));
+  }
+});
+
+test("Claude's usage keeps plan limits, tokens and their source without reset controls or text", () => {
+  const now = Date.now();
+  for (const language of ['zh', 'en']) {
+    for (const [source, percent] of [['Claude Code', 6], ['CodePulse', 100]]) {
+      const html = activityMarkup([], language, { agentUsage: {
+        limits: [{ minutes: 300, percent, resetsAt: now + 3600000 }, { minutes: 10080, percent: 84, resetsAt: now + 86400000 }],
+        limitsAt: now, limitsFrom: source,
+        round: { input: 1200, cached: 600, output: 30 }, total: { input: 2400, cached: 1200, output: 60 },
+      } });
+      const labels = language === 'en' ? ['5-hour limit', 'Weekly limit', 'This round', 'This conversation', `Limits from ${source}, updated`]
+        : ['5 小时额度', '每周额度', '本轮', '本次对话', `额度来自 ${source}，`];
+      for (const label of labels) assert.ok(html.includes(label), label);
+      assert.ok(html.includes(`aria-valuenow="${percent}"`)); assert.match(html, /aria-valuenow="84"/);
+      assert.equal((html.match(/class="activity-token-row"/g) || []).length, 2);
+      // The window's own reset time stays; only the reset control goes.
+      assert.equal((html.match(/<small>[^<]*(?:重置|Resets)/gi) || []).length, 2);
+      assert.doesNotMatch(html, /activity-reset|activity-estop|重置额度|limit-reset/i);
+    }
+    const empty = activityMarkup([], language);
+    assert.ok(empty.includes(language === 'en' ? 'type /usage in the terminal to see them.' : '在终端输入 /usage 查看。'));
+    assert.doesNotMatch(empty, /activity-reset|activity-estop|重置|reset/i);
+  }
+});
+
+test('expired limits show an empty muted bar and waiting text without a stale percent or reset time', t => {
+  const now = new Date(2030, 4, 5, 12).getTime(), past = now - 86400000;
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const pastTime = new Date(past).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  for (const agent of ['claude', 'codex']) {
+    for (const language of ['zh', 'en']) {
+      const html = activityMarkup([], language, { agent, agentUsage: {
+        limits: [{ minutes: 300, percent: 81.34, resetsAt: past }, { minutes: 10080, percent: 92.1, resetsAt: past }], limitsAt: now - 60000,
+      } });
+      const limits = [...html.matchAll(/<div class="activity-limit">([\s\S]*?)<\/div>/g)];
+      assert.equal(limits.length, 2);
+      for (const [, limit] of limits) {
+        assert.ok(limit.includes(language === 'en' ? 'Reset, waiting for an update' : '已重置，等待更新'));
+        assert.match(limit, /class="activity-meter is-expired"/);
+        assert.doesNotMatch(limit, /<b|<i|%|aria-valuenow| 重置|Resets /);
+        assert.ok(!limit.includes(pastTime));
+      }
     }
   }
-  const english = render(6, null, 'en');
-  const translated = 'Available once the 5-hour limit is used up · once a week';
-  assert.ok(english.includes(`<small>${translated}</small>`));
-  assert.ok(english.includes(`title="${translated}.`));
-  for (const percent of [100, undefined]) {
-    assert.match(render(percent), /<small>每周可重置 1 次 5 小时额度<\/small>/);
-    assert.match(render(percent, 1), /<small>本周还可重置 1 次<\/small>/);
-    assert.match(render(percent), /title="重置 5 小时额度：每周 1 次/);
+});
+
+test('future limits stay current and expire when the app clock rerenders the same snapshot', t => {
+  const now = new Date(2030, 4, 5, 12).getTime(), resetsAt = now + 5000;
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const terminal = { agentUsage: { limits: [{ minutes: 300, percent: 81.34, resetsAt }], limitsAt: now } };
+  const time = new Date(resetsAt).toLocaleString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const before = activityMarkup([], 'en', terminal);
+  assert.match(before, />81%</); assert.match(before, /aria-valuenow="81"/);
+  assert.ok(before.includes(`<small>Resets ${time}</small>`));
+  assert.doesNotMatch(before, /is-expired|waiting for an update/);
+  t.mock.timers.tick(5000);
+  const after = activityMarkup([], 'en', terminal);
+  assert.match(after, /Reset, waiting for an update/);
+  assert.doesNotMatch(after, /81%|81\.3%|aria-valuenow|Resets /);
+  assert.equal(terminal.agentUsage.limits[0].percent, 81.34);
+});
+
+test('unknown round and conversation totals explain earlier history when context is known', () => {
+  const tokens = { input: 1200, cached: 600, output: 30 };
+  for (const language of ['zh', 'en']) {
+    const first = language === 'en' ? 'Shows after the first reply.' : '第一次回复后显示。';
+    const roundNote = language === 'en' ? 'This round started in earlier records; its usage is unknown.' : '本轮从更早的记录开始，暂无法统计。';
+    const totalNote = language === 'en' ? 'The conversation total is in earlier records.' : '本次对话的总量在更早的记录里。';
+    for (const [round, total] of [[null, null], [null, tokens], [tokens, null]]) {
+      const html = activityMarkup([], language, { agentUsage: { limits: [], context: { used: 120, window: 200000 }, round, total } });
+      assert.equal(html.includes(roundNote), round === null);
+      assert.equal(html.includes(totalNote), total === null);
+      assert.ok(!html.includes(first));
+      assert.equal((html.match(/class="activity-token-row"/g) || []).length, Number(!!round) + Number(!!total));
+    }
+    const empty = activityMarkup([], language, { agentUsage: { limits: [], context: null, round: null, total: null } });
+    assert.ok(empty.includes(first));
+    assert.ok(!empty.includes(roundNote)); assert.ok(!empty.includes(totalNote));
   }
-  const used = render(6, 0);
-  assert.match(used, /<small>没有可用的重置<\/small>/);
-  assert.match(used, /<button[^>]*disabled/);
-  assert.doesNotMatch(used, /5 小时额度用完后可用/);
-  assert.doesNotMatch(render(6, null, 'zh', 'grants'), /5 小时额度用完后可用/);
-  assert.doesNotMatch(render(6, null, 'zh', 'session', 'codex'), /5 小时额度用完后可用/);
+});
+
+test('hover titles give exact token counts, one-decimal limit percentages and their observation time', t => {
+  const now = new Date(2030, 4, 5, 12, 34).getTime(), limitsAt = now - 60000;
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const time = new Date(limitsAt).toLocaleString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  for (const agent of ['claude', 'codex']) {
+    for (const language of ['zh', 'en']) {
+      const terminal = { agent, agentUsage: {
+        limits: [{ minutes: 300, percent: 83.25, resetsAt: now + 3600000 }], limitsAt,
+        context: { used: 1230010, window: 2000000 },
+        round: { input: 1230010, cached: 456789, output: 98765 }, total: { input: 123456789, cached: 90123456, output: 2000000 },
+      } };
+      const html = activityMarkup([], language, terminal);
+      assert.ok(html.includes('class="activity-figure" title="1,230,010 / 2,000,000 tokens"'));
+      const titles = language === 'en'
+        ? ['1,328,775 tokens · Input 1,230,010 · Cache read 456,789 · Output 98,765', '125,456,789 tokens · Input 123,456,789 · Cache read 90,123,456 · Output 2,000,000']
+        : ['1,328,775 tokens · 输入 1,230,010 · 缓存命中 456,789 · 输出 98,765', '125,456,789 tokens · 输入 123,456,789 · 缓存命中 90,123,456 · 输出 2,000,000'];
+      for (const title of titles) assert.ok(html.includes(`class="activity-token-row" title="${title}"`), title);
+      assert.ok(html.includes(`title="83.3% · ${language === 'en' ? `Updated ${time}` : `${time} 更新`}"`));
+      assert.match(html, />83%</); assert.match(html, /aria-valuenow="83"/);
+      terminal.agentUsage.limitsAt = null;
+      assert.ok(activityMarkup([], language, terminal).includes('title="83.3%"'));
+    }
+  }
 });
 
 test('Codex reset count arrives automatically, shows zero and bounded query states, preserving explicit reset controls', () => {
@@ -102,13 +224,26 @@ test('working task keeps its real status, spinner and text, with no fake progres
     agentUsage: { provider: 'OpenAI', context: { used: 25000, window: 100000 },
       limits: [{ minutes: 300, percent: 60 }], resets: { left: 2 }, resetQuery: { state: 'ready' } },
   });
-  const positions = ['activity-route"', 'activity-context"', 'activity-usage"', 'activity-tasks"'].map(name => html.indexOf(name));
-  assert.ok(positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1])), 'route, context, usage/reset controls, then tasks');
-  const usage = html.slice(positions[2], positions[3]);
+  const positions = ['activity-route"', 'activity-tasks"', 'activity-context"', 'activity-usage"'].map(name => html.indexOf(name));
+  assert.ok(positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1])), 'route, tasks, context, then usage/reset controls');
+  const usage = html.slice(positions[3]);
   assert.match(usage, /activity-estop/); assert.match(usage, /剩余 2 次/);
   assert.match(html, /aria-valuenow="25"/); assert.match(usage, /aria-valuenow="60"/);
   assert.match(html, /正在处理/); assert.match(html, /Continue responding while usage hangs/);
   assert.match(fs.readFileSync(path.join(__dirname, '../src/features/agents/ActivityPane.tsx'), 'utf8'), /className="loading-spinner"/);
   assert.doesNotMatch(html, /activity-progress/);
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../src/features/agents/activity-pane.css'), 'utf8'), /activity-progress/);
+});
+
+test('inactive terminal keeps its empty card above tasks, whose height is bounded with internal scrolling', () => {
+  const html = activityMarkup([], 'en', { codexActive: false });
+  assert.ok(html.indexOf('activity-empty') < html.indexOf('activity-tasks'));
+  assert.ok(html.includes('No task yet'));
+  assert.doesNotMatch(html, /activity-route|activity-context|activity-usage/);
+  const css = fs.readFileSync(path.join(__dirname, '../src/features/agents/activity-pane.css'), 'utf8');
+  const tasks = /\.activity-tasks\s*\{([^}]+)\}/.exec(css)[1];
+  assert.match(tasks, /max-height:\s*\d+px/);
+  assert.doesNotMatch(tasks, /flex:\s*1|min-height:\s*(?:96|120)px/);
+  assert.match(css, /\.activity-prompts\s*\{[^}]*overflow-y:\s*auto/);
+  assert.match(css, /\.activity-call-title\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
 });

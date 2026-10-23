@@ -119,6 +119,32 @@ try {
   await terminal.locator('textarea.xterm-helper-textarea').focus(); await page.keyboard.press('Control+c');
   await waitFor(async () => terminal.locator('.xterm-rows').innerText().then(text => text.includes('Ask Codex to do anything')), 'cleared draft restores placeholder');
   await composerSample(terminal, 'cleared');
+  await terminal.locator('.xterm').evaluate(node => { globalThis.composerXterm = node; });
+  await first.locator('.panel-header').getByRole('button', { name: '阅读视图：按文档排版显示对话', exact: true }).click();
+  const reader = terminal.locator('.reading-composer textarea'), popup = terminal.locator('.reading-terminal-popup');
+  await reader.fill('/status'); await reader.press('Enter'); await popup.waitFor();
+  assert.ok(await popup.locator('.xterm').evaluate(node => node === globalThis.composerXterm), 'the reading popup moves the real terminal');
+  assert.ok(await popup.evaluate(node => node.contains(document.activeElement)), 'the CLI takes focus');
+  await waitFor(async () => popup.locator('.xterm-rows').innerText().then(text => /Session:\s/.test(text)), 'the real status command was submitted');
+  await page.keyboard.press('Escape'); assert.equal(await popup.count(), 1, 'Escape remains a CLI key');
+  await page.keyboard.press('Control+Shift+a'); await page.keyboard.press('Control+c');
+  assert.ok((await page.evaluate(() => window.agentrix.readClipboard())).value, 'select/copy still uses xterm');
+  assert.equal(await page.locator('.focus-mode').count(), 0, 'popup terminal interaction never expands the card');
+  await popup.getByRole('button', { name: '关闭', exact: true }).click(); await popup.waitFor({ state: 'detached' });
+  assert.ok(await terminal.locator('.terminal-split-body > .terminal-host > .xterm').evaluate(node => node === globalThis.composerXterm));
+  await reader.fill('preserved reading draft');
+  await page.evaluate(id => window.dispatchEvent(new CustomEvent('agentrix:command', { detail: { terminalId: id, text: '/status' }, cancelable: true })), projects[0].id);
+  await popup.waitFor();
+  await control.locator('.xterm-helper-textarea').focus(); await popup.waitFor({ state: 'detached' });
+  assert.equal(await reader.inputValue(), 'preserved reading draft');
+  assert.ok(await control.locator('.xterm-helper-textarea').evaluate(node => document.activeElement === node), 'closing on terminal switch keeps the new focus');
+  await reader.click();
+  await page.evaluate(id => window.dispatchEvent(new CustomEvent('agentrix:command', { detail: { terminalId: id, text: '/status' }, cancelable: true })), projects[0].id);
+  await popup.waitFor();
+  await first.locator('.panel-header').getByRole('button', { name: '切换到终端', exact: true }).click();
+  await popup.waitFor({ state: 'detached' });
+  assert.ok(await terminal.locator('.terminal-host > .xterm').evaluate(node => node === globalThis.composerXterm), 'leaving reading restores the same terminal');
+  samples.push({ label: 'reading-terminal-popup', sameTerminal: true, closesOnTerminalSwitch: true, closesOnLeavingReading: true });
   // An authenticated native fixture covers the same surface in output/history,
   // alongside backgrounds that must remain colored in an active Codex terminal.
   const quote = value => "'" + value.replaceAll("'", "''") + "'";

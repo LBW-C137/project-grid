@@ -181,7 +181,7 @@ test('saved forest and other theme choices survive loading and unrelated setting
 });
 
 test('settings reject invalid layout and font values', () => {
-  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { startView: 'decisions', fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', focusAnimation: 'smooth', theme: 'daylight', language: 'en', surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', notifications: true, sound: false, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice' });
+  assert.deepEqual(cleanSettings({ columns: 999, fontSize: -2, notifications: 'yes', sound: false }), { startView: 'decisions', fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', userAvatar: '', focusAnimation: 'smooth', theme: 'daylight', language: 'en', surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', shortcuts: {}, guideVersion: '', shell: 'powershell', notifications: true, sound: false, closeToTray: true, explorerCollapsed: false, restoreSessions: true, autoSave: true, activityPane: true, voiceModel: 'sensevoice' });
   // The spoken notice is gone: its old settings are dropped.
   const old = cleanSettings({ announce: true, announcePhrase: '{项目}', summary: { mode: 'local' } });
   assert.equal('announce' in old || 'announcePhrase' in old || 'summary' in old, false);
@@ -348,4 +348,16 @@ test('terminal families are optional, sanitized and persisted independently', t 
   for (const value of [true, 42, null, undefined, 'x'.repeat(81), 'bad\nfont', 'bad\0font']) {
     for (const key of ['terminalFontFamily', 'terminalCjkFontFamily']) assert.equal(cleanSettings({ [key]: value })[key], '');
   }
+});
+
+test('the user avatar keeps only a small WebP, PNG or JPEG data URL', t => {
+  const { store, file } = fixture(t);
+  assert.equal(store.settings.userAvatar, '');
+  const picture = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
+  store.updateSettings({ userAvatar: picture });
+  assert.equal(new WorkspaceStore(file).settings.userAvatar, picture);
+  for (const value of ['data:image/svg+xml;base64,PHN2Zz4=', 'data:image/webp;base64,', 'data:image/png,abc', 'https://example.com/a.png', `data:image/png;base64,${'A'.repeat(200_000)}`, 42, null]) {
+    assert.equal(cleanSettings({ userAvatar: value }).userAvatar, '', String(value).slice(0, 40));
+  }
+  store.updateSettings({ userAvatar: '' }); assert.equal(store.settings.userAvatar, '');
 });

@@ -29,19 +29,21 @@ export async function resumeCodexSession(terminalId: string, id: string, active:
   throw new Error(stuck);
 }
 
-// Like other slash commands, send typed text, wait for the CLI redraw, then send Enter separately.
+// Typed commands go straight to the visible CLI, with the same pauses as session resume.
+export async function typeReadingCommand(text: string, write: (text: string) => void, active: () => boolean) {
+  if (!active()) return false;
+  write('\x15'); await pause(60);
+  if (!active()) return false;
+  write(text); await pause(150);
+  if (!active()) return false;
+  write('\r');
+  return true;
+}
+
 export async function resumeReadingSession(id: string, write: (text: string) => void,
   follow: (id: string) => Promise<Result<boolean>>, active: () => boolean) {
   if (!/^[\w-]{1,100}$/.test(id)) throw new Error('Invalid session id');
-  if (!active()) return false;
-  // Whatever waits in Claude's input (a prompt it put back after an interrupt) would be sent with the command: cleared.
-  write('\x15');
-  await new Promise(resolve => setTimeout(resolve, 60));
-  if (!active()) return false;
-  write(`/resume ${id}`);
-  await new Promise(resolve => setTimeout(resolve, 150));
-  if (!active()) return false;
-  write('\r');
+  if (!await typeReadingCommand(`/resume ${id}`, write, active)) return false;
   const result = await follow(id);
   if (!result.ok) throw new Error(result.error);
   return result.value;

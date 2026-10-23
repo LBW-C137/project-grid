@@ -10,6 +10,7 @@ import { AgentsSettings } from '../agents/AgentsSettings';
 import { isMac, isLinux } from '../../shared/platform';
 import { recommendedAppearance } from '../../shared/theme-presets';
 import { TerminalFontSettings } from './TerminalFontSettings';
+import { UserAvatarSetting } from './UserAvatarSetting';
 
 // The theme picker shows one row; "更多主题" unfolds the rest. The theme in use is always in that row: one from further
 // down takes the row's last place.
@@ -70,6 +71,7 @@ export function SettingsDialog({ settings, desktopGlass, localShell, agents, onA
         {allThemes ? t('收起') : t('更多主题 · {count}', { count: themes.length - THEME_ROW })}<CaretDown size={13} weight="bold" className={allThemes ? 'is-open' : undefined} /></button>}
       </fieldset>
       <label className="setting-row"><span><Globe size={19} /><span><b>{t('语言')}</b><small>{t('界面与提示的语言')}</small></span></span><select aria-label={t('语言')} value={settings.language} onChange={event => update({ language: event.target.value as Settings['language'] })}><option value="zh">中文</option><option value="en">English</option></select></label>
+      <UserAvatarSetting avatar={settings.userAvatar} update={userAvatar => update({ userAvatar })} />
       <label className="setting-row"><span><House size={19} /><span><b>{t('启动时打开')}</b><small>{t('决策：先看需要你决定的事；工作台：项目网格')}</small></span></span><select aria-label={t('启动时打开')} value={settings.startView} onChange={event => update({ startView: event.target.value as Settings['startView'] })}><option value="decisions">{t('决策')}</option><option value="workspace">{t('工作台')}</option></select></label>
       <label className="setting-row"><span><Monitor size={19} /><span><b>{t('界面材质')}</b><small>{t('实色：面板不透明，文字用 ClearType 渲染，最锐利，也更省显卡；玻璃：透出壁纸')}</small></span></span><select aria-label={t('界面材质')} value={settings.surface} onChange={event => update({ surface: event.target.value as Settings['surface'] })}><option value="glass">{t('液态玻璃')}</option><option value="solid">{t('实色（更清晰）')}</option></select></label>
       {settings.surface === 'glass' && <label className="setting-row"><span><Monitor size={19} /><span><b>{t('玻璃背景')}</b><small>{t('主题背景使用应用内壁纸；桌面背景模糊窗口背后的内容')}</small></span></span><select aria-label={t('玻璃背景')} value={settings.glassBackground} onChange={event => update({ glassBackground: event.target.value as Settings['glassBackground'] })}><option value="theme">{t('主题背景')}</option><option value="desktop" disabled={!desktopGlass?.supported}>{t('桌面背景')}</option></select></label>}

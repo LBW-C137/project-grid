@@ -134,3 +134,5 @@
 
 /* An answer to the agent's own question: labelled as such, its "question → answer" lines under the label. */
 .reading-user-label { font-size: calc(12px * var(--reading-text)); font-weight: 600; color: var(--flow-muted, rgba(255, 255, 255, .72)); }
+/* The user's picture fills the node inside its ring, leaving a hair of the tint around it. */
+.reading-node > .user-avatar { width: calc(100% - 5px); height: calc(100% - 5px); }

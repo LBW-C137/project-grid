@@ -155,3 +155,6 @@
 /* Images float above the checkerboard. */
 .preview-image { border-radius: 1.5px; box-shadow: 0 18px 48px #00000059, 0 2px 8px #00000038; animation: polish-image-in .4s cubic-bezier(.2, .8, .2, 1); }
 @keyframes polish-image-in { from { opacity: 0; transform: scale(.97); } }
+
+/* The user's chosen picture: a round image in place of the person icon. */
+.user-avatar { display: block; border-radius: 50%; object-fit: cover; }

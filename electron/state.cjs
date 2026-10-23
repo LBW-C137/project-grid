@@ -35,10 +35,13 @@ const agentFields = restore => ({ ...(restore?.agent === 'claude' ? { agent: 'cl
 // Where the window opens: the decisions to make (the home page) or the grid of projects. Isolated test profiles
 // open on the grid they exercise unless they ask for the home page.
 const DEFAULT_START = process.env.AGENTRIX_DATA_DIR && process.env.AGENTRIX_TEST_HOME !== '1' ? 'workspace' : 'decisions';
-const defaults = { startView: DEFAULT_START, surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', autoSave: true, activityPane: true, notifications: true, sound: true, language: 'en', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', restoreSessions: true, focusAnimation: 'smooth', theme: 'daylight', voiceModel: DEFAULT_VOICE_MODEL };
+const defaults = { startView: DEFAULT_START, surface: 'glass', glassBackground: 'theme', glassTransparency: null, terminalRenderer: 'gpu', autoSave: true, activityPane: true, notifications: true, sound: true, language: 'en', shortcuts: {}, guideVersion: '', shell: 'powershell', closeToTray: true, explorerCollapsed: false, fontSize: 12, terminalFontWeight: 400, terminalFontFamily: '', terminalCjkFontFamily: '', userAvatar: '', restoreSessions: true, focusAnimation: 'smooth', theme: 'daylight', voiceModel: DEFAULT_VOICE_MODEL };
 
 // Keyboard shortcuts the user changed, by action; defaults live in the window (src/features/shortcuts/shortcuts.ts).
 // "Ctrl+Shift+F": Ctrl, Alt and Shift in that order, then one letter, digit, F-key or punctuation key.
+// The user's picture is a small data URL made in the window (256x256 WebP, about 20 KB); anything else is dropped.
+const AVATAR_URL = /^data:image\/(?:webp|png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/;
+const AVATAR_MAX_LENGTH = 200_000;
 const SHORTCUT_ACTIONS = ['search', 'addProject', 'voice', 'overview', 'decisions', 'explorer', 'settings', 'nextProject', 'previousProject', 'projectAbove', 'projectBelow', 'maximize', 'fullscreen', 'newTerminal', 'removeProject'];
 const SHORTCUT = /^(?:(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:F(?:[1-9]|1[0-2]))|(?=Ctrl\+|Alt\+)(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?(?:[A-Z0-9,./;'[\]\\=`-]|Space|Tab|Enter|Left|Right|Up|Down))$/;
 function cleanShortcuts(input) {
@@ -52,6 +55,7 @@ function cleanSettings(input = {}) {
     terminalFontWeight: [400, 500, 600].includes(input.terminalFontWeight) ? input.terminalFontWeight : defaults.terminalFontWeight,
     terminalFontFamily: typeof input.terminalFontFamily === 'string' && input.terminalFontFamily.length <= 80 && !/[\u0000-\u001f\u007f]/.test(input.terminalFontFamily) ? input.terminalFontFamily.trim() : defaults.terminalFontFamily,
     terminalCjkFontFamily: typeof input.terminalCjkFontFamily === 'string' && input.terminalCjkFontFamily.length <= 80 && !/[\u0000-\u001f\u007f]/.test(input.terminalCjkFontFamily) ? input.terminalCjkFontFamily.trim() : defaults.terminalCjkFontFamily,
+    userAvatar: typeof input.userAvatar === 'string' && input.userAvatar.length <= AVATAR_MAX_LENGTH && AVATAR_URL.test(input.userAvatar) ? input.userAvatar : defaults.userAvatar,
     focusAnimation: ['smooth', 'system', 'off'].includes(input.focusAnimation) ? input.focusAnimation : defaults.focusAnimation,
     startView: ['decisions', 'workspace'].includes(input.startView) ? input.startView : defaults.startView,
     theme: ['daylight', 'forest', 'mountain-blue', 'wild-red', 'yosemite', 'el-capitan', 'mojave', 'catalina', 'mono-amber', 'mono-amber-dark'].includes(input.theme) ? input.theme : defaults.theme,

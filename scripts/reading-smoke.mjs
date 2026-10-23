@@ -10,7 +10,7 @@ import { waitFor } from './wait.mjs';
 
 const require = createRequire(import.meta.url), root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { parseAgentScreen } = require('../src/features/agents/agent-screen.ts');
-const { hasCliInput, isCliIdle, cliInputDraft, extractCliOutputRows } = require('../src/features/reading/cli-panel.ts');
+const { hasCliInput, isCliIdle, cliInputDraft } = require('../src/features/reading/cli-panel.ts');
 const fixtureIdle = rows => {
   const screen = parseAgentScreen('claude', rows);
   return hasCliInput('claude', rows, screen) && isCliIdle('claude', rows, screen) && cliInputDraft('claude', rows, screen) === '';
@@ -20,7 +20,7 @@ const waitForFixtureIdle = async (readRows, label) => {
   await waitFor(async () => {
     if (!fixtureIdle(await readRows())) { emptySince = undefined; return false; }
     emptySince ??= Date.now();
-    // Let the 100 ms screen publisher and 400 ms tracker settlement see this same empty physical input.
+    // Let the isolated shell finish redrawing before this script starts its next action.
     return Date.now() - emptySince >= 600;
   }, `${label}: fixture has stable empty CLI input`);
 };
@@ -35,8 +35,8 @@ let app, page;
 const state = async () => (await page.evaluate(() => window.agentrix.getState())).value.projects[0].terminals[0];
 const write = data => page.evaluate(({ id, data }) => window.agentrix.writeTerminal(id, data), { id: project.id, data });
 const physicalRows = () => page.locator(`[data-terminal-id="${project.id}"] .xterm-rows > div`).evaluateAll(nodes => nodes.map(node => node.textContent.replace(/\u00a0/g, ' ').trimEnd()));
-// xterm reports focus separately when the card switches views.
-const writes = () => app.evaluate(() => globalThis.voicePastes.filter(item => !['\x1b[I', '\x1b[O'].includes(item.data)));
+// xterm reports focus separately when the card switches views, and answers the CLI's cursor queries when the popup refits it.
+const writes = () => app.evaluate(() => globalThis.voicePastes.filter(item => !['\x1b[I', '\x1b[O'].includes(item.data) && !/^\x1b\[\d+;\d+R$/.test(item.data)));
 const resetWrites = () => app.evaluate(() => { globalThis.voicePastes = []; });
 const hook = (kind, payload) => `'${JSON.stringify(payload)}' | & $global:AgentrixSession.powershellPath -NoProfile -ExecutionPolicy Bypass -File $global:AgentrixSession.claudeHookPath -PipeName $global:AgentrixSession.pipeName -ProjectId $global:AgentrixSession.projectId -SessionKey $global:AgentrixSession.sessionKey -Kind ${kind}\r`;
 try {
@@ -60,29 +60,34 @@ try {
   // A normal shell prompt reports the agent's exit. Keep this fixture active without launching a CLI, and let
   // PowerShell read at the cursor the idle frame supplies. A truly empty return invokes PowerShell's PS> fallback,
   // so return one blank that overwrites the frame's blank after ❯ instead of drawing a second prompt below it.
-  // Keep the smoke's delayed-typing assertion meaningful: the fake CLI really processes '/' slowly, so receipt has
-  // to await the physical echo instead of relying on a renderer sleep. This changes only this isolated shell's keys.
   const fixturePrompt = ". '" + path.join(root, 'scripts/reading-smoke-fixture.ps1').replace(/'/g, "''") + "'";
   await write(fixturePrompt + "; Send-AgentrixEvent 'codex-started' -Agent 'claude'\r");
   await waitFor(async () => (await state()).codexActive && (await state()).agent === 'claude', 'authenticated Claude fixture');
-  // Claude's idle input between its two rules, with its footer: a typed command shows its output inside the reading
-  // view and is finished once the CLI is idle like this again. The fixture appends it after actual slash execution,
-  // retaining PowerShell's result for even a coalesced screen publication. Only initial setup clears the screen.
-  // The blank prompt leaves later permission/question frames intact and advances past ❯ to the real input.
+  // Draw the stand-in CLI's input; the popup shows its actual xterm output.
   const idle = "Clear-Host; Show-ReadingFixtureInput\r";
   const renderIdle = async label => { await write(idle); await waitForFixtureIdle(physicalRows, label); };
   await renderIdle('initial idle');
+  await terminal.locator('.xterm').evaluate(node => { globalThis.readingXterm = node; });
+  const popup = terminal.locator('.reading-terminal-popup');
+  const closePopup = async (backdrop = false) => {
+    const before = await writes();
+    if (backdrop) await terminal.locator('.reading-terminal-overlay').click({ position: { x: 2, y: 2 } });
+    else await popup.getByRole('button', { name: '关闭', exact: true }).click();
+    await popup.waitFor({ state: 'detached' });
+    assert.deepEqual(await writes(), before, 'closing sends no key to the CLI');
+    assert.ok(await terminal.locator('.terminal-split-body > .terminal-host > .xterm').evaluate(node => node === globalThis.readingXterm), 'the same xterm returns to its original host');
+    assert.equal(await composer.evaluate(node => document.activeElement === node), true);
+  };
   const settled = async (label, command = label) => {
+    await popup.waitFor();
+    assert.equal(await popup.getAttribute('aria-label'), command);
+    assert.ok(await popup.locator('.xterm').evaluate(node => node === globalThis.readingXterm));
+    assert.ok(await popup.evaluate(node => node.contains(document.activeElement)), 'the live CLI owns keyboard focus');
     await waitFor(async () => (await writes()).some(item => item.data === '\r'), `${label} submitted`);
     await waitForFixtureIdle(physicalRows, label);
-    const rows = await physicalRows();
-    assert.ok(extractCliOutputRows('claude', rows, parseAgentScreen('claude', rows), command).some(row => row.includes('CommandNotFoundException')), `${label}: actual PowerShell slash error stays above the next input`);
-    if (command === '/status' || command === '/unknown-reading-command') {
-      const result = terminal.getByRole('dialog', { name: command, exact: true });
-      await waitFor(async () => await result.filter({ hasText: 'CommandNotFoundException' }).count() === 1, `${label} result observed in the reading view`);
-      await waitFor(async () => await result.getByRole('button', { name: '切换到终端', exact: true }).count() === 0, `${label} tracker finished`);
-    }
-    await waitFor(async () => await composer.isEnabled(), `${label} finished in the reading view`);
+    assert.ok((await physicalRows()).some(row => row.includes('CommandNotFoundException')), `${label}: the real terminal shows the shell error`);
+    await closePopup();
+    await waitFor(async () => await composer.isEnabled(), `${label} returned to the reading view`);
   };
   await reading(); await composer.fill('/');
   await palette.getByRole('option').filter({ has: page.getByText('/status', { exact: true }) }).waitFor();
@@ -117,14 +122,15 @@ try {
   await composer.press('Tab'); assert.equal(await composer.inputValue(), '/status ');
   await resetWrites(); await composer.press('Enter'); await settled('/status');
   let sent = await writes();
-  assert.deepEqual(sent.map(item => item.data), ['/status', '\r'], 'slash command is typed, never bracketed paste');
-  assert.ok(sent[1].at - sent[0].at >= 140, 'Enter follows the command after its typing delay');
+  assert.deepEqual(sent.map(item => item.data), ['\x15', '/status', '\r'], 'slash command is typed, never bracketed paste');
+  assert.ok(sent[1].at - sent[0].at >= 50, 'Ctrl+U is processed before typing');
+  assert.ok(sent[2].at - sent[1].at >= 140, 'Enter follows the command after its typing delay');
   assert.equal(await composer.count(), 1, 'a typed command keeps the reading view');
   assert.equal(await page.locator('.focus-mode').count(), 0, 'composer interaction keeps the card small');
   checks.push('Tab completion, typed /status and delayed Enter, inside the reading view');
   await composer.fill('/fix-issue 42'); await resetWrites(); await composer.press('Enter');
   await waitFor(async () => (await writes()).some(item => item.data === '\r'), 'project command submitted');
-  assert.deepEqual((await writes()).map(item => item.data), ['/fix-issue 42', '\r']);
+  assert.deepEqual((await writes()).map(item => item.data), ['\x15', '/fix-issue 42', '\r']);
   await settled('project command', '/fix-issue 42');
   assert.equal(await composer.isVisible(), true);
   await resetWrites(); await composer.press('Shift+Tab');
@@ -142,27 +148,35 @@ try {
   await settled('exact command', '/fix-issue');
   assert.equal(await composer.isVisible(), true);
   await composer.fill('/unknown-reading-command'); await resetWrites(); await composer.press('Enter'); await settled('unknown command', '/unknown-reading-command');
-  assert.deepEqual((await writes()).map(item => item.data), ['/unknown-reading-command', '\r']);
-  const finished = terminal.locator('.reading-cli-panel');
+  assert.deepEqual((await writes()).map(item => item.data), ['\x15', '/unknown-reading-command', '\r']);
   await composer.fill('!echo reading-fixture'); await resetWrites(); await composer.press('Enter');
+  await popup.waitFor();
   await waitFor(async () => (await writes()).some(item => item.data === '\r'), 'shell mode submitted');
-  // These fixture commands execute and draw their own accepted Bash result plus idle frame. Do not erase the result
-  // with the generic idle helper before the production tracker observes its completion evidence.
   await waitForFixtureIdle(physicalRows, 'shell output');
-  await finished.getByText('reading-fixture', { exact: true }).waitFor({ timeout: 10000 });
-  assert.deepEqual((await writes()).map(item => item.data), ['!echo reading-fixture', '\r']);
-  checks.push('partial/exact Enter, unknown command and shell mode');
+  assert.ok((await physicalRows()).some(row => row.includes('reading-fixture')));
+  assert.deepEqual((await writes()).map(item => item.data), ['\x15', '!echo reading-fixture', '\r']);
+  await closePopup();
   await composer.fill('!true'); await resetWrites(); await composer.press('Enter');
+  await popup.waitFor();
   await waitFor(async () => (await writes()).some(item => item.data === '\r'), 'silent shell command submitted');
   await waitForFixtureIdle(physicalRows, 'silent shell result');
-  assert.deepEqual((await writes()).map(item => item.data), ['!true', '\r']);
-  // A genuine no-output command has explicit Bash completion evidence; an idle input alone is never success.
-  await finished.getByText('!true 已完成，没有输出。').waitFor({ timeout: 10000 });
-  assert.equal(await finished.locator('.loading-spinner').count(), 0);
-  await resetWrites(); await composer.press('Escape');
-  await finished.waitFor({ state: 'detached', timeout: 5000 });
-  assert.deepEqual(await writes(), []);
-  checks.push('a command that printed nothing says it is done and closes with Escape');
+  assert.deepEqual((await writes()).map(item => item.data), ['\x15', '!true', '\r']);
+  assert.ok((await physicalRows()).some(row => row.includes('(Bash completed with no output)')));
+  await page.keyboard.press('Escape');
+  assert.equal(await popup.count(), 1, 'Escape belongs to the CLI and keeps the popup open');
+  await closePopup(true);
+  checks.push('slash and shell commands use the same live xterm; Escape stays in the CLI and closing sends nothing');
+  await composer.fill('keep this draft'); await resetWrites();
+  await page.evaluate(id => window.dispatchEvent(new CustomEvent('agentrix:command', { detail: { terminalId: id, text: '/status' }, cancelable: true })), project.id);
+  await settled('external /status', '/status');
+  assert.equal(await composer.inputValue(), 'keep this draft');
+  await write("Clear-Host; Write-Host 'Settings'; Write-Host 'Esc to close'; Start-Sleep -Seconds 4\r");
+  await waitFor(async () => (await physicalRows()).some(row => row.trim() === 'Esc to close'), 'dialog remains in the CLI');
+  await resetWrites(); await composer.press('Enter'); await popup.waitFor();
+  assert.equal(await composer.inputValue(), 'keep this draft'); assert.deepEqual(await writes(), []);
+  // The stand-in dialog ends by itself (Ctrl+C does not reach Start-Sleep through ConPTY here); the idle frame follows.
+  await renderIdle('after dialog'); await closePopup(); await composer.fill('');
+  checks.push('external commands preserve the composer; normal messages in a CLI dialog open the popup without typing');
   const permission = { session_id: 's1', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' };
   await write(hook('notify', permission));
   await waitFor(async () => (await state()).needsInput === permission.message, 'permission reaches renderer'); await raw();

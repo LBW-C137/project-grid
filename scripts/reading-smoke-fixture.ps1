@@ -12,7 +12,7 @@ function global:prompt {
     }
     if ($global:ReadingFixtureSlashSubmitted) {
         # PowerShell has actually executed the submitted slash command. Keep its echo and real error/output,
-        # then append the next CLI input; clearing here would erase the only completion evidence.
+        # then append the next CLI input so the live popup retains the result.
         $global:ReadingFixtureSlashSubmitted = $false
         Show-ReadingFixtureInput
     }
@@ -46,7 +46,7 @@ function global:!true {
     Write-Host ('  ' + [char]0x23BF + ' (Bash completed with no output)')
     Show-ReadingFixtureInput
 }
-Set-PSReadLineKeyHandler -Key '/' -ScriptBlock { Start-Sleep -Milliseconds 160; [Microsoft.PowerShell.PSConsoleReadLine]::Insert('/') }
+Set-PSReadLineKeyHandler -Key Ctrl+u -ScriptBlock { [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine() }
 Set-PSReadLineKeyHandler -Key Enter -ScriptBlock {
     $line = $null
     $cursor = 0

@@ -1,10 +1,10 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { User } from '@phosphor-icons/react';
 import { TimelineStep } from './Timeline';
 import type { PendingPrompt } from './pending-prompts';
 import { withPictures } from './pasted-pictures';
 import { showPopup } from '../files/file-popup';
 import { t } from '../../shared/i18n';
+import { UserAvatar } from '../../shared/UserAvatar';
 import './pending-prompts.css';
 
 // What the user wrote, folded to three lines when it runs longer (a pasted log, a long brief), with a button to read
@@ -50,7 +50,7 @@ export function PendingPromptEntries({ prompts, queued = () => false, undelivere
 }) {
   return prompts.map(prompt => {
     const lost = undelivered(prompt), waiting = queued(prompt);
-    return <TimelineStep key={prompt.id} at={prompt.at} kind="user" who={t('你')} mark={<User size={15} weight="fill" />}><div className={`reading-user reading-pending${prompt.sending && !waiting ? ' is-sending' : ''}${waiting ? ' is-queued' : ''}${lost ? ' is-undelivered' : ''}`}>
+    return <TimelineStep key={prompt.id} at={prompt.at} kind="user" who={t('你')} mark={<UserAvatar />}><div className={`reading-user reading-pending${prompt.sending && !waiting ? ' is-sending' : ''}${waiting ? ' is-queued' : ''}${lost ? ' is-undelivered' : ''}`}>
       <UserMessage text={prompt.text} images={prompt.images} />
       {waiting ? <small role="status">{t('已送达，排队中：当前这一步完成后它就会读到')}</small> : prompt.sending && <small role="status">{t('发送中')}</small>}
       {lost && <div className="reading-undelivered" role="alert"><small>{t('未送达：助手没有收到这条消息')}</small>

@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { ArrowSquareOut, Copy, SignIn } from '@phosphor-icons/react';
 import type { SignInScreen } from '../agents/sign-in-screen';
 import { t } from '../../shared/i18n';
+import './reading-cli.css';
 
 // The CLI signing in, as a popup over the reading view: what it says, its sign-in page to open in the browser (a click
 // of the reader's; the CLI could not open one itself), a one-time code to copy, a field for what the browser gave back,

@@ -32,20 +32,26 @@ class UsageMeter {
     this.calls = new AgentCalls({ changed, names: id => this.names(id) });
     this.reset();
   }
-  // Claude's plan limits and limit resets, as Claude Code last fetched them for its own /usage (claudeAccount). Whether
+  // Claude's plan limits, as Claude Code last fetched them for its own /usage (claudeAccount). Whether
   // that changed what the pane shows.
   account(account) {
-    if (!account || this.agent !== 'claude' || account.at === this.limitsAt) return false;
-    this.limits = account.limits; this.resets = account.resets; this.limitsAt = account.at; this.limitsFrom = account.source ?? null;
-    return true;
+    return this.agent === 'claude' && !!account && this.observeLimits(account.limits, account.at, account.source);
   }
   // Sanitized official Codex account read. Null/unavailable never means zero.
   codexAccount(account) {
     if (this.agent !== 'codex' || !account?.resetQuery) return false;
     this.resets = account.resets; this.resetQuery = account.resetQuery;
-    if (account.resetQuery.state === 'ready') {
-      this.limits = account.limits; this.limitsAt = account.at; this.limitsFrom = account.source;
-    }
+    this.observeLimits(account.limits, account.at, account.source);
+    return true;
+  }
+  observeLimits(limits, at, source = null) {
+    if (!Array.isArray(limits) || !limits.length) return false;
+    at = Number.isFinite(at) ? at : null;
+    // An undated cache or replay cannot prove it is newer than a dated observation.
+    if (this.limitsAt != null && (at == null || at < this.limitsAt)) return false;
+    if (at === this.limitsAt && source === (this.limitsFrom ?? null) && limits.length === this.limits.length &&
+      limits.every((value, i) => value.minutes === this.limits[i].minutes && value.percent === this.limits[i].percent && value.resetsAt === this.limits[i].resetsAt)) return false;
+    this.limits = limits; this.limitsAt = at; this.limitsFrom = source;
     return true;
   }
   // Another conversation starts over; the provider and the plan's limits stay.
@@ -108,12 +114,15 @@ class UsageMeter {
       this.total = total;
       if (this.roundStart) this.round = plus(total, this.roundStart, -1);
     }
-    if (last && Number.isFinite(last.total_tokens) && count(info.model_context_window)) this.context = { used: count(last.total_tokens), window: info.model_context_window };
+    const context = last && Number.isFinite(last.total_tokens) && count(info.model_context_window)
+      ? { used: count(last.total_tokens), window: info.model_context_window } : null;
+    const contextChanged = !!context && (context.used !== this.context?.used || context.window !== this.context?.window);
+    if (context) this.context = context;
     const limits = payload.rate_limits && typeof payload.rate_limits === 'object' ? [payload.rate_limits.primary, payload.rate_limits.secondary]
       .filter(window => window && Number.isFinite(window.used_percent))
       .map(window => ({ minutes: count(window.window_minutes) || null, percent: window.used_percent, resetsAt: count(window.resets_at) ? window.resets_at * 1000 : null })) : null;
-    if (limits) this.limits = limits;
-    return !!(total || limits);
+    const limitsChanged = this.observeLimits(limits, Date.parse(record.timestamp), 'Codex');
+    return !!total || contextChanged || limitsChanged;
   }
 }
 function tokensOf(usage) {
@@ -158,35 +167,21 @@ async function claudeProvider(cwd, configDir, env = process.env) {
 
 // Claude's plan limits are not in its transcript: Claude Code fetches them for /usage and its status line and keeps the
 // latest in its own state file (.claude.json beside its config folder, or in CLAUDE_CONFIG_DIR): the 5-hour and weekly
-// windows, and the limit resets the plan grants ("cedar_ember": each grant's resets left). Read, never written; null
-// when it holds none. resets: null when Claude Code has no word on them, { left: 0, total: 0 } when it grants none.
+// windows. Read, never written; null when it holds none.
 const claudeState = () => process.env.CLAUDE_CONFIG_DIR ? path.join(process.env.CLAUDE_CONFIG_DIR, '.claude.json') : path.join(os.homedir(), '.claude.json');
-// Which limit reset Claude Code offers this account, by the flags it caches from its own config service:
-// "tengu_nifty_lemur" is /limit-reset resetting the 5-hour session limit once a week (it draws on the weekly limit);
-// "tengu_cedar_ember" is a plan's grants of resets. Whether this week's reset is still there, or how many grants are
-// left, Claude Code learns only when it is at the limit ("at_wall") or tries: unknown here is null, never zero, and a
-// missing flag is no word either (Claude Code caches only the flags it has looked at), so the button never goes grey
-// on a guess. kind: session (once a week) or grants. null: no word on it.
-function claudeResets(state, usage) {
-  const flags = state?.cachedGrowthBookFeatures;
-  const grants = Array.isArray(usage?.cedar_ember?.grants) ? usage.cedar_ember.grants.filter(grant => grant && !grant.paused) : null;
-  if (grants?.length) return { kind: 'grants', left: grants.reduce((sum, grant) => sum + count(grant.resets_left), 0), total: grants.reduce((sum, grant) => sum + count(grant.resets_total), 0) };
-  if (flags?.tengu_nifty_lemur?.enabled === true) return { kind: 'session', left: null, total: 1 };
-  if (flags?.tengu_cedar_ember?.enabled === true) return { kind: 'grants', left: null, total: null };
-  return null;
-}
 function claudeAccountFrom(state) {
   const cached = state?.cachedUsageUtilization, usage = cached?.utilization && typeof cached.utilization === 'object' ? cached.utilization : null;
-  if (!usage && !state?.cachedGrowthBookFeatures) return null;
+  if (!usage) return null;
   const window = (value, minutes) => value && Number.isFinite(value.utilization)
     ? { minutes, percent: value.utilization, resetsAt: Date.parse(value.resets_at) || null } : null;
-  const limits = usage ? [window(usage.five_hour, 300), window(usage.seven_day, 10080)].filter(Boolean) : [];
-  return { limits, resets: claudeResets(state, usage), at: Number.isFinite(cached?.fetchedAtMs) ? cached.fetchedAtMs : null, source: 'Claude Code' };
+  const limits = [window(usage.five_hour, 300), window(usage.seven_day, 10080)].filter(Boolean);
+  return { limits, at: Number.isFinite(cached?.fetchedAtMs) ? cached.fetchedAtMs : null, source: 'Claude Code' };
 }
 // CodePulse (a status line for Claude Code) writes the limits Claude Code hands its status line each time it redraws,
 // fresher than Claude Code's own cache: { updatedAt, rate_limits: { five_hour, seven_day: { used_percent, resets_at } } }.
 // It watches the Claude Code of the usual config folder: a Claude given its own CLAUDE_CONFIG_DIR is another setup.
 const codePulseFile = () => process.env.CLAUDE_CONFIG_DIR ? null : path.join(os.homedir(), '.codepulse', 'claude-quota.json');
+const claudeAccountFiles = () => [claudeState(), codePulseFile()].filter(Boolean);
 function codePulseLimits(quota) {
   const limits = quota?.rate_limits;
   if (!limits || typeof limits !== 'object' || !Number.isFinite(quota.updatedAt)) return null;
@@ -195,13 +190,12 @@ function codePulseLimits(quota) {
   const list = [window(limits.five_hour, 300), window(limits.seven_day, 10080)].filter(Boolean);
   return list.length ? { limits: list, at: quota.updatedAt, source: 'CodePulse' } : null;
 }
-// The newer of the two for the limits; the resets only Claude Code's cache knows.
+// The newer of the two for the limits.
 async function claudeAccount(file = claudeState(), pulse = codePulseFile()) {
   const read = async name => { try { return name ? JSON.parse(await fs.readFile(name, 'utf8')) : null; } catch { return null; } };
   const [state, quota] = await Promise.all([read(file), read(pulse)]);
   const own = claudeAccountFrom(state), fresher = codePulseLimits(quota);
-  if (!fresher || (own?.at ?? 0) >= fresher.at) return own;
-  return { ...fresher, resets: own?.resets ?? null };
+  return !fresher || (own?.at ?? 0) >= fresher.at ? own : fresher;
 }
 
-module.exports = { UsageMeter, claudeWindow, claudeProvider, claudeProviderName, codexProvider, codexProviderName, claudeAccount, claudeAccountFrom, codePulseLimits };
+module.exports = { UsageMeter, claudeWindow, claudeProvider, claudeProviderName, codexProvider, codexProviderName, claudeAccount, claudeAccountFrom, claudeAccountFiles, codePulseLimits };

@@ -43,6 +43,7 @@ function loadUI(name, overrides = {}) {
     if (key === './dictation-send') return require('../src/features/reading/dictation-send.ts');
     if (key === './reading-sessions') return require('../src/features/reading/reading-sessions.ts');
     if (key === './reply-files') return require('../src/features/reading/reply-files.ts');
+    if (key === './ReadingTerminalPopup') return { ReadingTerminalPopup: function ReadingTerminalPopup() { return null; } };
     if (key === './ReadingSignIn') return { ReadingSignIn: () => null };
     if (key === './AgentCommandRun') return { AgentCommandRun: () => null };
     if (key === './AgentSettingsTag') return { AgentSettingsTag: () => null };
@@ -55,6 +56,7 @@ function loadUI(name, overrides = {}) {
     if (key === './markdown-escape') return require('../src/features/reading/markdown-escape.ts');
     if (key === './pasted-pictures') return require('../src/features/reading/pasted-pictures.ts');
     if (key === './sign-in-screen') return require('../src/features/agents/sign-in-screen.ts');
+    if (key === './UserAvatar') return { UserAvatar: () => React.createElement('svg') };
     if (key === './file-popup') return { showPopup: () => {}, closePopup: () => {}, usePopup: () => null };
     return originalRequire(name);
   };
@@ -249,7 +251,8 @@ function elements(node) {
 function dictationHarness(t, overrides = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const slots = [], effects = [], written = [], pasted = [], echoed = [];
-  let cursor = 0, root, insert, closed = 0;
+  let cursor = 0, root, insert;
+  const listeners = new Map();
   const hooks = {
     useState(initial) {
       const index = cursor++;
@@ -276,12 +279,11 @@ function dictationHarness(t, overrides = {}) {
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
   };
   globalThis.document = { activeElement: node, body: {}, getElementById: () => null, createElement: () => ({ innerHTML: '', querySelectorAll: () => [] }) };
-  globalThis.window = { addEventListener() {}, removeEventListener() {}, agentrix: {
+  globalThis.window = { addEventListener: (name, take) => listeners.set(name, take), removeEventListener: name => listeners.delete(name), agentrix: {
     terminalCommands: async () => ({ ok: true, value: [] }),
     writeTerminal: (id, text) => written.push({ id, text }),
     pasteTerminal: async (id, text) => { pasted.push({ id, text }); return { ok: true }; },
   } };
-  const cli = { busy: false, panel: null, close() { closed++; }, begin() {} };
   const props = { projectId: 'project', terminal: { id: 'dictation', sessionId: 'session', agent: 'codex', codexActive: true, needsInput: null },
     autoFocus: false, onShowTerminal() {}, onError: message => assert.fail(message), onOpenLink() {},
   };
@@ -291,7 +293,7 @@ function dictationHarness(t, overrides = {}) {
     './action-text': {}, './cli-panel': require('../src/features/reading/cli-panel.ts'),
     './pending-prompts': require('../src/features/reading/pending-prompts.ts'),
     './voice-input': { dictateInto: (id, take) => { insert = take; return () => { insert = null; }; } },
-    './terminal-screen': { useScreen: () => null, readScreen: () => null },
+    './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows: ['› ', '', 'GPT-6.1-Sol high · C:\\work'] }) },
     './agent-screen': { parseAgentScreen: () => screen },
     './ReadingWelcome': {}, './ReadingChoice': {}, './ReadingQuestion': {}, './ReadingSessions': {},
     './reading-mode': { setChoiceVisible() {} }, './typing': { markTyping() {}, isTyping: () => false },
@@ -301,8 +303,7 @@ function dictationHarness(t, overrides = {}) {
     './useMentions': { useMentions: () => ({ open: false, keys: () => false }) }, './MentionPalette': {},
     './usePendingPrompts': { usePendingPrompts: () => ({ pending: [], echo: (text, images) => { echoed.push({ text, images }); return null; }, cancelEcho() {} }) },
     './PendingPromptEntries': {}, './markdown-parse': {}, './FileCards': {},
-    './reading-welcome': { useWelcomeStarting: () => false }, './ReadingCliPanel': {},
-    './useReadingCli': { useReadingCli: () => ({ ...cli, entries: [] }) },
+    './reading-welcome': { useWelcomeStarting: () => false },
     './image-thumbnail': { thumbnail: async () => 'data:image/png;base64,picture' },
     ...overrides,
   });
@@ -313,12 +314,15 @@ function dictationHarness(t, overrides = {}) {
     const box = elements(root).find(element => element.type === 'textarea');
     box.props.ref.current = node; node.value = box.props.value;
     while (effects.length) effects.shift()();
+    elements(root).find(element => element.type?.name === 'ReadingTerminalPopup')?.props.onReady();
     return box;
   };
   const unmount = () => { for (const slot of slots) if (slot?.cleanup) { slot.cleanup(); slot.cleanup = undefined; } };
   t.after(() => { unmount(); globalThis.window = previousWindow; globalThis.document = previousDocument; });
   render(); render();
-  return { props, screen, cli, node, written, pasted, echoed, render, unmount, tree: () => root, closed: () => closed,
+  return { props, screen, node, written, pasted, echoed, render, unmount, tree: () => root,
+    popup: () => elements(root).find(element => element.type?.name === 'ReadingTerminalPopup'),
+    command(text) { listeners.get('agentrix:command')({ detail: { terminalId: props.terminal.id, text }, preventDefault() {} }); render(); },
     dictate: (text, submit = true) => { insert(text, submit); render(); },
     edit: text => { render().props.onChange({ target: { value: text } }); render(); },
     pending: () => elements(root).some(element => /\bis-sending-soon\b/.test(element.props.className)),
@@ -356,13 +360,13 @@ test('Enter sends pending dictation at once and disarms its timer', async t => {
   await h.tick(2000); assert.equal(h.pasted.length, 1);
 });
 
-test('Escape only cancels pending dictation, leaving text and an open command alone', async t => {
+test('Escape only cancels pending dictation, leaving text alone', async t => {
   const h = dictationHarness(t);
-  h.props.terminal.codexActivity = 'working'; h.cli.panel = { command: '/usage', rows: [] };
+  h.props.terminal.codexActivity = 'working';
   h.dictate('keep for editing');
   const event = h.press('Escape');
   assert.equal(event.prevented, true); assert.equal(event.stopped, true);
-  assert.equal(h.closed(), 0); assert.deepEqual(h.written, []);
+  assert.deepEqual(h.written, []);
   assert.equal(h.node.value, 'keep for editing'); assert.equal(h.pending(), false);
   await h.tick(1000); assert.deepEqual(h.pasted, []);
 });
@@ -596,9 +600,7 @@ function readingHarness(t, entries = [], overrides = {}) {
     './FileCards': { FileCards: ({ files }) => React.createElement('div', { className: 'file-cards' }, files.join(',')), previewable: () => true },
     './ReadingSessions': { ReadingSessions: () => null }, './reading-sessions': require('../src/features/reading/reading-sessions.ts'),
     './reading-welcome': { useWelcomeStarting: () => false },
-    './ReadingCliPanel': { ReadingCliPanel: () => null }, './ReadingCommandOutput': { ReadingCommandOutput: () => null },
     './cli-panel': require('../src/features/reading/cli-panel.ts'),
-    './useReadingCli': { useReadingCli: (id, session, agent, list) => ({ entries: list, busy: false, panel: null, begin() {} }) },
     './i18n': { currentLanguage: () => 'en', t: (text, values) => (en[text] ?? text).replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? name)) },
     ...overrides,
   });
@@ -818,162 +820,143 @@ test('a question renders as its own card: progress, the question, options, an ow
 });
 
 for (const agent of ['claude', 'codex']) {
-  test(agent + ': slash feedback begins before typed Enter, slow hooks never cause an automatic resubmit', async t => {
-    const cli = { busy: false, panel: null, begin(text) { assert.equal(h.written.length, 0); this.busy = true; this.panel = { command: text, rows: [] }; }, close() { this.panel = null; this.busy = false; }, recover() { this.feedback = 'recovery'; } };
-    const rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens', agent === 'claude' ? 'claude-idle-2-1-296.txt' : 'codex-fresh-default.txt'), 'utf8').split('\n');
-    let h;
-    h = dictationHarness(t, {
-      './useReadingCli': { useReadingCli: () => cli },
-      './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows: h?.written.length ? rows.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ /status' : '› /status') : row) : rows }) },
+  for (const command of ['/status', '/init', '!echo SAME_OUTPUT']) {
+    test(agent + ': ' + command + ' opens the live popup and types with fixed pauses without screen reads', async t => {
+      const h = dictationHarness(t, { './terminal-screen': { useScreen: () => null, readScreen: () => assert.fail('typed commands never read the screen') } });
+      h.props.terminal.agent = agent;
+      for (let repeat = 0; repeat < 2; repeat++) {
+        h.edit(command); h.press('Enter'); await h.tick(0);
+        assert.equal(h.popup().props.command, command);
+        assert.deepEqual(h.written.slice(repeat * 3).map(item => item.text), ['\x15']);
+        await h.tick(59); assert.equal(h.written.length, repeat * 3 + 1);
+        await h.tick(1); assert.equal(h.written.at(-1).text, command);
+        await h.tick(149); assert.equal(h.written.length, repeat * 3 + 2);
+        await h.tick(1); assert.equal(h.written.at(-1).text, '\r');
+        await h.tick(30000); assert.equal(h.written.length, (repeat + 1) * 3);
+        assert.equal(h.popup().props.command, command, 'the CLI returning idle never closes its popup');
+        h.popup().props.onClose(); h.render();
+        assert.equal(h.popup(), undefined); assert.equal(h.written.length, (repeat + 1) * 3);
+      }
+      assert.deepEqual(h.pasted, []); assert.deepEqual(h.echoed, []);
     });
-    h.props.terminal.agent = agent;
-    h.edit('/status'); h.press('Enter');
-    assert.equal(cli.panel.command, '/status');
-    assert.deepEqual(h.written.map(item => item.text), ['/status']);
-    await h.tick(150);
-    assert.deepEqual(h.written.map(item => item.text), ['/status', '\r']);
-    await h.tick(30000);
-    assert.deepEqual(h.written.map(item => item.text), ['/status', '\r']);
-  });
+  }
 
-  test(agent + ': Escape before Enter stops the scheduled submission and retains terminal recovery feedback', async t => {
-    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; }, close() { this.panel = null; this.busy = false; }, recover() { this.feedback = 'recovery'; } };
-    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli } });
+  test(agent + ': a dialog or missing prompt opens the popup with the message and attachments still in the composer', async t => {
+    let rows = null;
+    const h = dictationHarness(t, { './terminal-screen': { useScreen: () => null, readScreen: () => rows && ({ rows }) }, './agent-screen': { parseAgentScreen } });
     h.props.terminal.agent = agent;
-    h.edit('/status'); h.press('Enter'); h.press('Escape');
-    await h.tick(150); await h.tick(30000);
-    assert.deepEqual(h.written.map(item => item.text), ['/status'], 'no unverified Escape, Ctrl+C or subsequent Enter');
-    assert.equal(cli.feedback, 'recovery'); assert.equal(cli.panel.command, '/status');
-  });
-
-  test(agent + ': switching PTY during a slash send cancels the old scheduled Enter', async t => {
-    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; }, close() {}, recover() {} };
-    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli } });
-    h.props.terminal.agent = agent;
-    h.edit('/status'); h.press('Enter');
-    h.props.terminal.sessionId = 'replacement-pty'; h.render();
-    await h.tick(30000);
-    assert.deepEqual(h.written.map(item => item.text), ['/status']);
-  });
-
-  test(agent + ': Enter waits for the exact live slash echo, not a fixed delay or a matching prefix', async t => {
-    const fresh = fs.readFileSync(path.join(__dirname, 'fixtures/screens', agent === 'claude' ? 'claude-2-1-302-start.txt' : 'codex-0-163-status.txt'), 'utf8').split('\n');
-    const withDraft = text => fresh.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ ' : '› ') + text : row);
-    let rows = fresh, confirmed = 0, submitted = 0;
-    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; return 'receipt'; }, confirmInput(id) { assert.equal(id, 'receipt'); confirmed++; return true; }, submitted() { submitted++; }, close() {}, recover() { this.feedback = 'recovery'; } };
-    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
-    h.props.terminal.agent = agent;
-    h.edit('/status'); h.press('Enter');
-    for (let i = 0; i < 12; i++) await h.tick(25);
-    assert.deepEqual(h.written.map(item => item.text), ['/status'], '300 ms alone never sends Enter');
-    rows = withDraft('/status-extra'); await h.tick(25);
-    assert.equal(confirmed, 0); assert.equal(h.written.length, 1);
-    rows = withDraft('/status'); await h.tick(25);
-    assert.deepEqual(h.written.map(item => item.text), ['/status', '\r']);
-    assert.equal(confirmed, 1); assert.equal(submitted, 1);
-    await h.tick(30000); assert.equal(h.written.length, 2, 'one Enter, no automatic repeat');
-  });
-
-  test(agent + ': missing slash echo times out safely without an Enter or a false completion', async t => {
-    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; }, close() {}, recover() { this.feedback = 'recovery'; } };
-    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli } });
-    h.props.terminal.agent = agent;
-    h.edit('/status'); h.press('Enter');
-    for (let i = 0; i < 80; i++) await h.tick(25);
-    assert.equal(cli.feedback, 'recovery'); assert.equal(cli.panel.done, undefined);
-    await h.tick(60000); assert.deepEqual(h.written.map(item => item.text), ['/status']);
-  });
-
-  test(agent + ': UI Escape clears four stale trackers at verified idle and lets the next model command execute', async t => {
-    const fresh = fs.readFileSync(path.join(__dirname, 'fixtures/screens', agent === 'claude' ? 'claude-2-1-302-start.txt' : 'codex-0-163-status.txt'), 'utf8').split('\n');
-    let rows = fresh, closes = 0;
-    const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; return 'new-model'; }, confirmInput: () => true, submitted() {}, close() { this.busy = false; this.panel = null; this.feedback = undefined; closes++; }, recover() { this.feedback = 'recovery'; } };
-    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
-    h.props.terminal.agent = agent;
-    for (let i = 0; i < 4; i++) {
-      cli.busy = true; cli.panel = { command: '/status', rows: [] }; cli.feedback = 'recovery'; h.render();
-      h.press('Escape'); assert.equal(cli.busy, true, 'close must verify idle across reads');
-      await h.tick(100);
-      assert.equal(cli.panel, null); assert.equal(cli.busy, false);
+    for (const frame of [null, ['Settings', 'Esc to close']]) {
+      rows = frame;
+      h.edit('keep this message'); h.press('Enter'); await h.tick(1000);
+      assert.ok(h.popup()); assert.equal(h.node.value, 'keep this message');
+      assert.deepEqual(h.written, []); assert.deepEqual(h.pasted, []); assert.deepEqual(h.echoed, []);
+      h.popup().props.onClose(); h.render();
     }
-    assert.equal(closes, 4); assert.deepEqual(h.written, [], 'UI Escape never sends a raw key to idle CLI input');
-    h.edit('/model'); h.press('Enter');
-    rows = fresh.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ /model' : '› /model') : row);
-    await h.tick(25);
-    assert.equal(cli.panel.command, '/model'); assert.deepEqual(h.written.map(item => item.text), ['/model', '\r']);
-  });
-
-  test(agent + ': idle cancellation cannot clear a draft that appears during verification', async t => {
-    const fresh = fs.readFileSync(path.join(__dirname, 'fixtures/screens', agent === 'claude' ? 'claude-2-1-302-start.txt' : 'codex-0-163-status.txt'), 'utf8').split('\n');
-    let rows = fresh;
-    const cli = { busy: true, panel: { command: '/status', rows: [] }, close() { assert.fail('a non-idle CLI must keep its tracker'); }, recover() { this.feedback = 'recovery'; } };
-    const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
-    h.props.terminal.agent = agent; h.press('Escape');
-    rows = fresh.map(row => row.trim().startsWith(agent === 'claude' ? '❯' : '› Ask Codex') ? (agent === 'claude' ? '❯ held' : '› held') : row);
-    await h.tick(100);
-    assert.equal(cli.feedback, 'recovery'); assert.deepEqual(h.written, []);
   });
 }
 
-test('pending and recovery popups expose a terminal action, keep Escape local and block arbitrary CLI input', () => {
-  const hooks = { useRef: value => ({ current: value }), useMemo: make => make(), useEffect() {}, useLayoutEffect() {} };
-  const { ReadingCliPanel } = loadUI('features/reading/ReadingCliPanel.tsx', { react: hooks, './cli-panel': require('../src/features/reading/cli-panel.ts'), './cli-render': require('../src/features/reading/cli-render.ts') });
-  for (const feedback of ['waiting', 'recovery']) {
-    const writes = []; let closes = 0, terminals = 0;
-    const root = ReadingCliPanel({ command: '/status', rows: [], done: false, terminalId: 'test', feedback, interactive: false, onWrite: key => { writes.push(key); return true; }, onClose: () => closes++, onShowTerminal: () => terminals++ });
-    const dialog = elements(root).find(element => element.props.role === 'dialog');
-    for (const key of ['Enter', 'a', 'ArrowDown']) dialog.props.onKeyDown({ key, nativeEvent: {}, stopPropagation() {}, preventDefault() {} });
-    dialog.props.onCompositionEnd({ data: 'text' }); dialog.props.onPaste({ clipboardData: { getData: () => 'text' }, preventDefault() {} });
-    dialog.props.onKeyDown({ key: 'Escape', nativeEvent: {}, stopPropagation() {}, preventDefault() {} });
-    elements(root).find(element => element.type === 'button').props.onClick();
-    assert.deepEqual(writes, []); assert.equal(closes, 1); assert.equal(terminals, 1);
-    assert.ok(elements(root).some(element => element.props.role === 'status'));
+test('session A to B to A, terminal selection and unmount cancel every delayed command key', async t => {
+  for (const change of ['session', 'terminal', 'selection', 'unmount', 'close']) await t.test(change, async t => {
+    const h = dictationHarness(t);
+    h.edit('/status'); h.press('Enter'); await h.tick(0);
+    assert.deepEqual(h.written.map(item => item.text), ['\x15']);
+    if (change === 'session') { h.props.terminal.sessionId = 'B'; h.render(); h.props.terminal.sessionId = 'session'; h.render(); }
+    if (change === 'terminal') { h.props.terminal.id = 'B'; h.render(); h.props.terminal.id = 'dictation'; h.render(); }
+    if (change === 'selection') { h.props.active = false; h.render(); h.props.active = true; h.render(); }
+    if (change === 'unmount') h.unmount();
+    if (change === 'close') { h.popup().props.onClose(); h.render(); }
+    await h.tick(60); await h.tick(150); await h.tick(30000);
+    assert.deepEqual(h.written.map(item => item.text), ['\x15']);
+    if (change !== 'unmount') assert.equal(h.popup(), undefined);
+  });
+});
+
+test('a normal prompt paste resolving after session A to B to A never sends Enter into the returned session', async t => {
+  let finishPaste;
+  const h = dictationHarness(t);
+  window.agentrix.pasteTerminal = () => new Promise(resolve => { finishPaste = resolve; });
+  h.edit('normal prompt'); h.press('Enter');
+  h.props.terminal.sessionId = 'B'; h.render(); h.props.terminal.sessionId = 'session'; h.render();
+  finishPaste({ ok: true }); await h.tick(1000); await h.tick(1000);
+  assert.deepEqual(h.written, []);
+});
+
+test('an external command uses the popup and leaves the composer draft alone', async t => {
+  const h = dictationHarness(t);
+  h.edit('keep my draft'); h.command('/usage'); await h.tick(0); await h.tick(60); await h.tick(150);
+  assert.equal(h.popup().props.command, '/usage'); assert.equal(h.node.value, 'keep my draft');
+  assert.deepEqual(h.written.map(item => item.text), ['\x15', '/usage', '\r']);
+  h.command('/usage'); await h.tick(0); await h.tick(60); await h.tick(150);
+  assert.deepEqual(h.written.map(item => item.text), ['\x15', '/usage', '\r', '\x15', '/usage', '\r']);
+  assert.equal(h.node.value, 'keep my draft');
+});
+
+test('selecting or expanding the popup terminal keeps its send, and losing selection cancels it', async t => {
+  const h = dictationHarness(t);
+  h.props.active = false; h.render();
+  h.command('/status'); await h.tick(0);
+  h.props.active = true; h.props.autoFocus = true; h.render();
+  await h.tick(60); await h.tick(150);
+  assert.ok(h.popup()); assert.deepEqual(h.written.map(item => item.text), ['\x15', '/status', '\r']);
+  h.props.autoFocus = false; h.render(); h.render();
+  assert.equal(h.popup(), undefined);
+});
+
+test('/clear hides the previous entries only after submission and keeps the terminal popup open', async t => {
+  const record = { id: 'before-clear', role: 'user', text: 'old conversation' };
+  let shown;
+  const h = dictationHarness(t, {
+    './useReadingConversation': { conversationKey: () => 'clear-test', useReadingConversation: () => [record] },
+    './useVisibleTail': { blocks: entries => { shown = entries; return []; }, conversationTurns: () => [], useVisibleTail: () => ({ earlier: 0, visible: [] }) },
+  });
+  h.props.terminal.agent = 'claude'; h.edit('/clear'); h.press('Enter'); await h.tick(0); await h.tick(60);
+  assert.deepEqual(shown, [record]);
+  await h.tick(150); assert.deepEqual(shown, []); assert.ok(h.popup());
+});
+
+test('local /resume keeps its session picker, and SSH /resume opens the live terminal', async t => {
+  const h = dictationHarness(t);
+  h.edit('/resume'); h.press('Enter'); await h.tick(1000);
+  assert.equal(h.popup(), undefined); assert.deepEqual(h.written, []);
+  assert.ok(elements(h.tree()).some(element => element.props.onSent));
+  h.props.terminal.sessionId = 'remote'; h.props.remote = true; h.render(); h.render();
+  h.edit('/resume'); h.press('Enter'); await h.tick(0); await h.tick(60); await h.tick(150);
+  assert.ok(h.popup()); assert.deepEqual(h.written.map(item => item.text), ['\x15', '/resume', '\r']);
+});
+
+test('the terminal popup closes only by its button or backdrop and never translates a key', () => {
+  let closes = 0;
+  const hooks = { useRef: value => ({ current: value }), useLayoutEffect() {} };
+  const { ReadingTerminalPopup } = loadUI('features/reading/ReadingTerminalPopup.tsx', { react: hooks, './reading-terminal': {} });
+  const root = ReadingTerminalPopup({ terminalId: 't', sessionId: 's', command: '/config', onReady() {}, onClose: () => closes++, onError: assert.fail });
+  for (const key of ['Escape', 'Enter', 'Tab', 'ArrowDown', 'c']) {
+    const event = { key, stopPropagation() {}, preventDefault: () => assert.fail('xterm owns the key') };
+    root.props.onKeyDown(event); root.props.onKeyUp(event);
   }
+  root.props.onMouseDown({ button: 0, target: {}, currentTarget: {} }); assert.equal(closes, 0);
+  const dialog = elements(root).find(element => element.type === 'dialog');
+  assert.equal(dialog.props.open, true); let prevented = false;
+  dialog.props.onCancel({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true); assert.equal(closes, 0);
+  // The backdrop press keeps its default focus change from landing under the closed popup.
+  const backdrop = {}; let pressPrevented = false;
+  root.props.onMouseDown({ button: 0, target: backdrop, currentTarget: backdrop, preventDefault() { pressPrevented = true; } });
+  assert.equal(pressPrevented, true);
+  elements(root).find(element => element.type === 'button').props.onClick();
+  assert.equal(closes, 2);
 });
 
-test('disposing a command popup cancels delayed navigation keys', async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  let cleanup;
-  const hooks = { useRef: value => ({ current: value }), useMemo: make => make(), useEffect: effect => { cleanup = effect(); }, useLayoutEffect() {} };
-  const { ReadingCliPanel } = loadUI('features/reading/ReadingCliPanel.tsx', { react: hooks, './cli-panel': require('../src/features/reading/cli-panel.ts'), './cli-render': require('../src/features/reading/cli-render.ts') });
-  const writes = [];
-  const root = ReadingCliPanel({ command: '/effort', rows: ['Effort'], done: false, terminalId: 'test', interactive: true, onWrite: key => { writes.push(key); return true; }, onClose() {}, onShowTerminal() {} });
-  elements(root).find(element => element.type?.name === 'CliBlocks').props.onKeys(['\x1b[C', '\x1b[C']);
-  assert.deepEqual(writes, ['\x1b[C']);
-  cleanup(); t.mock.timers.tick(1000); await Promise.resolve();
-  assert.deepEqual(writes, ['\x1b[C'], 'the old popup cannot type into a replacement session');
-});
-
-test('bang sends wait for the captured exact Claude shell editor before one Enter', async t => {
-  let rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/claude-2-1-302-start.txt'), 'utf8').split('\n'), receipts = 0, submitted = 0;
-  const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; return 'bang'; }, confirmInput(id) { assert.equal(id, 'bang'); receipts++; return true; }, submitted() { submitted++; }, close() {}, recover() { this.feedback = 'recovery'; } };
-  const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
-  h.props.terminal.agent = 'claude'; h.edit('!echo BANG_CAPTURE_OK'); h.press('Enter');
-  for (let i = 0; i < 12; i++) await h.tick(25);
-  assert.deepEqual(h.written.map(item => item.text), ['!echo BANG_CAPTURE_OK'], 'the old 150 ms bang delay is not receipt');
-  rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/claude-bang-typed.txt'), 'utf8').split('\n');
-  await h.tick(25);
-  assert.deepEqual(h.written.map(item => item.text), ['!echo BANG_CAPTURE_OK', '\r']);
-  assert.equal(receipts, 1); assert.equal(submitted, 1);
-  await h.tick(30000); assert.equal(h.written.length, 2);
-});
-
-test('closing a completed Bash popup never interrupts the captured subsequent model reply', async t => {
-  const rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/claude-bang-empty-model-working.txt'), 'utf8').split('\n');
-  const cli = { busy: false, panel: { command: '!true', rows: [], done: true }, close() { this.panel = null; }, recover() { assert.fail('a finished Bash result can close locally'); } };
-  const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
-  h.props.terminal.agent = 'claude'; h.props.terminal.codexActivity = 'working'; h.render();
-  h.press('Escape'); await h.tick(1000);
-  assert.equal(cli.panel, null); assert.deepEqual(h.written, []); assert.equal(h.props.terminal.codexActivity, 'working');
-});
-
-test('Codex bang delivery waits for the captured shell-mode editor instead of a fixed sleep', async t => {
-  let rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/codex-fresh-default.txt'), 'utf8').split('\n'), receipts = 0;
-  const cli = { busy: false, panel: null, begin(text) { this.busy = true; this.panel = { command: text, rows: [] }; return 'codex-bang'; }, confirmInput() { receipts++; return true; }, submitted() {}, close() {}, recover() {} };
-  const h = dictationHarness(t, { './useReadingCli': { useReadingCli: () => cli }, './terminal-screen': { useScreen: () => null, readScreen: () => ({ rows }) }, './agent-screen': { parseAgentScreen } });
-  h.edit('!echo CODEX_BANG_INPUT'); h.press('Enter');
-  for (let i = 0; i < 12; i++) await h.tick(25);
-  assert.deepEqual(h.written.map(item => item.text), ['!echo CODEX_BANG_INPUT']);
-  rows = fs.readFileSync(path.join(__dirname, 'fixtures/screens/codex-bang-typed.txt'), 'utf8').split('\n'); await h.tick(25);
-  assert.deepEqual(h.written.map(item => item.text), ['!echo CODEX_BANG_INPUT', '\r']); assert.equal(receipts, 1);
+test('switching to a terminal in another small card closes the popup without restoring the old composer focus', t => {
+  const saved = globalThis.document, listeners = new Map(), cleanups = [], closes = [];
+  globalThis.document = { addEventListener: (name, take) => listeners.set(name, take), removeEventListener: name => listeners.delete(name) };
+  t.after(() => { for (const cleanup of cleanups) cleanup?.(); globalThis.document = saved; });
+  let restored = 0, ready = 0;
+  const hooks = { useRef: value => ({ current: value }), useLayoutEffect: effect => cleanups.push(effect()) };
+  const { ReadingTerminalPopup } = loadUI('features/reading/ReadingTerminalPopup.tsx', { react: hooks, './reading-terminal': { mountReadingTerminal: () => () => restored++ } });
+  ReadingTerminalPopup({ terminalId: 'A', sessionId: 's', command: '/status', onReady: () => ready++, onClose: focus => closes.push(focus), onError: assert.fail });
+  assert.equal(ready, 1);
+  const target = id => ({ closest: () => ({ dataset: { terminalId: id } }) });
+  listeners.get('pointerdown')({ target: target('A') }); assert.deepEqual(closes, []);
+  listeners.get('focusin')({ target: target('B') }); assert.deepEqual(closes, [false]);
+  cleanups.shift()(); assert.equal(restored, 1);
 });

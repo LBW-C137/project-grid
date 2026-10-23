@@ -18,7 +18,7 @@ const { READING_NOTE } = require('./features/agents/reading-note.cjs');
 const { writeHandoff, handoffText, startupNote } = require('./features/agents/handoff.cjs');
 const { remember, roundsOf } = require('./features/agents/project-memory.cjs');
 const { agentSettings } = require('./features/agents/agent-settings.cjs');
-const { UsageMeter, claudeProvider, codexProvider, claudeAccount } = require('./features/agents/agent-usage.cjs');
+const { UsageMeter, claudeProvider, codexProvider, claudeAccount, claudeAccountFiles } = require('./features/agents/agent-usage.cjs');
 const { CodexAccountUsage } = require('./features/agents/codex-account-usage.cjs');
 const codexAccounts = new CodexAccountUsage();
 const { agentCommand } = require('./features/agents/agent-command.cjs');
@@ -180,7 +180,7 @@ function publicState() {
           // The model, effort and fast mode its records show, above the reading view's message box.
           agentSettings: s?.codexActive ? s.agentSettings || null : null,
           // The service its model is reached through, the context it fills and the tokens it took, for the activity pane.
-          agentUsage: s?.codexActive && s.usage ? s.usage.snapshot() : null,
+          agentUsage: s?.codexActive && s.usage ? s.usageHistory || s.usage.snapshot() : null,
           // A run of the CLI that is no conversation (update, --version, login), for the reading view to say so.
           agentCommand: s?.codexActive ? s.agentCommand || null : null,
           codexActivity: s?.codexActivity || 'unknown', needsInput: s?.needsInput?.message || null, shellReady: !!s?.ready && !s?.inputDirty, codexAvailable: s?.codexAvailable ?? null,
@@ -357,8 +357,12 @@ const readEvery = s => s.codexActivity === 'working' ? 250 : 1000;
 function noteSettings(s, agent, record) {
   const next = agentSettings(s.agentSettings || null, agent, record);
   if (next !== (s.agentSettings || null)) { s.agentSettings = next; scheduleState(); }
-  if (s.usage?.apply(record)) scheduleState();
+  if (s.usage?.apply(record) && !s.usageHistory) { scheduleState(); scheduleUsageRollover(); }
   if (agent === 'codex' && record?.type === 'session_meta') s.bindUsageAccount?.();
+  if (agent === 'codex' && !s.usageHistory && record?.type === 'event_msg') {
+    if (record.payload?.type === 'token_count') s.usageAccount?.refresh(30000);
+    else if (['task_complete', 'turn_completed'].includes(record.payload?.type)) s.usageAccount?.refresh();
+  }
 }
 // A skill step names the skill; what the skill is for comes from its SKILL.md, a moment later.
 function describeActions(s, cwd, actions) {
@@ -382,6 +386,7 @@ function followClaude(project, s, event) {
     const onHistory = ready => {
       if (ready) s.conversation.endHistory();
       else { s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.usage?.reset(); }
+      usageHistory(s, ready);
     };
     s.claudeTranscript = remote ? { filename: file } : new TranscriptTail(file, { onHistory });
     s.activityMonitor?.stop();
@@ -406,11 +411,19 @@ function followClaude(project, s, event) {
   } else void s.activityMonitor?.poll();
 }
 
+// Workspace broadcasts can happen while history is still reading: hold a clean snapshot until it finishes.
+function usageHistory(s, ready) {
+  if (!s.usage) return;
+  s.usageHistory = ready ? null : s.usage.snapshot();
+  scheduleUsageRollover();
+  if (ready) scheduleState();
+}
+
 // What the activity pane shows of the model route and the tokens spent. Which service a model is reached through is
 // read from this computer's settings; over SSH, Claude's stays unnamed and Codex's is the id its records give.
 function startUsage(project, s, event) {
   stopUsageAccount(s);
-  const usage = s.usage = new UsageMeter(s.agent, { changed: () => { if (s.usage === usage) scheduleState(); } });
+  const usage = s.usage = new UsageMeter(s.agent, { changed: () => { if (s.usage === usage && !s.usageHistory) scheduleState(); } });
   if (s.agent === 'codex') {
     let binding;
     s.bindUsageAccount = () => {
@@ -420,7 +433,7 @@ function startUsage(project, s, event) {
       s.usageAccount = codexAccounts.watch({ codexHome: event.codexHome || s.codexHome, cwd: event.cwd || project.path,
         recordedCwd: usage.scopeCwd, env: s.usageEnv || process.env, provider: usage.providerId,
         remote: project.kind === 'ssh', accountLaunch: event.accountLaunch }, account => {
-        if (s.usage === usage && s.codexActive && sessions.get(s.terminalId) === s) { usage.codexAccount(account); scheduleState(); }
+        if (s.usage === usage && s.codexActive && sessions.get(s.terminalId) === s) { usage.codexAccount(account); if (!s.usageHistory) scheduleState(); scheduleUsageRollover(); }
       });
     };
     s.bindUsageAccount();
@@ -434,16 +447,104 @@ function startUsage(project, s, event) {
 }
 function stopUsageAccount(s) {
   s.bindUsageAccount = null; s.usageAccount?.dispose(); s.usageAccount = null;
+  s.usageHistory = null;
+  if (s.usage) {
+    if (!localClaudeMeters(s).length) disposeClaudeAccounts();
+    scheduleUsageRollover(s);
+  }
 }
-// Claude's plan limits and resets, from Claude Code's own state file, for every local Claude terminal: read when one
-// starts and then twice a minute while any runs (Claude Code refreshes them itself every few minutes).
+// These files are shared by local Claude terminals. Watch their folders so atomic replacement keeps working.
 let claudeAccountTimer = null;
+let claudeAccountSoon = null, claudeAccountPending = null, claudeAccountQueued = false, claudeAccountGeneration = 0;
+const claudeAccountWatchers = new Map();
+function localClaudeMeters(skip) {
+  return [...sessions.values()].filter(s => s !== skip && s.codexActive && s.usage?.agent === 'claude' && store.projects.find(p => p.id === s.projectId)?.kind !== 'ssh');
+}
+function disposeClaudeAccounts() {
+  ++claudeAccountGeneration;
+  clearInterval(claudeAccountTimer); if (claudeAccountSoon) clearTimeout(claudeAccountSoon);
+  claudeAccountTimer = null; claudeAccountSoon = null; claudeAccountPending = null; claudeAccountQueued = false;
+  for (const { watcher } of claudeAccountWatchers.values()) watcher.close();
+  claudeAccountWatchers.clear();
+}
+function queueClaudeAccounts() {
+  if (claudeAccountSoon) return;
+  claudeAccountSoon = setTimeout(() => { claudeAccountSoon = null; void refreshClaudeAccounts(); }, 25);
+  claudeAccountSoon.unref?.();
+}
+function watchClaudeAccounts() {
+  const folders = new Map();
+  for (const file of claudeAccountFiles()) {
+    try {
+      let folder = path.dirname(file);
+      // CodePulse's folder may not exist yet. Its nearest existing parent tells us when it is created.
+      while (!fs.existsSync(folder) && path.dirname(folder) !== folder) folder = path.dirname(folder);
+      if (!folders.has(folder)) folders.set(folder, new Set());
+      folders.get(folder).add(path.relative(folder, file).split(path.sep)[0]);
+    } catch { }
+  }
+  for (const [folder, entry] of claudeAccountWatchers) {
+    if (folders.has(folder)) entry.names = folders.get(folder);
+    else { entry.watcher.close(); claudeAccountWatchers.delete(folder); }
+  }
+  for (const [folder, names] of folders) {
+    if (claudeAccountWatchers.has(folder)) continue;
+    try {
+      const entry = { names };
+      entry.watcher = fs.watch(folder, { persistent: false }, (_event, name) => {
+        if (claudeAccountWatchers.get(folder) === entry && (!name || entry.names.has(String(name)))) queueClaudeAccounts();
+      });
+      entry.watcher.unref?.();
+      entry.watcher.on('error', () => { entry.watcher.close(); if (claudeAccountWatchers.get(folder) === entry) claudeAccountWatchers.delete(folder); });
+      claudeAccountWatchers.set(folder, entry);
+    } catch { }
+  }
+}
 async function refreshClaudeAccounts() {
-  const meters = [...sessions.values()].filter(s => s.codexActive && s.usage?.agent === 'claude' && store.projects.find(p => p.id === s.projectId)?.kind !== 'ssh');
-  if (!meters.length) { clearInterval(claudeAccountTimer); claudeAccountTimer = null; return; }
+  if (!localClaudeMeters().length) { disposeClaudeAccounts(); return; }
+  if (claudeAccountSoon) clearTimeout(claudeAccountSoon);
+  claudeAccountSoon = null;
+  watchClaudeAccounts();
   claudeAccountTimer ??= setInterval(() => void refreshClaudeAccounts(), 30000);
-  const account = await claudeAccount();
-  if (meters.some(s => s.usage.account(account))) scheduleState();
+  claudeAccountTimer.unref?.();
+  if (claudeAccountPending) { claudeAccountQueued = true; return claudeAccountPending; }
+  const generation = claudeAccountGeneration;
+  const pending = claudeAccountPending = Promise.resolve().then(() => claudeAccount()).then(account => {
+    if (generation !== claudeAccountGeneration) return;
+    let changed = false;
+    for (const s of localClaudeMeters()) if (s.usage.account(account) && !s.usageHistory) changed = true;
+    if (changed) { scheduleState(); scheduleUsageRollover(); }
+  }).finally(() => {
+    if (claudeAccountPending !== pending) return;
+    claudeAccountPending = null;
+    if (claudeAccountQueued) { claudeAccountQueued = false; queueClaudeAccounts(); }
+  });
+  return pending;
+}
+
+let usageRolloverTimer = null, usageRolloverAt = null;
+function scheduleUsageRollover(skip) {
+  const now = Date.now();
+  let next = Infinity;
+  if (!quitting) for (const s of sessions.values()) {
+    if (s === skip || !s.codexActive || store.projects.find(p => p.id === s.projectId)?.kind === 'ssh') continue;
+    for (const limit of s.usageHistory?.limits || s.usage?.limits || []) {
+      if (Number.isFinite(limit.resetsAt) && limit.resetsAt > now) next = Math.min(next, limit.resetsAt);
+    }
+  }
+  if (next === usageRolloverAt) return;
+  if (usageRolloverTimer) clearTimeout(usageRolloverTimer);
+  usageRolloverTimer = null; usageRolloverAt = next;
+  if (!Number.isFinite(next)) return;
+  usageRolloverTimer = setTimeout(() => {
+    usageRolloverTimer = null; usageRolloverAt = null;
+    if (Date.now() >= next) {
+      for (const s of sessions.values()) if (s.codexActive && s.usage?.agent === 'codex') s.usageAccount?.refresh();
+      void refreshClaudeAccounts();
+    }
+    scheduleUsageRollover();
+  }, Math.min(next - now, 2147483647));
+  usageRolloverTimer.unref?.();
 }
 
 // Restores and the reading-view picker know the id before Claude emits its next prompt hook.
@@ -512,6 +613,7 @@ function claudeActivity(project, s, event) {
   s.approval?.context('claude-event', [event.sessionId, event.eventId, event.state]);
   if (event.state === 'attention') { s.needsInput = { message: typeof event.message === 'string' ? event.message.slice(0, 300) : '', since: Date.now() }; broadcast(); return; }
   if (event.state === 'session') { followClaude(project, s, event); broadcast(); return; }
+  if (s.usage && project.kind !== 'ssh') void refreshClaudeAccounts();
   // Claude Code runs its prompt hooks for some local slash commands (/context, /doctor, /compact) too. They open a screen
   // or print a line and no round follows, so they neither start a round nor end one; the card would stay "working".
   if (event.state === 'working') {
@@ -605,6 +707,7 @@ function onEvent(event) {
         s.conversation.beginHistory(); s.actions.reset(); s.conversation.reset(); s.usage?.reset();
         s.usage?.resetScope(); s.bindUsageAccount?.();
       }
+      usageHistory(s, ready);
     };
     const onRecord = record => {
       codexConversation(s.conversation, record, event.cwd || project.path); describeActions(s, event.cwd || project.path, codexRecord(s.actions, record, event.cwd || project.path));
@@ -645,7 +748,7 @@ function onEvent(event) {
   } else if (event.type === 'turn-complete') {
     // notify is inherited by child agents. It only requests a refresh; the
     // interactive parent's task lifecycle is the authority for completion.
-    if (s.codexActive && (!s.rootThreadId || event.threadId === s.rootThreadId)) void s.activityMonitor?.poll();
+    if (s.codexActive && (!s.rootThreadId || event.threadId === s.rootThreadId)) { s.usageAccount?.refresh(); void s.activityMonitor?.poll(); }
     return;
   } else return;
   broadcast();
@@ -1287,7 +1390,8 @@ app.on('before-quit', event => {
   quitting = true;
   updateManager?.dispose();
   codexAccounts.dispose();
-  clearInterval(claudeAccountTimer);
+  disposeClaudeAccounts();
+  clearTimeout(usageRolloverTimer);
   clearTimeout(stateTimer);
   for (const id of sessions.keys()) disposeTerminal(id);
   sshAuth?.close();

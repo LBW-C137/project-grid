@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { setUserAvatar } from './shared/UserAvatar';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { SquaresFour, FolderSimplePlus, MagnifyingGlass, Check, X, Minus, Square, GearSix, CheckCircle, Info, Circle, Tray, CirclesFour } from '@phosphor-icons/react';
 import type { AgentsState, AppUpdateState, Project, ProjectLocation, Result, Settings, SSHAuthPrompt, Workspace } from './shared/types';
 import { ProjectSwitchHud } from './features/workspace/ProjectSwitchHud';
@@ -6,7 +7,7 @@ import { ProjectExplorer } from './features/files/ProjectExplorer';
 import { AddProjectDialog } from './features/workspace/AddProjectDialog';
 import { SSHAuthDialog } from './features/ssh/SSHAuthDialog';
 import { useProjectReorder } from './features/workspace/useProjectReorder';
-import { pruneReadingCli } from './features/reading/useReadingCli';
+import { pruneReadingCli } from './features/reading/reading-terminal';
 import { setReading } from './features/reading/reading-mode';
 import { useProjectFocusMotion } from './features/workspace/useProjectFocusMotion';
 import { applyTheme } from './shared/themes';
@@ -55,6 +56,7 @@ const NO_PROJECTS: Project[] = [];
 export function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   useEffect(() => { if (workspace) applyTheme(workspace.settings.theme); }, [workspace?.settings.theme]);
+  useLayoutEffect(() => { setUserAvatar(workspace?.settings.userAvatar ?? ''); }, [workspace?.settings.userAvatar]);
   useEffect(() => { applyMotion(workspace?.settings.focusAnimation || 'smooth'); }, [workspace?.settings.focusAnimation]);
   // The surface (glass or solid) is a mode of the whole stylesheet, like the theme.
   useEffect(() => { const surface = workspace?.settings.surface || 'glass'; document.documentElement.dataset.surface = surface === 'glass' && workspace?.settings.glassBackground === 'desktop' && workspace?.desktopGlass?.active ? 'desktop-glass' : surface; }, [workspace?.settings.surface, workspace?.settings.glassBackground, workspace?.desktopGlass?.active]);

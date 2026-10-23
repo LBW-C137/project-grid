@@ -119,10 +119,10 @@ SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入
 
 - **活动栏**：展开项目后显示在终端右侧。点击标题栏上的列表按钮收起或展开，选择会被记住；窗口较窄时自动隐藏。多个分屏终端时显示当前选中的那个。从上到下依次是：
   - **正在处理的任务**：正在处理和排队中的提示。
-  - **模型路由**：代理 › 接口 › 模型，下面是思考强度和快速/普通模式。接口取自 Codex 记录里的 `model_provider`（自定义的服务显示 `config.toml` 里它的 `base_url` 主机名），Claude Code 则看它设置里的 `ANTHROPIC_BASE_URL`、Bedrock、Vertex 等开关；远程项目的 Claude Code 不显示接口。
+  - **模型路由**：代理 › 接口 › 模型，下面是思考强度和快速/普通模式。它调用的模型逐条列出，显示正在准备、运行中和审核中的数量；审核轮结束后移除对应调用。接口取自 Codex 记录里的 `model_provider`（自定义的服务显示 `config.toml` 里它的 `base_url` 主机名），Claude Code 则看它设置里的 `ANTHROPIC_BASE_URL`、Bedrock、Vertex 等开关；远程项目的 Claude Code 不显示接口。
   - **上下文长度**：当前对话占用的 token / 模型的上下文窗口，70% 起变黄，90% 起变红。
-  - **用量**：本轮和本次对话用掉的 token（输入、缓存命中比例、输出）。两个助手都显示 5 小时和每周额度的已用比例及重置时间：Codex 的取自它的记录，Claude Code 的取自它自己为 `/usage` 获取并缓存的数据（卡片下方写着更新时间）。Claude Code 的「本次对话」从对话的第一条提示算起，很长的对话只读取最近一段记录、看不到开头时只显示本轮。
-  - **重置额度**：用量卡片底部的按钮和剩余重置次数（Claude Code 的重置是每周 1 次、把 5 小时额度清零并占用每周额度，账号是否有这项来自它缓存的设置，本周是否已用以它在屏幕上说过的为准，例如「Weekly reset used · available again …」时显示哪天后可再用；按套餐发放的重置次数来自它缓存的数据。Codex 的次数来自它在屏幕上说过的话，比如额度用完时的提示或 `/usage`，之前没说过时写「剩余次数在 /usage 里显示」）。点击后不会立刻重置，而是先倒数 10 秒，期间随时可以点「取消」或按 Esc；倒数结束才把助手自己的命令发给它（Claude Code 用 `/limit-reset`，Codex 打开 `/usage`，在里面选择要用的重置并确认），重置由助手自己完成。没有可用重置时按钮不可点。
+  - **用量**：本轮和本次对话用掉的 token（输入、缓存命中比例、输出）。两个助手都显示 5 小时和每周额度的已用比例：Codex 的取自它的记录，Claude Code 的取自它自己为 `/usage` 获取并缓存的数据，装了 CodePulse 时取更新的一份（卡片下方写着来源和更新时间）。Codex 还显示每项额度的重置时间。用量卡片会在本轮结束、代理的用量缓存变化和额度窗口重置时自动刷新；窗口已重置但尚未取得新数据时显示「已重置，等待更新」。鼠标停在 token 数字上可看精确数量，停在额度百分比上可看一位小数和更新时间。Claude Code 的「本次对话」从对话的第一条提示算起，很长的对话只读取最近一段记录；本轮起点或对话开头不在记录里时，会说明暂无法统计。
+  - **重置额度（仅 Codex）**：Codex 用量卡片底部的按钮和剩余重置次数，支持的本地官方账号通过独立的只读 app-server 查询并自动刷新；未知、失败和不支持会单独提示，不会当成 0。点击后先倒数 10 秒，期间随时可以点「取消」或按 Esc；倒数结束才打开 Codex 的 `/usage`，在里面选择要用的重置并确认。Agentrix 自己不调用重置。没有可用重置时按钮不可点。
 - **来源**：Claude Code 的步骤读自它的会话记录（`~/.claude/projects/…/会话.jsonl`），Codex 的读自 rollout 记录（`~/.codex/sessions`）；应用只读取，不注入逐个工具的 hook，因此不影响它们的速度。新的一轮开始时列表清空，只保留最近 200 步。
 - **范围与限制**：目前支持本地项目；SSH 项目不显示活动。Codex 把所有调用包在脚本里执行，用 shell 脚本改文件时只能显示「通过命令修改文件」而没有文件名；MCP 工具本身的说明文字无法从记录中得到。
 
@@ -134,7 +134,7 @@ SSH 项目的目录菜单、终端目录链接和 Markdown 目录链接都进入
 - 在输入框里粘贴图片（Ctrl+V）：图片交给 Codex 或 Claude Code 本身，附在下一条消息上，输入框上方显示已附加几张，点 × 移除；只有图片也可以直接发送。
 - 回答里写到的本机图片、HTML 页面和视频（完整路径、反引号里的路径或 Markdown 图片 `![说明](路径)`）直接显示在回答下面；工具写出的图片、网页、Markdown 和视频也以卡片显示在那一组步骤下。点卡片或回答里的文件链接，在当前界面弹窗显示大图、网页、文档或文件夹，Esc、× 或点弹窗外面关闭；不会进入项目页，也不会打开其他程序。SSH 项目的文件通过 SSH 读取。
 - Agentrix 启动 Claude Code 和 Codex 时会临时告诉它们「写出完整路径，阅读视图就会显示图片、网页和视频，不要用别的程序打开」（Claude 用 `--append-system-prompt`，Codex 用 `developer_instructions`，不写入配置文件；命令行里你自己给的同类参数优先）。SSH 项目目前只对 Codex 生效。
-- 斜杠命令的结果以弹窗显示，Esc 或点弹窗外面关闭；命令在 CLI 里打开的对话框随之关闭，没能关上的会在下一条消息发出前关闭。等了 10 秒仍没有读到结果时，弹窗里会出现「切换到终端」，可在终端查看命令的实际情况。
+- 发送斜杠命令或 `!` Shell 命令，会在阅读视图上打开同一个实时终端的大弹窗，直接使用 CLI 的键盘、鼠标、选择和复制。Esc 交给 CLI；只通过标题栏关闭按钮或点击弹窗外面关闭，关闭时不会向 CLI 发键，也不会关闭 CLI 的对话框。切换终端、会话或离开阅读视图时弹窗关闭，终端移回原处。本地 `/resume` 仍打开会话列表，`/clear` 仍清空阅读记录。普通消息发送前若 CLI 尚未回到自己的提示符，会打开终端弹窗，消息保留在输入框里。
 - 启动前的确认（信任文件夹、选主题、绕过权限警告、新 MCP 服务器、从摘要恢复、Codex 更新提示）、权限确认和选择题都以弹窗或卡片呈现，点选即可。
 - 第一次启动、尚未登录时弹出「登录 Claude Code / Codex」窗口：一键在浏览器打开登录页、复制链接，把浏览器给的授权码或 OpenAI API Key 粘贴进去提交，或复制 Codex 的一次性验证码；成功或出错后按「继续」「取消」。这里输入的内容只交给 CLI，不算作对话消息，也不会显示在任务列表里。
 - 新项目卡片上没安装的助手标为「未安装 · 点击一键安装」，点一下用 npm 全局安装后直接启动；没有 Node.js 时先打开它的下载页。
@@ -244,20 +244,20 @@ curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/
 
 可以在管道后的 `bash` 前设置这些变量：
 
-- `AGENTRIX_VERSION=1.3.3`：安装指定版本。
+- `AGENTRIX_VERSION=1.3.4`：安装指定版本。
 - `AGENTRIX_INSTALL_DIR=~/Applications`：指定安装目录。
 - `AGENTRIX_OPEN=0`：安装后不打开应用。
 
-例如，安装 1.3.3：
+例如，安装 1.3.4：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.3.3 bash
+curl -fsSL https://raw.githubusercontent.com/noeigenstate/Agentrix/main/scripts/install-macos.sh | AGENTRIX_VERSION=1.3.4 bash
 ```
 
 如果已经下载了 ZIP，也可以用本地的安装脚本安装：
 
 ```bash
-bash install-macos.sh ~/Downloads/Agentrix-1.3.3-mac-arm64.zip
+bash install-macos.sh ~/Downloads/Agentrix-1.3.4-mac-arm64.zip
 ```
 
 应用使用临时签名（ad-hoc），没有 Apple Developer ID，也未经过 Apple 公证。如果用浏览器下载 DMG，再将应用拖到「应用程序」，首次打开时 macOS 会提示「无法验证开发者」。在「系统设置 › 隐私与安全性」中点一次「仍要打开」，或运行：

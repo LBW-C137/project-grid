@@ -2,27 +2,7 @@ import type { AgentScreen, ScreenAgent } from '../agents/agent-screen-types.ts';
 import { codexDialog } from '../agents/agent-screen.ts';
 
 const rule = (row: string) => /^[─╌]{2,}$/.test(row.trim());
-// Claude draws a dialog that takes the input's place under an overline (▔▔▔), with its effort indicator
-// ("◉ xhigh · /effort") set into the same row. Like the composer's rules, that line bounds a panel
-// from above; without it the welcome banner at the top of the screen would head the panel.
-const panelEdge = (row: string) => /^\s*[─╌▔]{8,}(?:\s.*)?$/.test(row.trimEnd()) || rule(row);
-// A tall terminal leaves a dialog far below the screen's first rows: keep one blank row between blocks.
-const squeeze = (rows: string[]) => rows.filter((row, index) => row.trim() || rows[index - 1]?.trim());
-// Claude's welcome banner (logo, "Claude Code v…", model, folder) heads its screen; it is never part of a command.
-const withoutBanner = (agent: ScreenAgent, rows: string[]) => {
-  if (agent !== 'claude') return rows;
-  const at = rows.findIndex(row => /Claude Code v\d/.test(row));
-  return at < 0 || at > 2 ? rows : rows.slice(at + 3);
-};
-const trimRows = (rows: string[]) => {
-  const result = rows.map(row => row.replace(/\r$/, ''));
-  let first = 0, end = result.length;
-  while (first < end && !result[first].trim()) first++;
-  while (end > first && !result[end - 1].trim()) end--;
-  return result.slice(first, end);
-};
-// The CLIs' shell editors draw "! command" even when the user typed "!command". Only that mode separator differs.
-export const commandInputText = (text: string) => text.trim().startsWith('!') ? '!' + text.trim().slice(1).trimStart() : text.trim();
+const commandInputText = (text: string) => text.trim().startsWith('!') ? '!' + text.trim().slice(1).trimStart() : text.trim();
 const prompt = (agent: ScreenAgent, row: string) => {
   const shell = /^\s*!(?:\s+(.*))?$/.exec(row.replace(/\r$/, ''));
   if (shell) return '!' + (shell[1] ?? '').trim();
@@ -75,9 +55,9 @@ export function isAtPrompt(agent: ScreenAgent, rows: string[], screen: AgentScre
   // A dialog Codex drew over its conversation (/usage, /memories) still waits, its input showing below it.
   if (agent === 'codex' && codexDialog(rows)) return false;
   const input = cliInputArea(agent, rows, screen);
-  if (agent === 'claude' && input && claudeShellResult(rows, input.start)?.running) return false;
+  if (agent === 'claude' && input && claudeShellRunning(rows, input.start)) return false;
   // A Codex picker open under the input (/copy) is still waiting for a choice.
-  return !!input?.hasFooter && !(agent === 'codex' && codexPopupBelow(rows, input).length);
+  return !!input?.hasFooter && !(agent === 'codex' && codexPickerBelow(rows, input.row));
 }
 
 // A dialog (Claude's /usage, /status, /config) takes the input's place; its content is the command's result.
@@ -85,302 +65,19 @@ export function hasCliInput(agent: ScreenAgent, rows: string[], screen: AgentScr
   return !!cliInputArea(agent, rows, screen);
 }
 
-// A dialog of the CLI is open in place of its input: keys sent now would land in it. With no input drawn, Claude's
-// working line alone means it is busy answering; a dialog opened during a round keeps that line above it, and its own
-// "Esc to cancel" or "Esc to clear" hint tells it apart. "Esc to interrupt" belongs to the working footer.
-const dialogHint = (row: string) => /\besc(?: to)? (?:cancel|close|exit|go back|back|dismiss|clear)\b/i.test(row);
-// A dialog draws its key hints in its own last rows, at the bottom of the screen; the same words higher up are the
-// conversation (a message quoting them, a command's output), never a dialog.
-const hintAtBottom = (rows: string[]) => rows.filter(row => row.trim()).slice(-8).some(dialogHint);
-function cliDialogOpen(agent: ScreenAgent, rows: string[], screen: AgentScreen): boolean {
-  if (agent === 'codex' && codexDialog(rows)) return true;
-  const input = cliInputArea(agent, rows, screen);
-  if (agent === 'codex' && input && codexPopupBelow(rows, input).length) return true;
-  if (input || !rows.some(row => row.trim())) return false;
-  return cliEscapeSafe(agent, rows);
-}
-
-// A dialog open on screen whoever opened it (left open in the terminal, or opened while its popup was being put away),
-// told by its own key hints so that an input this parser misses is never taken for one: a message typed now would
-// land in it.
-export const cliDialogShown = (agent: ScreenAgent, rows: string[], screen: AgentScreen) => cliDialogOpen(agent, rows, screen) && (hintAtBottom(rows) || (agent === 'codex' && !!codexDialog(rows)));
-// Claude at work: Escape interrupts the round unless a dialog takes the key instead.
-export const claudeAtWork = (agent: ScreenAgent, rows: string[]) => agent === 'claude' && claudeWorking(rows);
-// A working Claude only gets Escape when a dialog shows its own Escape hint at the bottom, never for words quoted
-// higher up in the conversation. Codex and an idle Claude do not need this interruption guard.
-export const cliEscapeSafe = (agent: ScreenAgent, rows: string[]) => !claudeAtWork(agent, rows) || hintAtBottom(rows);
-
-// Codex's /side opens a side conversation that only Ctrl+C leaves; Escape there tries to edit the last prompt.
-// Codex refuses /side in a conversation with nothing in it yet ("'/side' is unavailable until …"): then no side
-// conversation opened, and /side is an ordinary command whose result is that line. rows: what it printed, then the
-// screen; the latest row naming /side tells, so an older refusal still on screen doesn't hide a side conversation.
-const sideRefused = (rows: readonly string[]) => /is unavailable/i.test([...rows].reverse().find(row => /\/side\b/.test(row)) ?? '');
-export const isSideConversation = (agent: ScreenAgent, command: string, output: readonly string[] = []) => agent === 'codex' && /^\/side\b/.test(command.trim()) && !sideRefused(output);
-
-// The key that closes what a command left open: Ctrl+C for a Codex side conversation, q for a pager (Codex's /diff),
-// Escape for a dialog, nothing when the CLI is back at its input (Escape there would start editing the last message).
-export function cliCloseKey(agent: ScreenAgent, rows: string[], screen: AgentScreen, command = '', output: readonly string[] = []): string | null {
-  if (isSideConversation(agent, command, [...output, ...rows])) return '\x03';
-  if (rows.some(row => /\bq close\b/i.test(row))) return 'q';
-  return cliEscapeSafe(agent, rows) && cliDialogOpen(agent, rows, screen) ? '\x1b' : null;
-}
-
-// At its prompt with nothing typed: a command the reading view sent has finished.
+// At its prompt with nothing typed, as the offline reading fixture expects.
 export function isCliIdle(agent: ScreenAgent, rows: string[], screen: AgentScreen): boolean {
   return isAtPrompt(agent, rows, screen) && !cliInputDraft(agent, rows, screen);
 }
 
-// Codex draws some commands' pickers under its input and footer (/copy's "Copy user message", with its own key
-// hints): what is under the footer, other than the footer itself, is that picker.
 const codexFooterRow = (row: string) => /^\s*(?:GPT|gpt|o\d|codex)[^·]*\s+·\s+.+$/.test(row.replace(/\r$/, '')) || /^\s*(?:\? for shortcuts|⚠)/.test(row);
-function codexPopupBelow(rows: string[], input: { row: number }): string[] {
-  const below = rows.slice(input.row + 1).filter(row => row.trim() && !codexFooterRow(row));
-  return below.some(row => /\besc\b|\benter\b/i.test(row)) ? below : [];
+function codexPickerBelow(rows: string[], inputRow: number) {
+  return rows.slice(inputRow + 1).some(row => !codexFooterRow(row) && /\besc\b|\benter\b/i.test(row));
 }
 
-// The conversation above the CLI's input, as it stood when a command was sent.
-export function cliHistory(agent: ScreenAgent, rows: string[], screen: AgentScreen): string[] {
-  return trimRows(rows.slice(0, cliInputArea(agent, rows, screen)?.start ?? rows.length));
-}
-// Codex does not echo a slash command into its history: what a command printed is what came in under the last row
-// the history had when it was sent. Output taller than the screen pushes that row out of sight, and then all of the
-// history on screen is the command's. Newer Codex also prints the command on a row of its own, which marks the start
-// when the history changed meanwhile (a startup tip that went away). A screen drawn anew (/clear) starts with Codex's
-// banner, and nothing is taken; /status repeats that banner inside its card, so the echo is looked for first.
-const codexBanner = (row: string) => /^\s*>_ OpenAI Codex\b/.test(row);
-// The command's own echo row, when newer Codex prints one under the history, starts its output. Codex's tip under its
-// last answer ("└ Tip: …") goes away as the next command starts, so it is never compared. Only when none of the latest
-// history is on screen any more did the output push it out of sight, and then all of the screen is the command's.
-const transient = (row: string) => /^\s*(?:└\s*)?Tip:/.test(row);
-// The rows compared with the history: not blank, not the tip, and not the prompt Codex pins to the top of its screen
-// once its turn scrolled away (it stands there out of the history's order).
-function flowRows(rows: readonly string[], end: number): number[] {
-  const lines: number[] = [];
-  for (let index = 0; index < Math.min(end, rows.length); index++) if (rows[index].trim() && !transient(rows[index])) lines.push(index);
-  if (lines.length > 1 && /^\s*›\s/.test(rows[lines[0]])) lines.shift();
-  return lines;
-}
-function rowsSince(before: readonly string[], rows: string[], end: number, command: string): string[] | null {
-  const history = flowRows(before, before.length).map(index => before[index].trimEnd());
-  const anchor = anchoredAt(history, rows, end);
-  const echo = (from: number) => { for (let index = end - 1; index > from; index--) if (command.trim() && rows[index].trim() === command.trim()) return index; return -1; };
-  if (!history.length) { const at = echo(-1); return at >= 0 ? trimRows(rows.slice(at, end)) : null; }
-  if (anchor >= 0) { const at = echo(anchor); return trimRows(rows.slice(at >= 0 ? at : anchor + 1, end)); }
-  const at = echo(-1);
-  if (at >= 0) return trimRows(rows.slice(at, end));
-  if (rows.slice(0, end).some(codexBanner)) return null;
-  const shown = new Set(rows.slice(0, end).map(row => row.trimEnd()));
-  if (history.slice(-3).some(row => shown.has(row))) return null;
-  return trimRows(rows.slice(0, end));
-}
-// Where the history's last row is now, above `end`; -1 when it scrolled out of sight. Output only moves the history up,
-// so its last row is never further down the compared rows than it was. Of the places left, the lowest where every row
-// above it is the history's: a command printing the same rows again (/status twice) repeats the history's last rows,
-// but not the ones above them. When a row was redrawn meanwhile and no place matches throughout, the longest match.
-function anchoredAt(history: readonly string[], rows: string[], end: number): number {
-  const lines = flowRows(rows, end), last = history.length - 1;
-  let anchor = -1, longest = 0;
-  for (let at = Math.min(lines.length - 1, last); at >= 0; at--) {
-    let run = 0;
-    while (run <= at && rows[lines[at - run]].trimEnd() === history[last - run]) run++;
-    if (run > at) return lines[at];
-    if (run > longest) { anchor = lines[at]; longest = run; }
-  }
-  return anchor;
-}
-
-// Newer Codex prints the command itself as the first line of its output; the conversation already shows it.
-const withoutEcho = (rows: string[] | null, command: string) => rows && rows[0]?.trim() === command.trim() ? trimRows(rows.slice(1)) : rows;
-
-function echoRow(agent: ScreenAgent, rows: string[], command: string, end: number) {
+function claudeShellRunning(rows: string[], end: number) {
   for (let index = end - 1; index >= 0; index--) {
-    const text = rows[index].trim();
-    if (agent === 'claude' && command.trim().startsWith('!') && text.startsWith('!') && commandInputText(text) === commandInputText(command)) return index;
-    if (text.startsWith(agent === 'claude' ? '❯' : '›') && commandInputText(text.slice(1)) === commandInputText(command)) return index;
+    if (/^\s*!\s+\S/.test(rows[index])) return /^\s*⎿[ \u00a0]+Running…\s*$/.test(rows[index + 1] ?? '');
   }
-  return -1;
-}
-
-// Captured Claude 2.1.302 Bash blocks: the accepted ! command owns its ⎿ result, not the assistant reply below it.
-function claudeShellResult(rows: string[], end: number, command?: string) {
-  let at = command ? echoRow('claude', rows, command, end) : -1;
-  if (!command) for (let index = end - 1; index >= 0; index--) {
-    if (/^\s*!\s+\S/.test(rows[index])) { at = index; break; }
-  }
-  if (at < 0 || !rows[at].trim().startsWith('!')) return null;
-  const result = /^(\s*)⎿[ \u00a0]{1,2}(.*)$/.exec((rows[at + 1] ?? '').replace(/\r$/, ''));
-  if (!result) return null;
-  const text = result[2], running = text.trim() === 'Running…';
-  if (running || text.trim() === '(Bash completed with no output)') return { running, output: [] as string[] };
-  const output = [text], column = result[0].length - text.length;
-  for (let index = at + 2; index < end && rows[index].trim() && rows[index].startsWith(' '.repeat(column)); index++) output.push(rows[index].slice(column).replace(/\r$/, ''));
-  return { running: false, output };
-}
-function freshShellResult(rows: string[], end: number, command: string, before?: readonly string[]) {
-  const result = claudeShellResult(rows, end, command);
-  const accepted = (row: string) => row.trim().startsWith('!') && commandInputText(row) === commandInputText(command);
-  // A changing banner/model reply is not a new execution of an old identical Bash result.
-  if (before && rows.slice(0, end).filter(accepted).length <= before.filter(accepted).length) return null;
-  return result;
-}
-
-export function extractCliPanelRows(agent: ScreenAgent, rows: string[], screen: AgentScreen, command: string, before?: readonly string[]): string[] {
-  // A dialog Codex drew over its conversation is all the command shows; the conversation beside it is not.
-  const dialog = agent === 'codex' ? codexDialog(rows) : null;
-  if (dialog) return squeeze(trimRows(dialog));
-  const input = cliInputArea(agent, rows, screen);
-  // A panel can replace the entire input area. Only recognizable status rows are
-  // cut in that case; keyboard hints belong to the panel and must remain visible.
-  let end = input?.hasFooter ? input.footer : rows.length;
-  if (!input) {
-    const statusRow = (row: string) => agent === 'claude'
-      ? /^\s*[⏺⏸⏵]+\s+.*(?:·|mode on|permissions on)/.test(row)
-      // Codex's footer, with or without its context part (none before the first message).
-      : /^\s*(?:GPT|gpt|o\d|codex)[^·]*\s+·\s+.+$/.test(row);
-    for (let index = rows.length - 1; index >= 0; index--) {
-      if (!statusRow(rows[index])) continue;
-      if (rows.slice(index + 1).some(row => row.trim() && !statusRow(row) && !/^\s*(?:\? for shortcuts|⚠)/.test(row))) continue;
-      end = index;
-      while (end > 0 && (!rows[end - 1].trim() || statusRow(rows[end - 1]))) end--;
-      break;
-    }
-  }
-  const echo = echoRow(agent, rows, command, input?.row ?? end);
-  let start = echo + 1;
-  if (agent === 'codex' && input) {
-    const popup = codexPopupBelow(rows, input);
-    if (popup.length) return squeeze(popup);
-  }
-  if (echo < 0 && agent === 'codex' && before) {
-    const since = withoutEcho(rowsSince(before, rows, input?.start ?? end, command), command);
-    if (since) return squeeze(since);
-    // A full-screen view (the /diff pager) replaced everything that was there: all of it is the command's.
-    if (!input && rows.some(row => /\bq close\b|to scroll\b/i.test(row))) return squeeze(trimRows(rows.slice(0, end)));
-    return [];
-  }
-  // Newer Claude opens a dialog under its ▔▔▔ edge without echoing the command: an echo found above that edge is an
-  // earlier run of the same command, and what lies between is old conversation, not this dialog.
-  if (echo >= 0 && agent === 'claude') {
-    for (let index = (input?.start ?? end) - 1; index > echo; index--) if (/^\s*▔{8,}\s*$/.test(rows[index])) { start = index + 1; break; }
-  }
-  if (echo < 0) {
-    // The composer rules are below the panel, not its upper boundary.
-    const boundary = input?.start ?? end;
-    for (let index = boundary - 1; index >= 0; index--) {
-      if (panelEdge(rows[index])) { start = index + 1; break; }
-    }
-    // With neither the agent's input nor its banner on screen, the agent is not drawing yet (still starting, or
-    // updating itself in the shell): nothing on screen is the command's.
-    if (start === 0 && !input && !rows.some(row => /Claude Code v\d|OpenAI Codex/.test(row))) return [];
-  }
-  // If the command is still in the live composer, do not mirror its echo. Claude keeps a submitted command there
-  // while its hooks run (about a second); above it is only old conversation or the welcome banner, so there is
-  // nothing of the command's to show yet.
-  if (input?.text === command.trim()) {
-    if (agent === 'claude' && screen.overlay !== 'none') start = input.row + 1;
-    else if (agent === 'claude') return [];
-    else end = input.start;
-  }
-  // Claude Code 2.1.296's effort over its input box is never the command's (a dialog's own search field, drawn like
-  // the input box, is: /config).
-  const own = rows.slice(start, end).filter(row => !(agent === 'claude' && /^\s*[●◉]\s+\S+\s+·\s+\/effort\b/.test(row)));
-  return squeeze(trimRows(withoutBanner(agent, own)));
-}
-
-export function extractCliOutputRows(agent: ScreenAgent, rows: string[], screen: AgentScreen, command: string, before?: readonly string[]): string[] {
-  const input = cliInputArea(agent, rows, screen);
-  if (!input) return [];
-  if (agent === 'claude' && before) {
-    const history = cliHistory(agent, rows, screen);
-    if (history.length === before.length && history.every((row, index) => row === before[index])) return [];
-  }
-  const echo = echoRow(agent, rows, command, input.start);
-  if (agent === 'claude' && command.trim().startsWith('!') && echo >= 0 && rows[echo].trim().startsWith('!')) return freshShellResult(rows, input.start, command, before)?.output ?? [];
-  // Without the echo, using old conversation text would fabricate command output; Codex's is what came in since.
-  if (echo < 0) return agent === 'codex' && before ? withoutEcho(rowsSince(before, rows, input.start, command), command) ?? [] : [];
-  return trimRows(rows.slice(echo + 1, input.start));
-}
-
-export type CliCommand = {
-  id: string; command: string; at: number;
-  observed: boolean; idleSince: number | null; output: string[];
-  // The last dialog drawn in the input's place: what such a command showed, still shown once it is closed.
-  dialog: string[];
-  // The history above the input when the command was sent.
-  before?: string[];
-  // It asked something (a picker, a menu): answered or dismissed, it has nothing more to print.
-  chose?: boolean;
-  // The footer when it was sent: a setting it changed there (the model, fast mode) shows it has done its work.
-  footer?: string;
-  // Exact live input before the single explicit Enter, independent of coalesced screen publications.
-  inputConfirmed?: boolean;
-  submitted?: boolean;
-  repeatChecked?: boolean;
-  shellComplete?: boolean;
-};
-export const cliFooter = (screen: AgentScreen) => JSON.stringify(screen.status);
-
-// What a finished command shows in its popup: its dialog when it drew one (without the CLI's own "dialog dismissed"
-// note), else what it printed above the input.
-export function cliResultRows(command: CliCommand): string[] {
-  if (!command.dialog.length) return command.output;
-  const printed = command.output.filter(row => row.trim() && !/dialog dismissed|^\s*⎿\s*$/i.test(row));
-  return printed.length ? [...command.dialog, '', ...printed] : command.dialog;
-}
-
-// Stream observations start the idle clock; timer ticks only advance it. The
-// pre-submit snapshot must never complete a command before the CLI receives it.
-// Codex returns to its input at once and prints some results a while later (/status fetches the account's limits):
-// it is done once its output has stopped changing. Only a known read-only /status can reuse a fully repeated card,
-// after exact input acknowledgment, one explicit Enter and a post-submit return to idle. Silence is not completion.
-export function advanceCliCommand(command: CliCommand, agent: ScreenAgent, rows: string[], screen: AgentScreen, now: number, observation: boolean) {
-  let idle = observation ? isCliIdle(agent, rows, screen) : command.idleSince !== null;
-  const next = { ...command, observed: command.observed || observation, chose: command.chose || !!screen.choice };
-  if (observation && agent === 'claude' && command.command.trim().startsWith('!')) {
-    const input = cliInputArea(agent, rows, screen);
-    const shell = input ? freshShellResult(rows, input.start, command.command, command.before) : null;
-    if (shell) {
-      next.shellComplete = !shell.running;
-      // Bash can finish before Claude's subsequent model reply. Its explicit result completes this command only.
-      if (next.shellComplete && command.inputConfirmed && command.submitted && input?.text === '' && !screen.choice && screen.overlay === 'none') idle = true;
-    }
-  }
-  if (!next.observed || !idle) next.idleSince = null;
-  else {
-    const output = observation ? extractCliOutputRows(agent, rows, screen, command.command, command.before) : command.output;
-    if (output.join('\n') !== command.output.join('\n')) next.idleSince = now;
-    else next.idleSince ??= now;
-    next.output = output;
-  }
-  const changed = idle && command.footer !== undefined && cliFooter(screen) !== command.footer;
-  // Claude's dialog (/usage during a round) closed and its input back: the command is over though Claude still works.
-  const dismissed = agent === 'claude' && next.observed && !!command.dialog?.length && !idle && hasCliInput(agent, rows, screen) && !cliDialogOpen(agent, rows, screen);
-  if (agent === 'codex' && idle && command.inputConfirmed && command.submitted && command.command.trim() === '/status' && !next.repeatChecked && !next.output.length && !next.chose && !changed) {
-    next.repeatChecked = true;
-    next.output = repeatedRun(rows, screen, command.command);
-  }
-  const evidence = !!(next.output.length > 0 || next.chose || changed || command.dialog?.length || next.shellComplete);
-  const done = dismissed || (evidence && next.idleSince !== null && now - next.idleSince >= 400);
-  return { command: next, done };
-}
-
-// Codex draws its conversation itself (in the terminal's alternate screen, with no scrollback to tell how far it moved):
-// printing the same rows again on a screen that holds nothing else (/status run over and over, the screen all its
-// cards) leaves the screen reading as it did before. With nothing new found, when all the screen shows is the
-// command's latest run (from its echo row) repeated, that run is what it printed.
-function repeatedRun(rows: string[], screen: AgentScreen, command: string): string[] {
-  const input = cliInputArea('codex', rows, screen);
-  if (!input || !command.trim()) return [];
-  const lines = flowRows(rows, input.start), text = lines.map(index => rows[index].trimEnd());
-  const at = text.map(line => line.trim()).lastIndexOf(command.trim()), run = text.slice(at);
-  if (at < 0 || !text.every((line, index) => line === run[((index - at) % run.length + run.length) % run.length])) return [];
-  return withoutEcho(trimRows(rows.slice(lines[at], input.start)), command) ?? [];
-}
-
-export function cliPanelKey(event: { key: string; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): string | null {
-  const keys: Record<string, string> = { ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D', Enter: '\r', Escape: '\x1b', Backspace: '\x7f', Delete: '\x1b[3~', Home: '\x1b[H', End: '\x1b[F', PageUp: '\x1b[5~', PageDown: '\x1b[6~' };
-  if (event.metaKey) return null;
-  if (event.ctrlKey && /^[a-z]$/i.test(event.key)) return String.fromCharCode(event.key.toUpperCase().charCodeAt(0) - 64);
-  const key = event.key === 'Tab' ? event.shiftKey ? '\x1b[Z' : '\t' : keys[event.key] ?? ([...event.key].length === 1 ? event.key : null);
-  return key !== null && event.altKey ? '\x1b' + key : key;
+  return false;
 }

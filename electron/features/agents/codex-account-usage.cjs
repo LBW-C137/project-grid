@@ -12,13 +12,13 @@ let nextEnvironment = 0;
 
 function accountResult(result, at = Date.now()) {
   const left = result?.rateLimitResetCredits?.availableCount;
-  if (left == null) return unavailable('unsupported');
   // JSON's integer representation must be safe before crossing Electron IPC.
-  if (!Number.isSafeInteger(left) || left < 0) throw new Error('invalid-count');
-  const limits = [result.rateLimits?.primary, result.rateLimits?.secondary]
+  if (left != null && (!Number.isSafeInteger(left) || left < 0)) throw new Error('invalid-count');
+  const limits = [result?.rateLimits?.primary, result?.rateLimits?.secondary]
     .filter(value => value && Number.isFinite(value.usedPercent))
     .map(value => ({ minutes: value.windowDurationMins ?? null, percent: value.usedPercent,
       resetsAt: Number.isFinite(value.resetsAt) ? value.resetsAt * 1000 : null }));
+  if (left == null) return { ...unavailable('unsupported'), ...(limits.length ? { limits, at, source: 'Codex' } : {}) };
   return { resets: { left, total: null }, limits, at, source: 'Codex', resetQuery: { state: 'ready', at } };
 }
 
@@ -99,6 +99,7 @@ function readCodexAccount({ env = process.env, cwd, codexHome, signal, timeout =
     if (signal?.aborted) { abort(); return; }
     signal?.addEventListener('abort', abort, { once: true });
     timer = setTimeout(() => fail('timeout'), timeout);
+    timer.unref?.();
     const start = file => {
       if (done) return;
       if (!file) { finish(unavailable('unsupported')); return; }
@@ -248,6 +249,9 @@ class CodexAccountUsage {
   watch(options, changed) {
     const scope = usageScope(options);
     if (scope.reason) { changed(unavailable(scope.reason)); return { dispose() {}, refresh() {}, output() {} }; }
+    // A quick rebind must retain the old read and throttle, even after its last listener leaves.
+    for (const [key, entry] of this.entries) if (!entry.listeners.size && !entry.pending &&
+      Date.now() >= Math.max((entry.lastReadAt ?? entry.lastAttemptAt ?? 0) + 5000, entry.retryAt || 0)) this.entries.delete(key);
     let entry = this.entries.get(scope.key);
     if (!entry) {
       entry = { options: { ...options, codexHome: scope.home, cwd: scope.cwd }, listeners: new Set(), failures: 0, generation: 0 };
@@ -258,40 +262,62 @@ class CodexAccountUsage {
     if (!entry.pending && !entry.timer) this.refresh(entry);
     let tail = '';
     return {
-      refresh: () => this.refresh(entry, true),
+      refresh: (maxAge = 0) => this.refresh(entry, true, maxAge),
       // A success printed by the actual CLI invalidates any pre-reset read. No
       // query ever writes into its PTY, submits a prompt or initiates a reset.
       output: data => {
         tail = (tail + data).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').slice(-4096);
         const success = /Usage reset\.\s+You have \d+\b[^.]*?\bleft\.?/i.exec(tail);
-        if (success) { tail = tail.slice(success.index + success[0].length); this.refresh(entry, true); }
+        if (success) {
+          tail = tail.slice(success.index + success[0].length);
+          if (entry.pending) { entry.invalidated = true; entry.abort?.abort(); }
+          this.refresh(entry, true);
+        }
       },
       dispose: () => {
         entry.listeners.delete(changed);
         if (entry.listeners.size) return;
-        ++entry.generation; clearTimeout(entry.timer); entry.abort?.abort(); this.entries.delete(scope.key);
+        clearTimeout(entry.timer); entry.timer = null; entry.value = null; entry.queued = false;
+        if (entry.pending) { entry.invalidated = true; entry.abort?.abort(); }
       },
     };
   }
-  refresh(entry, force = false) {
-    if (!entry.listeners.size || (entry.pending && !force)) return;
+  schedule(entry, at) {
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => this.refresh(entry), Math.max(0, at - Date.now())); entry.timer.unref?.();
+  }
+  refresh(entry, force = false, maxAge = 0) {
+    if (!entry.listeners.size) return;
+    const now = Date.now(), lastRead = entry.lastReadAt ?? entry.lastAttemptAt;
+    if (maxAge && lastRead != null && now - lastRead <= maxAge) return;
+    if (entry.pending) { if (force) entry.queued = true; return; }
+    const earliest = Math.max(lastRead == null ? 0 : lastRead + 5000, entry.retryAt || 0);
+    if (now < earliest) { this.schedule(entry, earliest); return; }
     clearTimeout(entry.timer); entry.timer = null;
     const generation = ++entry.generation;
-    entry.abort?.abort(); const abort = entry.abort = new AbortController();
+    const abort = entry.abort = new AbortController();
     const publish = value => { entry.value = value; for (const changed of entry.listeners) changed(value); };
+    entry.pending = true; entry.queued = false; entry.lastAttemptAt = now;
     publish({ resets: null, resetQuery: { state: 'loading' } });
-    entry.pending = true;
     Promise.resolve().then(async () => {
       const reason = await this.scope(entry.options);
       if (abort.signal.aborted) return null;
-      return reason ? unavailable(reason) : this.read({ ...entry.options, signal: abort.signal });
+      if (reason) return unavailable(reason);
+      entry.lastReadAt = Date.now();
+      return this.read({ ...entry.options, signal: abort.signal });
     }).catch(() => ({ resets: null, resetQuery: { state: 'error', reason: 'query' } })).then(value => {
-      if (entry.generation !== generation || !entry.listeners.size) return;
-      entry.pending = false; publish(value);
+      if (entry.generation !== generation) return;
+      entry.pending = false;
+      const invalidated = entry.invalidated; entry.invalidated = false;
+      if (!entry.listeners.size) return;
+      if (invalidated) { this.refresh(entry, true); return; }
+      publish(value);
       const failed = value.resetQuery.state !== 'ready';
       entry.failures = failed ? entry.failures + 1 : 0;
       const delay = failed ? Math.min(300000, this.interval * 2 ** Math.min(entry.failures, 4)) : this.interval;
-      entry.timer = setTimeout(() => this.refresh(entry), delay); entry.timer.unref?.();
+      entry.retryAt = failed ? Date.now() + delay : 0;
+      if (entry.queued) this.refresh(entry, true);
+      else this.schedule(entry, Date.now() + delay);
     });
   }
   dispose() {

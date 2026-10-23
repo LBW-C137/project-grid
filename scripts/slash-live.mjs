@@ -46,8 +46,8 @@ const screenText = async () => strip((await page.evaluate(id => window.agentrix.
 const visible = locator => locator.first().isVisible().catch(() => false);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const view = async () => ({
-  choice: await visible(terminal.locator('.reading-choice:not(.reading-cli-panel):not(.reading-sessions)')),
-  panel: await visible(terminal.locator('.reading-cli-panel')),
+  choice: await visible(terminal.locator('.reading-choice:not(.reading-sessions)')),
+  panel: await visible(terminal.locator('.reading-terminal-popup')),
   sessions: await visible(terminal.locator('.reading-sessions')),
   composer: await visible(composer),
   enabled: await composer.isEnabled().catch(() => false),
@@ -86,7 +86,7 @@ async function settle(agent, startup = false) {
     if (s.codexActive && v.composer && v.enabled && !v.choice && !v.panel) return;
     if (v.panel || v.sessions || (v.choice && !startup)) await dismiss();
     else if (v.choice) {
-      const first = terminal.locator('.reading-choice:not(.reading-cli-panel):not(.reading-sessions)').first();
+      const first = terminal.locator('.reading-choice:not(.reading-sessions)').first();
       await first.focus(); await page.keyboard.press('Enter');
     } else if (s.codexActive && !v.composer) {
       // Handed off to the raw terminal for a prompt: take its default, then return to reading.
@@ -108,16 +108,20 @@ async function start(agent) {
   // window can be lost, as a user's would be.
   await sleep(5000); await settle(agent, true);
 }
-// Leave whatever the command opened: Escape in the panel or choice, or interrupt a running turn.
-async function dismiss() {
+// Work in the real terminal to leave the command, then close its popup with the button.
+async function dismiss(command = '') {
   for (let round = 0; round < 6; round++) {
     const v = await view();
     if (v.sessions) { await terminal.locator('.reading-sessions').getByRole('button', { name: /关闭|取消/ }).first().click().catch(async () => { await page.keyboard.press('Escape'); }); await sleep(600); continue; }
     const s = await state();
     if (!s.codexActive) return 'exited';
     if (v.composer && v.enabled && !v.choice && !v.panel && s.codexActivity !== 'working') return 'ready';
-    const target = terminal.locator(v.panel ? '.reading-cli-panel' : '.reading-choice:not(.reading-sessions)').first();
-    if (v.panel || v.choice) { await target.focus().catch(() => {}); await page.keyboard.press('Escape'); }
+    const target = terminal.locator(v.panel ? '.reading-terminal-popup' : '.reading-choice:not(.reading-sessions)').first();
+    if (v.panel) {
+      await target.locator('.xterm-helper-textarea').focus();
+      await page.keyboard.press(command === '/side' ? 'Control+c' : command === '/diff' ? 'q' : 'Escape');
+      await target.getByRole('button', { name: '关闭', exact: true }).click();
+    } else if (v.choice) { await target.focus().catch(() => {}); await page.keyboard.press('Escape'); }
     else if (s.codexActivity === 'working') { await composer.focus(); await page.keyboard.press('Escape'); }
     else await write('\x1b');
     await sleep(1200);
@@ -128,38 +132,36 @@ async function dismiss() {
 async function run(agent, command) {
   await settle(agent);
   if (!await quiet(agent)) console.log(`  (${agent} was not idle before ${command})`);
-  const before = (await screenText()).length, outputsBefore = await terminal.locator('.reading-command-output').count();
+  const before = (await screenText()).length;
   await composer.fill(command); await sleep(150);
   await composer.press('Enter');
   // The palette may complete the name first; a second Enter sends it.
   if ((await composer.inputValue()).trim() === command) await composer.press('Enter');
-  const seen = { panel: false, choice: false, sessions: false, output: false, working: false };
+  if (!LAST.has(command)) await terminal.locator(command === '/resume' ? '.reading-sessions' : '.reading-terminal-popup').waitFor();
+  const seen = { panel: false, choice: false, sessions: false, working: false };
   const until = Date.now() + (MODEL.has(command) ? 12000 : 7000);
   let panelText = '', choiceText = '';
   while (Date.now() < until) {
     const v = await view(), s = await state();
-    if (v.panel) { seen.panel = true; panelText = await text('.reading-cli-panel'); }
-    if (v.choice) { seen.choice = true; choiceText = await text('.reading-choice:not(.reading-cli-panel):not(.reading-sessions)'); }
+    if (v.panel) { seen.panel = true; panelText = await text('.reading-terminal-popup .xterm-rows'); }
+    if (v.choice) { seen.choice = true; choiceText = await text('.reading-choice:not(.reading-sessions)'); }
     if (v.sessions) seen.sessions = true;
-    if (await terminal.locator('.reading-command-output').count() > outputsBefore) seen.output = true;
     if (s.codexActivity === 'working') seen.working = true;
     if (!s.codexActive) break;
     if ((seen.panel || seen.choice || seen.sessions) && Date.now() > until - 4000) break;
-    if (seen.output && !v.panel && !v.choice && v.enabled) break;
     await sleep(300);
   }
   const shot = path.join(output, `${agent}-${command.replace(/[^a-z-]/gi, '')}.png`);
   await page.screenshot({ path: shot }).catch(() => {});
-  const outputText = seen.output ? (await terminal.locator('.reading-command-output').last().innerText().catch(() => '')).trim() : '';
   const screen = (await screenText()).slice(before);
   // Only the CLI's own answer to this command counts; its autocomplete says "No commands match" while a name is typed.
   const name = command.slice(1);
-  const unknown = new RegExp(`(Unknown (slash )?command:? |Unrecognized command '?)/${name}(?![\\w-])`, 'i').test(screen + outputText + panelText);
-  let after = LAST.has(command) ? ((await state()).codexActive ? 'still running' : 'exited') : await dismiss();
+  const unknown = new RegExp(`(Unknown (slash )?command:? |Unrecognized command '?)/${name}(?![\\w-])`, 'i').test(screen + panelText);
+  let after = LAST.has(command) ? ((await state()).codexActive ? 'still running' : 'exited') : await dismiss(command);
   if (after === 'ready' && !await quiet(agent)) after = 'CLI never went idle';
-  const shown = seen.sessions ? 'session picker' : seen.choice ? 'choice' : seen.panel ? 'CLI panel' : seen.output ? 'output entry' : seen.working ? 'agent turn' : 'nothing';
+  const shown = seen.sessions ? 'session picker' : seen.choice ? 'choice' : seen.panel ? 'live terminal' : seen.working ? 'agent turn' : 'nothing';
   const ok = !unknown && shown !== 'nothing' && (LAST.has(command) ? after === 'exited' : after === 'ready');
-  const record = { agent, command, ok, shown, after, unknown, excerpt: (panelText || choiceText || outputText || screen.trim()).split('\n').filter(Boolean).slice(0, 6).join(' | ').slice(0, 300), screenshot: path.basename(shot) };
+  const record = { agent, command, ok, shown, after, unknown, excerpt: (panelText || choiceText || screen.trim()).split('\n').filter(Boolean).slice(0, 6).join(' | ').slice(0, 300), screenshot: path.basename(shot) };
   results.push(record);
   console.log(`${ok ? 'OK  ' : 'FAIL'} ${agent} ${command}: ${shown}, then ${after}${unknown ? ', CLI says unknown' : ''} :: ${record.excerpt}`);
   if (after === 'exited' && !LAST.has(command)) await start(agent);
